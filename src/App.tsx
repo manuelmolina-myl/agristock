@@ -12,6 +12,10 @@ const LoginPage = lazy(() => import('@/pages/auth/login-page'))
 
 // Admin (Super Admin)
 const AdminDashboard = lazy(() => import('@/pages/admin/dashboard-page'))
+const CatalogosPage = lazy(() => import('@/pages/admin/catalogos-page'))
+const ItemsPage = lazy(() => import('@/pages/admin/inventario/items-page'))
+const ItemDetailPage = lazy(() => import('@/pages/admin/inventario/item-detail-page'))
+const ItemFormPage = lazy(() => import('@/pages/admin/inventario/item-form-page'))
 
 // Gerente
 const GerenteDashboard = lazy(() => import('@/pages/gerente/dashboard-page'))
@@ -69,7 +73,7 @@ export default function App() {
         {/* Redirect root to role dashboard */}
         <Route path="/" element={<RoleRedirect />} />
 
-        {/* Admin routes */}
+        {/* Admin routes (Super Admin) */}
         <Route
           path="/admin"
           element={
@@ -79,6 +83,11 @@ export default function App() {
           }
         >
           <Route index element={<AdminDashboard />} />
+          <Route path="inventario" element={<ItemsPage />} />
+          <Route path="inventario/nuevo" element={<ItemFormPage />} />
+          <Route path="inventario/:id" element={<ItemDetailPage />} />
+          <Route path="inventario/:id/editar" element={<ItemFormPage />} />
+          <Route path="configuracion" element={<CatalogosPage />} />
         </Route>
 
         {/* Gerente routes */}
@@ -91,6 +100,11 @@ export default function App() {
           }
         >
           <Route index element={<GerenteDashboard />} />
+          <Route path="inventario" element={<ItemsPage />} />
+          <Route path="inventario/nuevo" element={<ItemFormPage />} />
+          <Route path="inventario/:id" element={<ItemDetailPage />} />
+          <Route path="inventario/:id/editar" element={<ItemFormPage />} />
+          <Route path="configuracion" element={<CatalogosPage />} />
         </Route>
 
         {/* Almacenista routes */}
@@ -103,6 +117,8 @@ export default function App() {
           }
         >
           <Route index element={<AlmacenistaDashboard />} />
+          <Route path="inventario" element={<ItemsPage />} />
+          <Route path="inventario/:id" element={<ItemDetailPage />} />
         </Route>
 
         {/* Supervisor routes */}

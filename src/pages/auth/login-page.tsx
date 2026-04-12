@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useTheme } from '@/hooks/use-theme'
 import { ROLE_ROUTES } from '@/lib/constants'
+import type { UserRole } from '@/lib/database.types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,6 +22,13 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>
 
+const DEMO_USERS: { label: string; role: UserRole; email: string }[] = [
+  { label: 'Super Admin', role: 'super_admin', email: 'admin@agristock.mx' },
+  { label: 'Gerente', role: 'gerente', email: 'gerente@agristock.mx' },
+  { label: 'Almacenista', role: 'almacenista', email: 'almacen@agristock.mx' },
+  { label: 'Supervisor', role: 'supervisor', email: 'supervisor@agristock.mx' },
+]
+
 export function LoginPage() {
   const navigate = useNavigate()
   const { signIn } = useAuth()
@@ -30,6 +38,7 @@ export function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -145,8 +154,30 @@ export function LoginPage() {
             </Button>
           </form>
 
+          {/* Demo quick-login buttons */}
+          <div className="mt-6 flex flex-col gap-2">
+            <p className="text-center text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+              Acceso rápido demo
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {DEMO_USERS.map((user) => (
+                <button
+                  key={user.email}
+                  type="button"
+                  onClick={() => {
+                    setValue('email', user.email)
+                    setValue('password', 'demo123')
+                  }}
+                  className="rounded-lg border border-border/50 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-foreground"
+                >
+                  {user.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Footer link */}
-          <p className="mt-6 text-center text-xs text-muted-foreground">
+          <p className="mt-4 text-center text-xs text-muted-foreground">
             ¿Primera vez?{' '}
             <a
               href="mailto:soporte@agristock.mx"

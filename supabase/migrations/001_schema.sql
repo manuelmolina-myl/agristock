@@ -805,7 +805,7 @@ create policy "Users can update draft movements"
   on stock_movements for update
   using (
     organization_id = auth_org_id()
-    and (status = 'draft' or (old.status = 'draft'))
+    and status = 'draft'
   );
 
 -- ─── Stock Movement Lines ────────────────────────────────────────────────────
