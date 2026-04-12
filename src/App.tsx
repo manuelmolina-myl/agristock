@@ -1,121 +1,125 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { lazy, Suspense } from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { useAuth } from '@/hooks/use-auth'
+import { ROLE_ROUTES } from '@/lib/constants'
+import type { UserRole } from '@/lib/database.types'
 
-function App() {
-  const [count, setCount] = useState(0)
+// Layout
+const AppLayout = lazy(() => import('@/components/layout/app-layout'))
 
+// Auth
+const LoginPage = lazy(() => import('@/pages/auth/login-page'))
+
+// Admin (Super Admin)
+const AdminDashboard = lazy(() => import('@/pages/admin/dashboard-page'))
+
+// Gerente
+const GerenteDashboard = lazy(() => import('@/pages/gerente/dashboard-page'))
+
+// Almacenista
+const AlmacenistaDashboard = lazy(() => import('@/pages/almacenista/dashboard-page'))
+
+// Supervisor
+const SupervisorDashboard = lazy(() => import('@/pages/supervisor/dashboard-page'))
+
+function LoadingFallback() {
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    <div className="flex h-screen w-full items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Cargando...</p>
+      </div>
+    </div>
   )
 }
 
-export default App
+function RoleRedirect() {
+  const { profile, isLoading } = useAuth()
+
+  if (isLoading) return <LoadingFallback />
+
+  if (!profile) return <Navigate to="/login" replace />
+
+  const route = ROLE_ROUTES[profile.role as UserRole]
+  return <Navigate to={route} replace />
+}
+
+function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRole[]; children: React.ReactNode }) {
+  const { user, profile, isLoading } = useAuth()
+
+  if (isLoading) return <LoadingFallback />
+
+  if (!user || !profile) return <Navigate to="/login" replace />
+
+  if (!allowedRoles.includes(profile.role as UserRole)) {
+    const route = ROLE_ROUTES[profile.role as UserRole]
+    return <Navigate to={route} replace />
+  }
+
+  return <>{children}</>
+}
+
+export default function App() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <Routes>
+        {/* Public */}
+        <Route path="/login" element={<LoginPage />} />
+
+        {/* Redirect root to role dashboard */}
+        <Route path="/" element={<RoleRedirect />} />
+
+        {/* Admin routes */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute allowedRoles={['super_admin']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<AdminDashboard />} />
+        </Route>
+
+        {/* Gerente routes */}
+        <Route
+          path="/gerente"
+          element={
+            <ProtectedRoute allowedRoles={['gerente']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<GerenteDashboard />} />
+        </Route>
+
+        {/* Almacenista routes */}
+        <Route
+          path="/almacenista"
+          element={
+            <ProtectedRoute allowedRoles={['almacenista']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<AlmacenistaDashboard />} />
+        </Route>
+
+        {/* Supervisor routes */}
+        <Route
+          path="/supervisor"
+          element={
+            <ProtectedRoute allowedRoles={['supervisor']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<SupervisorDashboard />} />
+        </Route>
+
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
+  )
+}

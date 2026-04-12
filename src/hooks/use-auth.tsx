@@ -1,0 +1,149 @@
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import type { ReactNode } from 'react'
+import type { User, Session } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
+import type { Profile, Organization, Season, UserRole } from '@/lib/database.types'
+
+interface AuthState {
+  user: User | null
+  session: Session | null
+  profile: Profile | null
+  organization: Organization | null
+  activeSeason: Season | null
+  isLoading: boolean
+}
+
+interface AuthContextValue extends AuthState {
+  signIn: (email: string, password: string) => Promise<{ role: UserRole }>
+  signOut: () => Promise<void>
+  setActiveSeason: (season: Season) => void
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    session: null,
+    profile: null,
+    organization: null,
+    activeSeason: null,
+    isLoading: true,
+  })
+
+  const fetchUserData = useCallback(async (userId: string) => {
+    const { data: profile } = await db
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (!profile) return null
+
+    const { data: organization } = await db
+      .from('organizations')
+      .select('*')
+      .eq('id', (profile as Profile).organization_id)
+      .single()
+
+    const { data: season } = await db
+      .from('seasons')
+      .select('*')
+      .eq('organization_id', (profile as Profile).organization_id)
+      .eq('status', 'active')
+      .single()
+
+    return {
+      profile: profile as Profile,
+      organization: (organization as Organization) ?? null,
+      season: (season as Season) ?? null,
+    }
+  }, [])
+
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const userData = await fetchUserData(session.user.id)
+        setState({
+          user: session.user,
+          session,
+          profile: userData?.profile ?? null,
+          organization: userData?.organization ?? null,
+          activeSeason: userData?.season ?? null,
+          isLoading: false,
+        })
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }))
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          const userData = await fetchUserData(session.user.id)
+          setState({
+            user: session.user,
+            session,
+            profile: userData?.profile ?? null,
+            organization: userData?.organization ?? null,
+            activeSeason: userData?.season ?? null,
+            isLoading: false,
+          })
+        } else if (event === 'SIGNED_OUT') {
+          setState({
+            user: null,
+            session: null,
+            profile: null,
+            organization: null,
+            activeSeason: null,
+            isLoading: false,
+          })
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [fetchUserData])
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw error
+
+    const userData = await fetchUserData(data.user.id)
+    if (!userData?.profile) throw new Error('Perfil no encontrado')
+
+    setState({
+      user: data.user,
+      session: data.session,
+      profile: userData.profile,
+      organization: userData.organization,
+      activeSeason: userData.season,
+      isLoading: false,
+    })
+
+    return { role: userData.profile.role }
+  }, [fetchUserData])
+
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut()
+  }, [])
+
+  const setActiveSeason = useCallback((season: Season) => {
+    setState(prev => ({ ...prev, activeSeason: season }))
+  }, [])
+
+  return (
+    <AuthContext.Provider value={{ ...state, signIn, signOut, setActiveSeason }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
+  return ctx
+}
