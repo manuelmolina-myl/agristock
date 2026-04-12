@@ -16,6 +16,11 @@ const CatalogosPage = lazy(() => import('@/pages/admin/catalogos-page'))
 const ItemsPage = lazy(() => import('@/pages/admin/inventario/items-page'))
 const ItemDetailPage = lazy(() => import('@/pages/admin/inventario/item-detail-page'))
 const ItemFormPage = lazy(() => import('@/pages/admin/inventario/item-form-page'))
+const FxRatesPage = lazy(() => import('@/pages/admin/fx-rates-page'))
+const EntradasPage = lazy(() => import('@/pages/admin/entradas/entradas-page'))
+const NuevaEntradaPage = lazy(() => import('@/pages/admin/entradas/nueva-entrada-page'))
+const SalidasPage = lazy(() => import('@/pages/admin/salidas/salidas-page'))
+const NuevaSalidaPage = lazy(() => import('@/pages/admin/salidas/nueva-salida-page'))
 
 // Gerente
 const GerenteDashboard = lazy(() => import('@/pages/gerente/dashboard-page'))
@@ -87,7 +92,12 @@ export default function App() {
           <Route path="inventario/nuevo" element={<ItemFormPage />} />
           <Route path="inventario/:id" element={<ItemDetailPage />} />
           <Route path="inventario/:id/editar" element={<ItemFormPage />} />
+          <Route path="entradas" element={<EntradasPage />} />
+          <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
+          <Route path="salidas" element={<SalidasPage />} />
+          <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
           <Route path="configuracion" element={<CatalogosPage />} />
+          <Route path="tipo-cambio" element={<FxRatesPage />} />
         </Route>
 
         {/* Gerente routes */}
@@ -104,7 +114,12 @@ export default function App() {
           <Route path="inventario/nuevo" element={<ItemFormPage />} />
           <Route path="inventario/:id" element={<ItemDetailPage />} />
           <Route path="inventario/:id/editar" element={<ItemFormPage />} />
+          <Route path="entradas" element={<EntradasPage />} />
+          <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
+          <Route path="salidas" element={<SalidasPage />} />
+          <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
           <Route path="configuracion" element={<CatalogosPage />} />
+          <Route path="tipo-cambio" element={<FxRatesPage />} />
         </Route>
 
         {/* Almacenista routes */}
@@ -119,6 +134,10 @@ export default function App() {
           <Route index element={<AlmacenistaDashboard />} />
           <Route path="inventario" element={<ItemsPage />} />
           <Route path="inventario/:id" element={<ItemDetailPage />} />
+          <Route path="entradas" element={<EntradasPage />} />
+          <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
+          <Route path="salidas" element={<SalidasPage />} />
+          <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
         </Route>
 
         {/* Supervisor routes */}

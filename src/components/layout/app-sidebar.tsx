@@ -12,6 +12,7 @@ import {
   Settings,
   ClipboardList,
   Warehouse,
+  DollarSign,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -70,6 +71,7 @@ const ADMIN_NAV: NavSection[] = [
   {
     heading: 'Sistema',
     items: [
+      { label: 'Tipo de cambio', to: '/tipo-cambio',   icon: DollarSign },
       { label: 'Auditoría',      to: '/auditoria',     icon: ShieldCheck },
       { label: 'Configuración',  to: '/configuracion', icon: Settings },
     ],
