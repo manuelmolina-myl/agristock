@@ -8,9 +8,9 @@ import { es } from 'date-fns/locale'
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
-import { useEquipment, useEmployees } from '@/hooks/use-supabase-query'
+import { useEquipment, useEmployees, useWarehouses } from '@/hooks/use-supabase-query'
 import type { Equipment, Item, StockMovementLine } from '@/lib/database.types'
-import { formatQuantity, formatMoney, cn } from '@/lib/utils'
+import { formatQuantity, cn } from '@/lib/utils'
 
 import { PageHeader } from '@/components/custom/page-header'
 import { SearchableSelect } from '@/components/shared/searchable-select'
@@ -30,7 +30,6 @@ interface FormState {
   litros: string
   horometroActual: string
   kmActual: string
-  costoPorLitro: string
   notas: string
 }
 
@@ -197,7 +196,7 @@ function LitrosInput({ value, onChange, disabled }: LitrosInputProps) {
 export function CargaDieselPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { organization, activeSeason } = useAuth()
+  const { organization, activeSeason, profile } = useAuth()
   const orgId = organization?.id ?? ''
 
   const [form, setForm] = useState<FormState>({
@@ -206,7 +205,6 @@ export function CargaDieselPage() {
     litros: '',
     horometroActual: '',
     kmActual: '',
-    costoPorLitro: '',
     notas: '',
   })
   const [submitting, setSubmitting] = useState(false)
@@ -218,8 +216,6 @@ export function CargaDieselPage() {
     tractorCode: string
     operatorName: string
     rendimiento: number | null
-    costo: number
-    costoPorLitro: number
     horometroAntes: number | null
     horometroDespues: number | null
   } | null>(null)
@@ -228,6 +224,7 @@ export function CargaDieselPage() {
 
   const { data: allEquipment = [], isLoading: loadingEquipment } = useEquipment()
   const { data: allEmployees = [], isLoading: loadingEmployees } = useEmployees()
+  const { data: warehouses = [] } = useWarehouses()
 
   // Filter only active tractors/vehicles
   const equipment = useMemo(
@@ -262,28 +259,6 @@ export function CargaDieselPage() {
   )
 
   const lastHorometro = lastLine?.equipment_hours_after ?? selectedEquipment?.current_hours
-
-  // Default cost from diesel item avg_cost when equipment changes or item loads
-  const defaultCostoPorLitro = useMemo(() => {
-    const item = dieselItem as (Item & { avg_cost_native?: number; avg_cost_mxn?: number }) | null | undefined
-    return item?.avg_cost_native ?? item?.avg_cost_mxn ?? 0
-  }, [dieselItem])
-
-  // Effective cost: custom input or fallback to default
-  const effectiveCostoPorLitro = useMemo(() => {
-    if (form.costoPorLitro !== '') {
-      const v = parseFloat(form.costoPorLitro)
-      return isNaN(v) ? defaultCostoPorLitro : v
-    }
-    return defaultCostoPorLitro
-  }, [form.costoPorLitro, defaultCostoPorLitro])
-
-  // Total cost preview
-  const totalCostoPreview = useMemo(() => {
-    const litros = parseFloat(form.litros)
-    if (!litros || litros <= 0) return null
-    return litros * effectiveCostoPorLitro
-  }, [form.litros, effectiveCostoPorLitro])
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -325,35 +300,42 @@ export function CargaDieselPage() {
       const now = new Date()
 
       // 1. Create stock_movement
+      const defaultWarehouse = warehouses[0]
+      if (!defaultWarehouse) {
+        toast.error('No hay almacenes configurados')
+        setSubmitting(false)
+        return
+      }
+
       const { data: movement, error: movErr } = await db
         .from('stock_movements')
         .insert({
           organization_id: orgId,
           season_id: activeSeason.id,
           movement_type: 'exit_consumption',
+          warehouse_id: defaultWarehouse.id,
           status: 'posted',
           posted_at: now.toISOString(),
+          posted_by: profile?.id ?? null,
           notes: form.notas || null,
+          total_mxn: 0,
+          total_native: 0,
         })
         .select()
         .single()
 
       if (movErr) throw movErr
 
-      // 2. Determine unit cost (override if provided)
-      const unitCostMxn = effectiveCostoPorLitro
-      const lineTotalMxn = unitCostMxn * litros
-
-      // 3. Create stock_movement_line
+      // 2. Create stock_movement_line (cost tracked via entries, not per load)
       const { error: lineErr } = await db.from('stock_movement_lines').insert({
         movement_id: movement.id,
         item_id: dieselItem.id,
         quantity: litros,
-        unit_cost_native: unitCostMxn,
+        unit_cost_native: 0,
         native_currency: 'MXN',
-        unit_cost_mxn: unitCostMxn,
-        line_total_native: lineTotalMxn,
-        line_total_mxn: lineTotalMxn,
+        unit_cost_mxn: 0,
+        line_total_native: 0,
+        line_total_mxn: 0,
         destination_type: 'equipment',
         equipment_id: form.equipmentId,
         operator_employee_id: form.operatorId,
@@ -398,8 +380,6 @@ export function CargaDieselPage() {
         tractorCode,
         operatorName,
         rendimiento,
-        costo: lineTotalMxn,
-        costoPorLitro: unitCostMxn,
         horometroAntes: lastHorometro ?? null,
         horometroDespues: horometroActual,
       })
@@ -420,7 +400,7 @@ export function CargaDieselPage() {
   }
 
   function handleNuevaCarga() {
-    setForm({ equipmentId: '', operatorId: '', litros: '', horometroActual: '', kmActual: '', costoPorLitro: '', notas: '' })
+    setForm({ equipmentId: '', operatorId: '', litros: '', horometroActual: '', kmActual: '', notas: '' })
     setSummary(null)
     setSubmitted(false)
     setSubmittedAt(null)
@@ -463,19 +443,6 @@ export function CargaDieselPage() {
             <Separator />
 
             <div className="grid grid-cols-2 gap-4 w-full text-left">
-              <div>
-                <p className="text-xs text-muted-foreground">Costo por litro</p>
-                <p className="text-base font-semibold font-mono">
-                  {formatMoney(summary.costoPorLitro, 'MXN')}/L
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Total cargado</p>
-                <p className="text-base font-semibold font-mono text-primary">
-                  {formatMoney(summary.costo, 'MXN')}
-                </p>
-              </div>
-
               {summary.rendimiento != null && (
                 <div>
                   <p className="text-xs text-muted-foreground">Rendimiento</p>
@@ -623,64 +590,11 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 4. Costo por litro ───────────────────────────────────────────── */}
+        {/* ── 4. Horómetro ─────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
               4
-            </div>
-            <Label htmlFor="costo-litro" className="text-base font-semibold">
-              Costo por litro (MXN)
-            </Label>
-          </div>
-
-          {defaultCostoPorLitro > 0 && (
-            <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 border px-3 py-2 text-sm text-muted-foreground">
-              <Info className="size-3.5 shrink-0" />
-              <span>
-                Costo promedio del artículo:{' '}
-                <span className="font-mono font-medium text-foreground">
-                  {formatMoney(defaultCostoPorLitro, 'MXN')}/L
-                </span>
-              </span>
-            </div>
-          )}
-
-          <Input
-            id="costo-litro"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="0.01"
-            placeholder={
-              defaultCostoPorLitro > 0
-                ? `Ej. ${formatQuantity(defaultCostoPorLitro, 2)}`
-                : 'Ej. 24.50'
-            }
-            value={form.costoPorLitro}
-            onChange={(e) => set('costoPorLitro', e.target.value)}
-            disabled={submitting}
-            className="h-12 text-lg font-mono"
-          />
-
-          {/* Total cost preview */}
-          {totalCostoPreview != null && (
-            <div className="flex items-center justify-between rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
-              <span className="text-sm text-muted-foreground">Total estimado</span>
-              <span className="font-mono font-semibold text-primary">
-                {formatMoney(totalCostoPreview, 'MXN')}
-              </span>
-            </div>
-          )}
-        </section>
-
-        <Separator />
-
-        {/* ── 5. Horómetro ─────────────────────────────────────────────────── */}
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-              5
             </div>
             <Label htmlFor="horometro" className="text-base font-semibold">
               Horómetro actual
@@ -778,11 +692,11 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 6. Notas ─────────────────────────────────────────────────────── */}
+        {/* ── 5. Notas ─────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs font-bold">
-              6
+              5
             </div>
             <Label htmlFor="notas" className="text-base font-semibold text-muted-foreground">
               Notas / Folio de ticket{' '}
