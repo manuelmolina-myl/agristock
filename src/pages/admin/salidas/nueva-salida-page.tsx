@@ -1028,7 +1028,7 @@ export function NuevaSalidaPage() {
               ? { posted_at: new Date().toISOString(), posted_by: profile?.id ?? null }
               : {}),
           })
-          .select('*, warehouse:warehouses(*)')
+          .select('*, warehouse:warehouses!stock_movements_warehouse_id_fkey(*)')
           .single()
 
         if (movErr) throw movErr

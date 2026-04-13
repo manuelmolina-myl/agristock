@@ -131,7 +131,7 @@ export default function EntradasPage() {
   const { data: rawMovements = [], isLoading, refetch } = useList<EntryMovement>(
     'stock_movements',
     {
-      select: '*, warehouse:warehouses(id, name, code), supplier:suppliers(id, name)',
+      select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), supplier:suppliers(id, name)',
       filters: activeSeason?.id ? { season_id: activeSeason.id } : {},
       enabled: !!activeSeason?.id,
     }

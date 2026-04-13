@@ -167,7 +167,7 @@ export function SalidasPage() {
   const { data: rawMovements = [], isLoading, refetch } = useList<ExitMovement>(
     'stock_movements',
     {
-      select: '*, warehouse:warehouses(id, name, code), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
+      select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
       filters: activeSeason?.id ? { season_id: activeSeason.id } : {},
       enabled: !!activeSeason?.id,
     }
