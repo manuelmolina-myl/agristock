@@ -118,6 +118,7 @@ const step1Schema = z.object({
   ]),
   date: z.string().min(1, 'Selecciona una fecha'),
   notes: z.string().optional(),
+  receiver_employee_id: z.string().min(1, 'Selecciona quién recibe'),
 })
 
 type Step1aValues = z.infer<typeof step1aSchema>
@@ -416,6 +417,32 @@ function Step2Detalles({ step1a, defaultValues, onNext, onBack }: Step2DetallesP
         <Input id="date" type="date" {...register('date')} />
         {errors.date && (
           <p className="text-xs text-destructive">{errors.date.message}</p>
+        )}
+      </div>
+
+      {/* Recibe */}
+      <div className="flex flex-col gap-1.5">
+        <Label>Recibe <span className="text-destructive">*</span></Label>
+        <Controller
+          name="receiver_employee_id"
+          control={control}
+          render={({ field }) => (
+            <SearchableSelect
+              value={field.value ?? ''}
+              onValueChange={field.onChange}
+              options={employees.map((emp) => ({
+                value: emp.id,
+                label: emp.full_name,
+                sublabel: emp.employee_code,
+              }))}
+              placeholder="Seleccionar quién recibe el material"
+              searchPlaceholder="Buscar empleado…"
+              emptyMessage="Sin empleados."
+            />
+          )}
+        />
+        {errors.receiver_employee_id && (
+          <p className="text-xs text-destructive">{errors.receiver_employee_id.message}</p>
         )}
       </div>
 
@@ -856,6 +883,15 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
             <dt className="text-xs text-muted-foreground">Destino</dt>
             <dd>{getDestinationLabel()}</dd>
           </div>
+          {step1.receiver_employee_id && (() => {
+            const receiver = employees.find((e) => e.id === step1.receiver_employee_id)
+            return receiver ? (
+              <div className="col-span-2">
+                <dt className="text-xs text-muted-foreground">Recibe</dt>
+                <dd className="font-medium">{receiver.full_name} <span className="text-muted-foreground font-normal font-mono text-xs">({receiver.employee_code})</span></dd>
+              </div>
+            ) : null
+          })()}
           {step1.notes && (
             <div className="col-span-2">
               <dt className="text-xs text-muted-foreground">Notas</dt>
@@ -953,6 +989,7 @@ export function NuevaSalidaPage() {
   const { organization, activeSeason, profile } = useAuth()
 
   const { data: fxRates = [] } = useFxRates()
+  const { data: allEmployees = [] } = useEmployees()
   const latestFxRate = useMemo(() => {
     const usd = (fxRates as any[]).find((r: any) => r.currency_from === 'USD' && r.currency_to === 'MXN')
     return usd?.rate ?? 17
@@ -989,6 +1026,13 @@ export function NuevaSalidaPage() {
         return
       }
 
+      // Build notes with receiver prefix
+      const receiverEmployee = allEmployees.find((e) => e.id === step1Data.receiver_employee_id)
+      const receiverPrefix = receiverEmployee ? `Recibe: ${receiverEmployee.full_name}. ` : ''
+      const notesWithReceiver = step1Data.notes
+        ? `${receiverPrefix}${step1Data.notes}`
+        : receiverPrefix || null
+
       setIsSubmitting(true)
       try {
         // 1. Build totals
@@ -1022,7 +1066,7 @@ export function NuevaSalidaPage() {
             total_mxn: totalMxn,
             total_usd: totalUsd,
             status,
-            notes: step1Data.notes ?? null,
+            notes: notesWithReceiver,
             created_by: profile?.id ?? null,
             ...(status === 'posted'
               ? { posted_at: new Date().toISOString(), posted_by: profile?.id ?? null }
@@ -1096,7 +1140,7 @@ export function NuevaSalidaPage() {
         setIsSubmitting(false)
       }
     },
-    [step1Data, step2Data, organization, activeSeason, profile, navigate, latestFxRate]
+    [step1Data, step2Data, organization, activeSeason, profile, navigate, latestFxRate, allEmployees]
   )
 
   return (

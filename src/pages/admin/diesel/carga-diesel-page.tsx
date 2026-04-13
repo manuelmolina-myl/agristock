@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge'
 interface FormState {
   equipmentId: string
   operatorId: string
+  receiverId: string
   litros: string
   horometroActual: string
   kmActual: string
@@ -202,6 +203,7 @@ export function CargaDieselPage() {
   const [form, setForm] = useState<FormState>({
     equipmentId: '',
     operatorId: '',
+    receiverId: '',
     litros: '',
     horometroActual: '',
     kmActual: '',
@@ -215,6 +217,7 @@ export function CargaDieselPage() {
     tractorName: string
     tractorCode: string
     operatorName: string
+    receiverName: string
     rendimiento: number | null
     horometroAntes: number | null
     horometroDespues: number | null
@@ -258,6 +261,11 @@ export function CargaDieselPage() {
     [employees, form.operatorId]
   )
 
+  const selectedReceiver = useMemo(
+    () => employees.find((e) => e.id === form.receiverId) ?? null,
+    [employees, form.receiverId]
+  )
+
   const lastHorometro = lastLine?.equipment_hours_after ?? selectedEquipment?.current_hours
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -279,6 +287,10 @@ export function CargaDieselPage() {
     }
     if (!form.operatorId) {
       toast.error('Selecciona un operador')
+      return
+    }
+    if (!form.receiverId) {
+      toast.error('Selecciona quién recibe el combustible')
       return
     }
     if (!litros || litros <= 0) {
@@ -317,7 +329,11 @@ export function CargaDieselPage() {
           status: 'posted',
           posted_at: now.toISOString(),
           posted_by: profile?.id ?? null,
-          notes: form.notas || null,
+          notes: selectedReceiver
+            ? form.notas
+              ? `Recibe: ${selectedReceiver.full_name}. ${form.notas}`
+              : `Recibe: ${selectedReceiver.full_name}`
+            : form.notas || null,
           total_mxn: 0,
           total_native: 0,
         })
@@ -373,12 +389,14 @@ export function CargaDieselPage() {
       const tractorName = selectedEquipment?.name ?? 'Tractor'
       const tractorCode = selectedEquipment?.code ?? ''
       const operatorName = selectedEmployee?.full_name ?? '—'
+      const receiverName = selectedReceiver?.full_name ?? '—'
 
       setSummary({
         litros,
         tractorName,
         tractorCode,
         operatorName,
+        receiverName,
         rendimiento,
         horometroAntes: lastHorometro ?? null,
         horometroDespues: horometroActual,
@@ -400,7 +418,7 @@ export function CargaDieselPage() {
   }
 
   function handleNuevaCarga() {
-    setForm({ equipmentId: '', operatorId: '', litros: '', horometroActual: '', kmActual: '', notas: '' })
+    setForm({ equipmentId: '', operatorId: '', receiverId: '', litros: '', horometroActual: '', kmActual: '', notas: '' })
     setSummary(null)
     setSubmitted(false)
     setSubmittedAt(null)
@@ -434,7 +452,8 @@ export function CargaDieselPage() {
                   {summary.tractorCode}
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground">{summary.operatorName}</p>
+              <p className="text-sm text-muted-foreground">Op: {summary.operatorName}</p>
+              <p className="text-sm text-muted-foreground">Recibió: {summary.receiverName}</p>
               <p className="text-4xl font-bold tabular-nums text-primary mt-1">
                 {formatQuantity(summary.litros, 1)} L
               </p>
@@ -572,11 +591,40 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 3. Litros ────────────────────────────────────────────────────── */}
+        {/* ── 3. Recibe ────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
               3
+            </div>
+            <Label htmlFor="receiver" className="text-base font-semibold">
+              Recibe combustible
+            </Label>
+          </div>
+
+          <SearchableSelect
+            value={form.receiverId}
+            onValueChange={(v) => set('receiverId', v ?? '')}
+            disabled={isLoading}
+            options={employees.map((emp) => ({
+              value: emp.id,
+              label: emp.full_name,
+              sublabel: emp.employee_code,
+            }))}
+            placeholder="Selecciona quién recibe el combustible…"
+            searchPlaceholder="Buscar empleado…"
+            emptyMessage="Sin empleados."
+            triggerClassName="h-12 text-base"
+          />
+        </section>
+
+        <Separator />
+
+        {/* ── 4. Litros ────────────────────────────────────────────────────── */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+              4
             </div>
             <Label className="text-base font-semibold">Litros cargados</Label>
           </div>
@@ -590,11 +638,11 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 4. Horómetro ─────────────────────────────────────────────────── */}
+        {/* ── 5. Horómetro ─────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-              4
+              5
             </div>
             <Label htmlFor="horometro" className="text-base font-semibold">
               Horómetro actual
@@ -692,11 +740,11 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 5. Notas ─────────────────────────────────────────────────────── */}
+        {/* ── 6. Notas ─────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs font-bold">
-              5
+              6
             </div>
             <Label htmlFor="notas" className="text-base font-semibold text-muted-foreground">
               Notas / Folio de ticket{' '}
@@ -726,7 +774,7 @@ export function CargaDieselPage() {
         <Button
           type="submit"
           size="lg"
-          disabled={submitting || !form.equipmentId || !form.operatorId || !form.litros}
+          disabled={submitting || !form.equipmentId || !form.operatorId || !form.receiverId || !form.litros}
           className="w-full h-14 text-base font-semibold mt-2"
         >
           {submitting ? (

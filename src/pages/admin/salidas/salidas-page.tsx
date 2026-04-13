@@ -268,6 +268,16 @@ export function SalidasPage() {
       header: 'Destino',
       cell: (info) => <DestinationCell movement={info.row.original} />,
     }),
+    colHelper.display({
+      id: 'receiver',
+      header: 'Recibe',
+      cell: (info) => {
+        const notes = info.row.original.notes ?? ''
+        if (!notes.startsWith('Recibe:')) return <span className="text-xs text-muted-foreground">—</span>
+        const name = notes.split('.')[0].replace('Recibe: ', '')
+        return <span className="text-sm">{name}</span>
+      },
+    }),
     colHelper.accessor('total_mxn', {
       header: () => <span className="block text-right">Total MXN</span>,
       cell: (info) => (
@@ -441,6 +451,9 @@ export function SalidasPage() {
                       <p className="text-xs text-muted-foreground">
                         {m.warehouse ? `${m.warehouse.code} – ${m.warehouse.name}` : '—'}
                         {m.lines?.[0] && <> · <DestinationCell movement={m} /></>}
+                        {m.notes && m.notes.startsWith('Recibe:') && (
+                          <> · {m.notes.split('.')[0]}</>
+                        )}
                       </p>
                     </div>
                     <Badge variant={typeVariant(m.movement_type) as any} className="text-xs whitespace-nowrap shrink-0">
