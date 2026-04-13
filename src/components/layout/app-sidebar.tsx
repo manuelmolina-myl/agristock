@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Package,
@@ -14,6 +14,7 @@ import {
   Warehouse,
   DollarSign,
   Lock,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -137,39 +138,63 @@ function Logo() {
 // ─── User footer ──────────────────────────────────────────────────────────────
 
 function UserFooter() {
-  const { profile } = useAuth()
+  const { profile, signOut } = useAuth()
   const { state } = useSidebar()
+  const navigate = useNavigate()
   const collapsed = state === 'collapsed'
 
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
     : '?'
 
+  const handleSignOut = async () => {
+    await signOut()
+    navigate('/login', { replace: true })
+  }
+
   if (collapsed) {
     return (
-      <div className="flex justify-center px-2 py-1">
+      <div className="flex flex-col items-center gap-2 px-2 py-1">
         <Avatar className="size-7">
           {profile?.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile.full_name} />}
           <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+          title="Cerrar sesión"
+        >
+          <LogOut className="size-3.5" />
+        </button>
       </div>
     )
   }
 
   return (
-    <div className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm">
-      <Avatar className="size-7">
-        {profile?.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile.full_name} />}
-        <AvatarFallback>{initials}</AvatarFallback>
-      </Avatar>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-sidebar-foreground leading-tight">
-          {profile?.full_name ?? '—'}
-        </p>
-        <p className="truncate text-[11px] text-sidebar-foreground/60 leading-tight">
-          {profile?.role ? ROLE_LABELS[profile.role] : ''}
-        </p>
+    <div className="flex flex-col gap-2 px-2 py-2">
+      <div className="flex items-center gap-2.5 text-sm">
+        <Avatar className="size-7">
+          {profile?.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile.full_name} />}
+          <AvatarFallback>{initials}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium text-sidebar-foreground leading-tight">
+            {profile?.full_name ?? '—'}
+          </p>
+          <p className="truncate text-[11px] text-sidebar-foreground/60 leading-tight">
+            {profile?.role ? ROLE_LABELS[profile.role] : ''}
+          </p>
+        </div>
       </div>
+      <button
+        type="button"
+        onClick={handleSignOut}
+        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors w-full"
+      >
+        <LogOut className="size-3.5" />
+        Cerrar sesión
+      </button>
     </div>
   )
 }
