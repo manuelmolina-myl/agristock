@@ -42,6 +42,15 @@ interface UseListOptions {
   enabled?: boolean
 }
 
+// Tables that have a deleted_at column for soft delete
+const SOFT_DELETE_TABLES: TableName[] = [
+  'categories', 'units', 'suppliers', 'warehouses',
+  'crops_lots', 'equipment', 'employees', 'items',
+]
+
+// Tables that DON'T have organization_id
+const NO_ORG_ID_TABLES: TableName[] = ['item_stock']
+
 export function useList<T>(table: TableName, options: UseListOptions = {}) {
   const { organization } = useAuth()
   const orgId = organization?.id
@@ -60,9 +69,18 @@ export function useList<T>(table: TableName, options: UseListOptions = {}) {
       let query = db
         .from(table)
         .select(selectCols)
-        .eq('organization_id', orgId)
-        .is('deleted_at', null)
-        .order(orderBy, { ascending })
+
+      // Only filter by org_id on tables that have it
+      if (!NO_ORG_ID_TABLES.includes(table)) {
+        query = query.eq('organization_id', orgId)
+      }
+
+      // Only filter deleted_at on tables that have soft delete
+      if (SOFT_DELETE_TABLES.includes(table)) {
+        query = query.is('deleted_at', null)
+      }
+
+      query = query.order(orderBy, { ascending })
 
       for (const [key, value] of Object.entries(filters)) {
         if (value !== undefined && value !== null && value !== '') {
