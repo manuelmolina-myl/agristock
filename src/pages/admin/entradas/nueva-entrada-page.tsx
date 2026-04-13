@@ -23,6 +23,7 @@ import { formatFechaCorta, formatMoney, formatQuantity, cn } from '@/lib/utils'
 import { CurrencyBadge } from '@/components/custom/currency-badge'
 import { MoneyDisplay } from '@/components/custom/money-display'
 import { PageHeader } from '@/components/custom/page-header'
+import { SearchableSelect } from '@/components/shared/searchable-select'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -347,18 +348,14 @@ export default function NuevaEntradaPage() {
                   control={form.control}
                   name="warehouse_id"
                   render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id="warehouse_id" className="h-9">
-                        <SelectValue placeholder="Selecciona almacén" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {warehouses.map((w) => (
-                          <SelectItem key={w.id} value={w.id}>
-                            {w.name} <span className="text-muted-foreground ml-1">({w.code})</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      options={warehouses.map((w) => ({ value: w.id, label: w.name, sublabel: w.code }))}
+                      placeholder="Selecciona almacén"
+                      searchPlaceholder="Buscar almacén…"
+                      emptyMessage="Sin almacenes."
+                    />
                   )}
                 />
                 <FieldError message={form.formState.errors.warehouse_id?.message} />
@@ -372,17 +369,21 @@ export default function NuevaEntradaPage() {
                     control={form.control}
                     name="supplier_id"
                     render={({ field }) => (
-                      <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                        <SelectTrigger id="supplier_id" className="h-9">
-                          <SelectValue placeholder="Sin proveedor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">Sin proveedor</SelectItem>
-                          {suppliers.map((s) => (
-                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <SearchableSelect
+                        value={field.value ?? ''}
+                        onValueChange={field.onChange}
+                        options={[
+                          { value: '', label: 'Sin proveedor' },
+                          ...suppliers.map((s) => ({
+                            value: s.id,
+                            label: s.name,
+                            sublabel: (s as any).rfc ?? '',
+                          })),
+                        ]}
+                        placeholder="Sin proveedor"
+                        searchPlaceholder="Buscar proveedor…"
+                        emptyMessage="Sin proveedores."
+                      />
                     )}
                   />
                 </div>
@@ -465,18 +466,15 @@ export default function NuevaEntradaPage() {
                             control={form.control}
                             name={`lines.${idx}.item_id`}
                             render={({ field: f }) => (
-                              <Select value={f.value} onValueChange={f.onChange}>
-                                <SelectTrigger className="h-8 text-xs">
-                                  <SelectValue placeholder="Seleccionar artículo" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {items.map((it) => (
-                                    <SelectItem key={it.id} value={it.id}>
-                                      {it.name} <span className="text-xs text-muted-foreground ml-1">({it.sku})</span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <SearchableSelect
+                                value={f.value}
+                                onValueChange={f.onChange}
+                                options={items.map((it) => ({ value: it.id, label: it.name, sublabel: it.sku }))}
+                                placeholder="Seleccionar artículo"
+                                searchPlaceholder="Buscar artículo…"
+                                emptyMessage="Sin artículos."
+                                triggerClassName="h-8 text-xs"
+                              />
                             )}
                           />
                           <FieldError message={form.formState.errors.lines?.[idx]?.item_id?.message} />

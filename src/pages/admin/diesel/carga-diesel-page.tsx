@@ -11,6 +11,7 @@ import type { Equipment, Item, StockMovementLine } from '@/lib/database.types'
 import { formatQuantity, formatMoney, cn } from '@/lib/utils'
 
 import { PageHeader } from '@/components/custom/page-header'
+import { SearchableSelect } from '@/components/shared/searchable-select'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,13 +19,6 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -501,27 +495,20 @@ export function CargaDieselPage() {
             </Label>
           </div>
 
-          <Select
+          <SearchableSelect
             value={form.operatorId}
             onValueChange={(v) => set('operatorId', v ?? '')}
             disabled={isLoading}
-          >
-            <SelectTrigger id="operator" className="h-12 text-base">
-              <SelectValue placeholder="Selecciona el operador…" />
-            </SelectTrigger>
-            <SelectContent>
-              {employees.map((emp) => (
-                <SelectItem key={emp.id} value={emp.id} className="py-2">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">{emp.full_name}</span>
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {emp.employee_code}
-                    </span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={employees.map((emp) => ({
+              value: emp.id,
+              label: emp.full_name,
+              sublabel: emp.employee_code,
+            }))}
+            placeholder="Selecciona el operador…"
+            searchPlaceholder="Buscar operador…"
+            emptyMessage="Sin operadores."
+            triggerClassName="h-12 text-base"
+          />
         </section>
 
         <Separator />

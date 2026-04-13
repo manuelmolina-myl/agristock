@@ -37,6 +37,7 @@ import { formatMoney, formatQuantity, cn } from '@/lib/utils'
 import { generateValePDF } from '@/lib/generate-vale-pdf'
 
 import { PageHeader } from '@/components/custom/page-header'
+import { SearchableSelect } from '@/components/shared/searchable-select'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -231,18 +232,14 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
             name="warehouse_id"
             control={control}
             render={({ field }) => (
-              <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar almacén" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>
-                      {w.name} <span className="text-muted-foreground ml-1">({w.code})</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={field.value ?? ''}
+                onValueChange={field.onChange}
+                options={warehouses.map((w) => ({ value: w.id, label: w.name, sublabel: w.code }))}
+                placeholder="Seleccionar almacén"
+                searchPlaceholder="Buscar almacén…"
+                emptyMessage="Sin almacenes."
+              />
             )}
           />
           {errors.warehouse_id && (
@@ -288,18 +285,18 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
             name="crop_lot_id"
             control={control}
             render={({ field }) => (
-              <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar lote" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(cropLots as any[]).map((lot) => (
-                    <SelectItem key={lot.id} value={lot.id}>
-                      {lot.name ?? `Lote ${lot.code}`} <span className="text-xs text-muted-foreground ml-1">({lot.code})</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={field.value ?? ''}
+                onValueChange={field.onChange}
+                options={(cropLots as any[]).map((lot) => ({
+                  value: lot.id,
+                  label: lot.name ?? `Lote ${lot.code}`,
+                  sublabel: lot.code,
+                }))}
+                placeholder="Seleccionar lote"
+                searchPlaceholder="Buscar lote…"
+                emptyMessage="Sin lotes."
+              />
             )}
           />
         </div>
@@ -312,18 +309,14 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
             name="equipment_id"
             control={control}
             render={({ field }) => (
-              <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar equipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {equipment.map((eq) => (
-                    <SelectItem key={eq.id} value={eq.id}>
-                      {eq.name} <span className="text-xs text-muted-foreground ml-1">({eq.code})</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={field.value ?? ''}
+                onValueChange={field.onChange}
+                options={equipment.map((eq) => ({ value: eq.id, label: eq.name, sublabel: eq.code }))}
+                placeholder="Seleccionar equipo"
+                searchPlaceholder="Buscar equipo…"
+                emptyMessage="Sin equipos."
+              />
             )}
           />
         </div>
@@ -336,18 +329,18 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
             name="employee_id"
             control={control}
             render={({ field }) => (
-              <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar empleado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.map((emp) => (
-                    <SelectItem key={emp.id} value={emp.id}>
-                      {emp.employee_code} — {emp.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={field.value ?? ''}
+                onValueChange={field.onChange}
+                options={employees.map((emp) => ({
+                  value: emp.id,
+                  label: emp.full_name,
+                  sublabel: emp.employee_code,
+                }))}
+                placeholder="Seleccionar empleado"
+                searchPlaceholder="Buscar empleado…"
+                emptyMessage="Sin empleados."
+              />
             )}
           />
         </div>
@@ -495,27 +488,22 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
                     name={`lines.${index}.item_id`}
                     control={control}
                     render={({ field: f }) => (
-                      <Select
+                      <SearchableSelect
                         value={f.value}
                         onValueChange={(v) => {
                           f.onChange(v)
-                          if (v != null) handleItemChange(index, v)
+                          if (v) handleItemChange(index, v)
                         }}
-                      >
-                        <SelectTrigger className="h-8 text-sm">
-                          <SelectValue placeholder="Seleccionar ítem" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {items.map((it) => (
-                            <SelectItem key={it.id} value={it.id}>
-                              <span className="flex items-center gap-1.5">
-                                {it.is_diesel && <Fuel className="size-3 text-yellow-500" />}
-                                {it.name} <span className="text-xs text-muted-foreground ml-1">({it.sku})</span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        options={items.map((it) => ({
+                          value: it.id,
+                          label: it.is_diesel ? `⛽ ${it.name}` : it.name,
+                          sublabel: it.sku,
+                        }))}
+                        placeholder="Seleccionar ítem"
+                        searchPlaceholder="Buscar ítem…"
+                        emptyMessage="Sin artículos."
+                        triggerClassName="h-8 text-sm"
+                      />
                     )}
                   />
                   {errors.lines?.[index]?.item_id && (
@@ -642,18 +630,19 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
                         name={`lines.${index}.operator_employee_id`}
                         control={control}
                         render={({ field: f }) => (
-                          <Select value={f.value ?? ''} onValueChange={f.onChange}>
-                            <SelectTrigger className="h-8 text-sm">
-                              <SelectValue placeholder="Seleccionar" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {employees.map((emp) => (
-                                <SelectItem key={emp.id} value={emp.id}>
-                                  {emp.employee_code} — {emp.full_name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <SearchableSelect
+                            value={f.value ?? ''}
+                            onValueChange={f.onChange}
+                            options={employees.map((emp) => ({
+                              value: emp.id,
+                              label: emp.full_name,
+                              sublabel: emp.employee_code,
+                            }))}
+                            placeholder="Seleccionar"
+                            searchPlaceholder="Buscar operador…"
+                            emptyMessage="Sin empleados."
+                            triggerClassName="h-8 text-sm"
+                          />
                         )}
                       />
                     </div>
