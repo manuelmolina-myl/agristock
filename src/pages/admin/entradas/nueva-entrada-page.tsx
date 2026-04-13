@@ -90,14 +90,15 @@ type FormValues = z.infer<typeof formSchema>
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
 const STEPS = [
-  { label: 'Datos generales' },
-  { label: 'Partidas' },
-  { label: 'Revisión' },
+  { label: 'Tipo', labelMobile: 'Tipo' },
+  { label: 'Detalles', labelMobile: 'Det.' },
+  { label: 'Partidas', labelMobile: 'Part.' },
+  { label: 'Revisión', labelMobile: 'Rev.' },
 ]
 
 function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="flex items-center gap-0 w-full max-w-lg mx-auto mb-8">
+    <div className="flex items-center gap-0 w-full max-w-lg mx-auto mb-6">
       {STEPS.map((step, idx) => {
         const num    = idx + 1
         const done   = num < current
@@ -105,29 +106,37 @@ function StepIndicator({ current }: { current: number }) {
         return (
           <div key={num} className="flex items-center flex-1 last:flex-none">
             {/* Circle */}
-            <div className="flex flex-col items-center gap-1 shrink-0">
+            <div className="flex flex-col items-center gap-0.5 shrink-0">
               <div
                 className={cn(
-                  'h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors',
+                  'h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-colors',
                   done   && 'bg-primary border-primary text-primary-foreground',
                   active && 'bg-background border-primary text-primary',
                   !done && !active && 'bg-background border-border text-muted-foreground'
                 )}
               >
-                {done ? <CheckCircle className="h-4 w-4" /> : num}
+                {done ? <CheckCircle className="h-3.5 w-3.5" /> : num}
               </div>
               <span
                 className={cn(
-                  'text-[11px] font-medium whitespace-nowrap',
+                  'text-[10px] font-medium whitespace-nowrap hidden sm:block',
                   active ? 'text-primary' : 'text-muted-foreground'
                 )}
               >
                 {step.label}
               </span>
+              <span
+                className={cn(
+                  'text-[10px] font-medium whitespace-nowrap sm:hidden',
+                  active ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                {step.labelMobile}
+              </span>
             </div>
             {/* Connector */}
             {idx < STEPS.length - 1 && (
-              <div className={cn('flex-1 h-0.5 mx-2 mb-4 transition-colors', done ? 'bg-primary' : 'bg-border')} />
+              <div className={cn('flex-1 h-0.5 mx-1.5 mb-4 transition-colors', done ? 'bg-primary' : 'bg-border')} />
             )}
           </div>
         )
@@ -205,9 +214,13 @@ export default function NuevaEntradaPage() {
   async function goNext() {
     let valid = false
     if (step === 1) {
-      valid = await form.trigger(['movement_type', 'warehouse_id', 'movement_date'])
+      valid = await form.trigger(['movement_type', 'warehouse_id'])
     } else if (step === 2) {
+      valid = await form.trigger(['movement_date'])
+    } else if (step === 3) {
       valid = await form.trigger(['lines'])
+    } else {
+      valid = true
     }
     if (valid) setStep((s) => s + 1)
   }
@@ -308,111 +321,121 @@ export default function NuevaEntradaPage() {
       {/* Step indicator */}
       <StepIndicator current={step} />
 
-      {/* ── STEP 1: Datos generales ─────────────────────────────────────────── */}
+      {/* ── STEP 1: Tipo y almacén ──────────────────────────────────────────── */}
       {step === 1 && (
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle className="text-base">Datos generales</CardTitle>
+            <CardTitle className="text-base">Tipo y almacén</CardTitle>
             <CardDescription className="text-sm">
-              Información principal del movimiento de entrada
+              Selecciona el tipo de entrada y el almacén de destino
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {/* Movement type */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="movement_type">Tipo de entrada <span className="text-destructive">*</span></Label>
-                <Controller
-                  control={form.control}
-                  name="movement_type"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id="movement_type" className="h-9">
-                        <SelectValue placeholder="Selecciona tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ENTRY_TYPES.map((t) => (
-                          <SelectItem key={t} value={t}>{MOVEMENT_TYPE_LABELS[t]}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                <FieldError message={form.formState.errors.movement_type?.message} />
-              </div>
+            {/* Movement type */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="movement_type">Tipo de entrada <span className="text-destructive">*</span></Label>
+              <Controller
+                control={form.control}
+                name="movement_type"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="movement_type" className="h-9">
+                      <SelectValue placeholder="Selecciona tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ENTRY_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>{MOVEMENT_TYPE_LABELS[t]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <FieldError message={form.formState.errors.movement_type?.message} />
+            </div>
 
-              {/* Warehouse */}
+            {/* Warehouse */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="warehouse_id">Almacén destino <span className="text-destructive">*</span></Label>
+              <Controller
+                control={form.control}
+                name="warehouse_id"
+                render={({ field }) => (
+                  <SearchableSelect
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    options={warehouses.map((w) => ({ value: w.id, label: w.name, sublabel: w.code }))}
+                    placeholder="Selecciona almacén"
+                    searchPlaceholder="Buscar almacén…"
+                    emptyMessage="Sin almacenes."
+                  />
+                )}
+              />
+              <FieldError message={form.formState.errors.warehouse_id?.message} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── STEP 2: Detalles ────────────────────────────────────────────────── */}
+      {step === 2 && (
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base">Detalles</CardTitle>
+            <CardDescription className="text-sm">
+              Completa la información del movimiento
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-5">
+            {/* Supplier — only for purchases */}
+            {watchedType === 'entry_purchase' && (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="warehouse_id">Almacén destino <span className="text-destructive">*</span></Label>
+                <Label htmlFor="supplier_id">Proveedor</Label>
                 <Controller
                   control={form.control}
-                  name="warehouse_id"
+                  name="supplier_id"
                   render={({ field }) => (
                     <SearchableSelect
-                      value={field.value}
+                      value={field.value ?? ''}
                       onValueChange={field.onChange}
-                      options={warehouses.map((w) => ({ value: w.id, label: w.name, sublabel: w.code }))}
-                      placeholder="Selecciona almacén"
-                      searchPlaceholder="Buscar almacén…"
-                      emptyMessage="Sin almacenes."
+                      options={[
+                        { value: '', label: 'Sin proveedor' },
+                        ...suppliers.map((s) => ({
+                          value: s.id,
+                          label: s.name,
+                          sublabel: (s as any).rfc ?? '',
+                        })),
+                      ]}
+                      placeholder="Sin proveedor"
+                      searchPlaceholder="Buscar proveedor…"
+                      emptyMessage="Sin proveedores."
                     />
                   )}
                 />
-                <FieldError message={form.formState.errors.warehouse_id?.message} />
               </div>
+            )}
 
-              {/* Supplier — only for purchases */}
-              {watchedType === 'entry_purchase' && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="supplier_id">Proveedor</Label>
-                  <Controller
-                    control={form.control}
-                    name="supplier_id"
-                    render={({ field }) => (
-                      <SearchableSelect
-                        value={field.value ?? ''}
-                        onValueChange={field.onChange}
-                        options={[
-                          { value: '', label: 'Sin proveedor' },
-                          ...suppliers.map((s) => ({
-                            value: s.id,
-                            label: s.name,
-                            sublabel: (s as any).rfc ?? '',
-                          })),
-                        ]}
-                        placeholder="Sin proveedor"
-                        searchPlaceholder="Buscar proveedor…"
-                        emptyMessage="Sin proveedores."
-                      />
-                    )}
-                  />
-                </div>
-              )}
+            {/* Reference */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="reference_external">Referencia externa</Label>
+              <Input
+                id="reference_external"
+                placeholder="# factura, remisión, etc."
+                className="h-9"
+                {...form.register('reference_external')}
+              />
+            </div>
 
-              {/* Reference */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="reference_external">Referencia externa</Label>
-                <Input
-                  id="reference_external"
-                  placeholder="# factura, remisión, etc."
-                  className="h-9"
-                  {...form.register('reference_external')}
-                />
-              </div>
-
-              {/* Date */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="movement_date">Fecha del movimiento <span className="text-destructive">*</span></Label>
-                <Input
-                  id="movement_date"
-                  type="date"
-                  max={new Date().toISOString().slice(0, 10)}
-                  className="h-9"
-                  {...form.register('movement_date')}
-                />
-                <FieldError message={form.formState.errors.movement_date?.message} />
-              </div>
-
+            {/* Date */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="movement_date">Fecha del movimiento <span className="text-destructive">*</span></Label>
+              <Input
+                id="movement_date"
+                type="date"
+                max={new Date().toISOString().slice(0, 10)}
+                className="h-9"
+                {...form.register('movement_date')}
+              />
+              <FieldError message={form.formState.errors.movement_date?.message} />
             </div>
 
             {/* Notes */}
@@ -430,8 +453,8 @@ export default function NuevaEntradaPage() {
         </Card>
       )}
 
-      {/* ── STEP 2: Partidas ────────────────────────────────────────────────── */}
-      {step === 2 && (
+      {/* ── STEP 3: Partidas ────────────────────────────────────────────────── */}
+      {step === 3 && (
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-base">Partidas</CardTitle>
@@ -658,8 +681,8 @@ export default function NuevaEntradaPage() {
         </Card>
       )}
 
-      {/* ── STEP 3: Revisión ────────────────────────────────────────────────── */}
-      {step === 3 && (
+      {/* ── STEP 4: Revisión ────────────────────────────────────────────────── */}
+      {step === 4 && (
         <div className="flex flex-col gap-4">
           {/* Summary card */}
           <Card>
@@ -824,14 +847,14 @@ export default function NuevaEntradaPage() {
         </Button>
 
         <div className="flex items-center gap-2">
-          {step < 3 && (
+          {step < 4 && (
             <Button type="button" size="sm" onClick={goNext} disabled={submitting}>
               Siguiente
               <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
             </Button>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <>
               <Button
                 type="button"

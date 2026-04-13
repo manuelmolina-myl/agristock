@@ -155,8 +155,8 @@ export function SalidasPage() {
       />
 
       {/* ── Filter row ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-48 flex-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar folio, referencia o almacén…"
@@ -165,32 +165,26 @@ export function SalidasPage() {
             className="pl-8 h-8 text-sm"
           />
         </div>
-
-        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? 'all')}>
-          <SelectTrigger className="h-8 w-44 text-sm">
-            <SelectValue placeholder="Tipo de salida" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los tipos</SelectItem>
-            {EXIT_TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {MOVEMENT_TYPE_LABELS[t] ?? t}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? 'all')}>
-          <SelectTrigger className="h-8 w-36 text-sm">
-            <SelectValue placeholder="Estado" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="draft">Borrador</SelectItem>
-            <SelectItem value="posted">Registrado</SelectItem>
-            <SelectItem value="cancelled">Cancelado</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
+          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? 'all')}>
+            <SelectTrigger className="h-8 text-xs sm:w-40 sm:text-sm"><SelectValue placeholder="Tipo" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los tipos</SelectItem>
+              {EXIT_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>{MOVEMENT_TYPE_LABELS[t] ?? t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? 'all')}>
+            <SelectTrigger className="h-8 text-xs sm:w-36 sm:text-sm"><SelectValue placeholder="Estado" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="draft">Borrador</SelectItem>
+              <SelectItem value="posted">Registrado</SelectItem>
+              <SelectItem value="cancelled">Cancelado</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* ── Mobile cards ─────────────────────────────────────────────────── */}

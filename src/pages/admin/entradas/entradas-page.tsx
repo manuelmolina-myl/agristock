@@ -6,6 +6,7 @@ import {
   Eye,
   CheckCircle,
   XCircle,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -114,11 +115,13 @@ export default function EntradasPage() {
   const { activeSeason } = useAuth()
 
   // Filters
+  const [filtersOpen,  setFiltersOpen]  = useState(false)
   const [filterType,   setFilterType]   = useState<string>('all')
   const [filterWh,     setFilterWh]     = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [filterFrom,   setFilterFrom]   = useState<string>('')
   const [filterTo,     setFilterTo]     = useState<string>('')
+  const activeFilterCount = [filterType, filterWh, filterStatus, filterFrom, filterTo].filter(v => v !== 'all' && v !== '').length
 
   // Cancel dialog
   const [cancelTarget, setCancelTarget] = useState<EntryMovement | null>(null)
@@ -314,76 +317,64 @@ export default function EntradasPage() {
         }
       />
 
-      {/* Filters */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {/* Type */}
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs text-muted-foreground">Tipo</Label>
-          <Select value={filterType} onValueChange={(v) => setFilterType(v ?? 'all')}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los tipos</SelectItem>
-              {ENTRY_TYPES.map((t) => (
-                <SelectItem key={t} value={t}>{MOVEMENT_TYPE_LABELS[t]}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Warehouse */}
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs text-muted-foreground">Almacén</Label>
-          <Select value={filterWh} onValueChange={(v) => setFilterWh(v ?? 'all')}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {warehouses.map(([id, label]) => (
-                <SelectItem key={id} value={id}>{label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Status */}
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs text-muted-foreground">Estado</Label>
-          <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? 'all')}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="draft">Borrador</SelectItem>
-              <SelectItem value="posted">Registrado</SelectItem>
-              <SelectItem value="cancelled">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Date from */}
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input
-            type="date"
-            value={filterFrom}
-            onChange={(e) => setFilterFrom(e.target.value)}
-            className="h-8 text-xs"
-          />
-        </div>
-
-        {/* Date to */}
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input
-            type="date"
-            value={filterTo}
-            onChange={(e) => setFilterTo(e.target.value)}
-            className="h-8 text-xs"
-          />
+      {/* Filters — collapsible on mobile */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted md:hidden"
+        >
+          <SlidersHorizontal className="size-3.5" />
+          Filtros
+          {activeFilterCount > 0 && (
+            <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{activeFilterCount}</Badge>
+          )}
+        </button>
+        <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 ${filtersOpen ? 'mt-3' : 'hidden md:grid'}`}>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Tipo</Label>
+            <Select value={filterType} onValueChange={(v) => setFilterType(v ?? 'all')}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los tipos</SelectItem>
+                {ENTRY_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>{MOVEMENT_TYPE_LABELS[t]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Almacén</Label>
+            <Select value={filterWh} onValueChange={(v) => setFilterWh(v ?? 'all')}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {warehouses.map(([id, label]) => (
+                  <SelectItem key={id} value={id}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Estado</Label>
+            <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? 'all')}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="draft">Borrador</SelectItem>
+                <SelectItem value="posted">Registrado</SelectItem>
+                <SelectItem value="cancelled">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Desde</Label>
+            <Input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="h-8 text-xs" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Hasta</Label>
+            <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="h-8 text-xs" />
+          </div>
         </div>
       </div>
 

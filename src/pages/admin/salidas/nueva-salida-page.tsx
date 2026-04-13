@@ -90,6 +90,18 @@ const lineSchema = z.object({
   operator_employee_id: z.string().optional(),
 })
 
+const step1aSchema = z.object({
+  movement_type: z.enum([
+    'exit_consumption',
+    'exit_transfer',
+    'exit_adjustment',
+    'exit_waste',
+    'exit_sale',
+  ]),
+  warehouse_id: z.string().min(1, 'Selecciona un almacén'),
+  destination_type: z.enum(['crop_lot', 'equipment', 'employee', 'maintenance', 'waste', 'other']),
+})
+
 const step1Schema = z.object({
   destination_type: z.enum(['crop_lot', 'equipment', 'employee', 'maintenance', 'waste', 'other']),
   crop_lot_id: z.string().optional(),
@@ -108,6 +120,8 @@ const step1Schema = z.object({
   notes: z.string().optional(),
 })
 
+type Step1aValues = z.infer<typeof step1aSchema>
+
 const step2Schema = z.object({
   lines: z.array(lineSchema).min(1, 'Agrega al menos una partida'),
 })
@@ -118,35 +132,50 @@ type Step2Values = z.infer<typeof step2Schema>
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
 function StepIndicator({ step }: { step: number }) {
-  const steps = ['Destino', 'Partidas', 'Revisión']
+  const steps = [
+    { label: 'Destino', labelMobile: 'Dest.' },
+    { label: 'Detalles', labelMobile: 'Det.' },
+    { label: 'Partidas', labelMobile: 'Part.' },
+    { label: 'Revisión', labelMobile: 'Rev.' },
+  ]
   return (
-    <div className="flex items-center gap-2">
-      {steps.map((label, i) => {
+    <div className="flex items-center gap-0 w-full max-w-lg mx-auto">
+      {steps.map(({ label, labelMobile }, i) => {
         const idx = i + 1
         const active = idx === step
         const done = idx < step
         return (
-          <div key={label} className="flex items-center gap-2">
-            <div
-              className={cn(
-                'flex size-7 items-center justify-center rounded-full text-xs font-semibold transition-colors',
-                active && 'bg-primary text-primary-foreground',
-                done && 'bg-primary/20 text-primary',
-                !active && !done && 'bg-muted text-muted-foreground'
-              )}
-            >
-              {done ? <Check className="size-3.5" /> : idx}
+          <div key={label} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center gap-0.5 shrink-0">
+              <div
+                className={cn(
+                  'flex size-7 items-center justify-center rounded-full text-xs font-semibold border-2 transition-colors',
+                  active && 'bg-background border-primary text-primary',
+                  done && 'bg-primary border-primary text-primary-foreground',
+                  !active && !done && 'bg-background border-border text-muted-foreground'
+                )}
+              >
+                {done ? <Check className="size-3.5" /> : idx}
+              </div>
+              <span
+                className={cn(
+                  'text-[10px] font-medium whitespace-nowrap hidden sm:block',
+                  active ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                {label}
+              </span>
+              <span
+                className={cn(
+                  'text-[10px] font-medium whitespace-nowrap sm:hidden',
+                  active ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                {labelMobile}
+              </span>
             </div>
-            <span
-              className={cn(
-                'text-sm',
-                active ? 'font-medium text-foreground' : 'text-muted-foreground'
-              )}
-            >
-              {label}
-            </span>
             {i < steps.length - 1 && (
-              <ChevronRight className="size-4 text-muted-foreground mx-1" />
+              <div className={cn('flex-1 h-0.5 mx-1.5 mb-4 transition-colors', done ? 'bg-primary' : 'bg-border')} />
             )}
           </div>
         )
@@ -155,103 +184,81 @@ function StepIndicator({ step }: { step: number }) {
   )
 }
 
-// ─── Step 1: Destino ──────────────────────────────────────────────────────────
+// ─── Step 1: Destino (tipo + almacén + tipo destino) ──────────────────────────
 
 interface Step1Props {
-  defaultValues: Partial<Step1Values>
-  onNext: (data: Step1Values) => void
+  defaultValues: Partial<Step1aValues>
+  onNext: (data: Step1aValues) => void
 }
 
 function Step1Destino({ defaultValues, onNext }: Step1Props) {
   const { data: warehouses = [] } = useWarehouses()
-  const { data: cropLots = [] } = useCropLots()
-  const { data: equipment = [] } = useEquipment()
-  const { data: employees = [] } = useEmployees()
 
   const {
-    register,
     handleSubmit,
-    watch,
     control,
     formState: { errors },
-  } = useForm<Step1Values>({
-    resolver: zodResolver(step1Schema) as any,
+  } = useForm<Step1aValues>({
+    resolver: zodResolver(step1aSchema) as any,
     defaultValues: {
       movement_type: 'exit_consumption',
-      date: new Date().toISOString().slice(0, 10),
       destination_type: 'crop_lot',
+      warehouse_id: '',
       ...defaultValues,
     },
   })
 
-  const destinationType = watch('destination_type')
-
   return (
     <form onSubmit={handleSubmit(onNext as any)} className="flex flex-col gap-6">
-      {/* ── Movement type + date ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label>Tipo de salida</Label>
-          <Controller
-            name="movement_type"
-            control={control}
-            render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EXIT_MOVEMENT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-          {errors.movement_type && (
-            <p className="text-xs text-destructive">{errors.movement_type.message}</p>
+      {/* Tipo de salida */}
+      <div className="flex flex-col gap-1.5">
+        <Label>Tipo de salida</Label>
+        <Controller
+          name="movement_type"
+          control={control}
+          render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                {EXIT_MOVEMENT_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="date">Fecha</Label>
-          <Input id="date" type="date" {...register('date')} />
-          {errors.date && (
-            <p className="text-xs text-destructive">{errors.date.message}</p>
-          )}
-        </div>
+        />
+        {errors.movement_type && (
+          <p className="text-xs text-destructive">{errors.movement_type.message}</p>
+        )}
       </div>
 
-      {/* ── Warehouse + FX rate ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label>Almacén origen</Label>
-          <Controller
-            name="warehouse_id"
-            control={control}
-            render={({ field }) => (
-              <SearchableSelect
-                value={field.value ?? ''}
-                onValueChange={field.onChange}
-                options={warehouses.map((w) => ({ value: w.id, label: w.name, sublabel: w.code }))}
-                placeholder="Seleccionar almacén"
-                searchPlaceholder="Buscar almacén…"
-                emptyMessage="Sin almacenes."
-              />
-            )}
-          />
-          {errors.warehouse_id && (
-            <p className="text-xs text-destructive">{errors.warehouse_id.message}</p>
+      {/* Almacén origen */}
+      <div className="flex flex-col gap-1.5">
+        <Label>Almacén origen</Label>
+        <Controller
+          name="warehouse_id"
+          control={control}
+          render={({ field }) => (
+            <SearchableSelect
+              value={field.value ?? ''}
+              onValueChange={field.onChange}
+              options={warehouses.map((w) => ({ value: w.id, label: w.name, sublabel: w.code }))}
+              placeholder="Seleccionar almacén"
+              searchPlaceholder="Buscar almacén…"
+              emptyMessage="Sin almacenes."
+            />
           )}
-        </div>
-
+        />
+        {errors.warehouse_id && (
+          <p className="text-xs text-destructive">{errors.warehouse_id.message}</p>
+        )}
       </div>
 
-      <Separator />
-
-      {/* ── Destination type ─────────────────────────────────────────────── */}
+      {/* Tipo de destino */}
       <div className="flex flex-col gap-1.5">
         <Label>Tipo de destino</Label>
         <Controller
@@ -277,7 +284,51 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
         )}
       </div>
 
-      {/* ── Contextual destination selector ──────────────────────────────── */}
+      <div className="flex justify-end">
+        <Button type="submit">
+          Siguiente
+          <ChevronRight className="ml-1.5 size-4" />
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// ─── Step 2: Detalles (destino específico + fecha + notas) ────────────────────
+
+interface Step2DetallesProps {
+  step1a: Step1aValues
+  defaultValues: Partial<Step1Values>
+  onNext: (data: Step1Values) => void
+  onBack: () => void
+}
+
+function Step2Detalles({ step1a, defaultValues, onNext, onBack }: Step2DetallesProps) {
+  const { data: cropLots = [] } = useCropLots()
+  const { data: equipment = [] } = useEquipment()
+  const { data: employees = [] } = useEmployees()
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<Step1Values>({
+    resolver: zodResolver(step1Schema) as any,
+    defaultValues: {
+      movement_type: step1a.movement_type,
+      warehouse_id: step1a.warehouse_id,
+      destination_type: step1a.destination_type,
+      date: new Date().toISOString().slice(0, 10),
+      ...defaultValues,
+    },
+  })
+
+  const destinationType = step1a.destination_type
+
+  return (
+    <form onSubmit={handleSubmit(onNext as any)} className="flex flex-col gap-6">
+      {/* Destino específico */}
       {destinationType === 'crop_lot' && (
         <div className="flex flex-col gap-1.5">
           <Label>Lote de cultivo</Label>
@@ -359,7 +410,16 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
         </div>
       )}
 
-      {/* ── Notes ────────────────────────────────────────────────────────── */}
+      {/* Fecha */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="date">Fecha <span className="text-destructive">*</span></Label>
+        <Input id="date" type="date" {...register('date')} />
+        {errors.date && (
+          <p className="text-xs text-destructive">{errors.date.message}</p>
+        )}
+      </div>
+
+      {/* Notas generales */}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="notes">Notas generales</Label>
         <Textarea
@@ -370,7 +430,11 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
         />
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-between">
+        <Button type="button" variant="outline" onClick={onBack}>
+          <ChevronLeft className="mr-1.5 size-4" />
+          Atrás
+        </Button>
         <Button type="submit">
           Siguiente
           <ChevronRight className="ml-1.5 size-4" />
@@ -895,20 +959,26 @@ export function NuevaSalidaPage() {
   }, [fxRates])
 
   const [currentStep, setCurrentStep] = useState(1)
+  const [step1aData, setStep1aData] = useState<Step1aValues | null>(null)
   const [step1Data, setStep1Data] = useState<Step1Values | null>(null)
   const [step2Data, setStep2Data] = useState<Step2Values | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
-  function handleStep1Next(data: Step1Values) {
-    setStep1Data(data)
+  function handleStep1Next(data: Step1aValues) {
+    setStep1aData(data)
     setCurrentStep(2)
   }
 
-  function handleStep2Next(data: Step2Values) {
-    setStep2Data(data)
+  function handleStep2Next(data: Step1Values) {
+    setStep1Data(data)
     setCurrentStep(3)
+  }
+
+  function handleStep3Next(data: Step2Values) {
+    setStep2Data(data)
+    setCurrentStep(4)
   }
 
   const submitMovement = useCallback(
@@ -1026,7 +1096,7 @@ export function NuevaSalidaPage() {
         setIsSubmitting(false)
       }
     },
-    [step1Data, step2Data, organization, activeSeason, profile, navigate]
+    [step1Data, step2Data, organization, activeSeason, profile, navigate, latestFxRate]
   )
 
   return (
@@ -1053,26 +1123,35 @@ export function NuevaSalidaPage() {
       {/* ── Steps ───────────────────────────────────────────────────────── */}
       {currentStep === 1 && (
         <Step1Destino
-          defaultValues={step1Data ?? {}}
+          defaultValues={step1aData ?? {}}
           onNext={handleStep1Next}
         />
       )}
 
-      {currentStep === 2 && step1Data && (
+      {currentStep === 2 && step1aData && (
+        <Step2Detalles
+          step1a={step1aData}
+          defaultValues={step1Data ?? {}}
+          onNext={handleStep2Next}
+          onBack={() => setCurrentStep(1)}
+        />
+      )}
+
+      {currentStep === 3 && step1Data && (
         <Step2Partidas
           step1={step1Data}
           defaultValues={step2Data ?? {}}
-          onNext={handleStep2Next}
-          onBack={() => setCurrentStep(1)}
+          onNext={handleStep3Next}
+          onBack={() => setCurrentStep(2)}
           fxRate={latestFxRate}
         />
       )}
 
-      {currentStep === 3 && step1Data && step2Data && (
+      {currentStep === 4 && step1Data && step2Data && (
         <Step3Revision
           step1={step1Data}
           step2={step2Data}
-          onBack={() => setCurrentStep(2)}
+          onBack={() => setCurrentStep(3)}
           onSaveDraft={() => submitMovement('draft')}
           onRegister={() => submitMovement('posted')}
           isSubmitting={isSubmitting}
@@ -1081,7 +1160,7 @@ export function NuevaSalidaPage() {
       )}
 
       {/* ── Empty state for unavailable steps ───────────────────────────── */}
-      {currentStep === 2 && !step1Data && (
+      {currentStep === 2 && !step1aData && (
         <div className="flex items-center justify-center py-12">
           <p className="text-muted-foreground text-sm">
             Completa el paso anterior primero.
