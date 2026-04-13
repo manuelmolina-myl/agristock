@@ -275,8 +275,88 @@ export function DieselPage() {
         />
       </div>
 
+      {/* ── Mobile cards ─────────────────────────────────────────────────── */}
+      {isLoading ? (
+        <div className="flex flex-col gap-2 md:hidden">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 flex flex-col gap-1">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="h-6 w-16" />
+              </div>
+              <div className="mt-2 flex justify-between">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? null : (
+        <div className="flex flex-col gap-2 md:hidden">
+          {filtered.map((line) => {
+            const rendimiento = calcRendimiento(line)
+            const avgEquip = line.equipment_id ? avgRenByEquip[line.equipment_id] : null
+            const isAnomalo =
+              rendimiento != null && avgEquip != null && rendimiento > avgEquip * 2
+
+            return (
+              <div
+                key={line.id}
+                className="rounded-xl border border-border bg-card p-3 active:bg-muted"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    {line.equipment ? (
+                      <>
+                        <p className="text-sm font-medium truncate">{line.equipment.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {line.operator?.full_name ?? '—'}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Sin equipo</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-lg font-semibold tabular-nums font-mono leading-tight">
+                      {line.diesel_liters != null
+                        ? `${formatQuantity(line.diesel_liters, 1)} L`
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    {rendimiento != null ? (
+                      <>
+                        <span className="font-mono">{formatQuantity(rendimiento, 2)} L/h</span>
+                        {isAnomalo && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-4 px-1 border-amber-400 text-amber-600 dark:text-amber-400 gap-0.5"
+                          >
+                            <AlertTriangle className="size-2.5" />
+                            Alto
+                          </Badge>
+                        )}
+                      </>
+                    ) : (
+                      <span>Sin rendimiento</span>
+                    )}
+                  </div>
+                  <span>{formatFechaCorta(line.movement.created_at)}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* ── Table ────────────────────────────────────────────────────────────── */}
-      <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="hidden md:block rounded-lg border bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="text-xs uppercase tracking-wide text-muted-foreground hover:bg-transparent">

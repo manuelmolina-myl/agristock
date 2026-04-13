@@ -1,5 +1,5 @@
-import { useLocation, NavLink } from 'react-router-dom'
-import { Sun, Moon, Search, LogOut, User, ChevronRight } from 'lucide-react'
+import { useLocation, NavLink, useNavigate } from 'react-router-dom'
+import { Sun, Moon, Search, LogOut, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { useTheme } from '@/hooks/use-theme'
 import { ROLE_LABELS, ROLE_ROUTES } from '@/lib/constants'
@@ -159,10 +159,16 @@ function ThemeToggle() {
 
 function UserMenu() {
   const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
 
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
     : '?'
+
+  const handleSignOut = async () => {
+    await signOut()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <DropdownMenu>
@@ -170,7 +176,7 @@ function UserMenu() {
         className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         aria-label="Menú de usuario"
       >
-        <Avatar size="sm">
+        <Avatar className="size-8">
           {profile?.avatar_url && (
             <AvatarImage src={profile.avatar_url} alt={profile.full_name} />
           )}
@@ -190,15 +196,7 @@ function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
-          <User />
-          <span>Perfil</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          onClick={() => signOut()}
-        >
+        <DropdownMenuItem onClick={handleSignOut} variant="destructive">
           <LogOut />
           <span>Cerrar sesión</span>
         </DropdownMenuItem>

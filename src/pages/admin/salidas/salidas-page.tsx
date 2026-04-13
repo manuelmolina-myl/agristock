@@ -193,8 +193,70 @@ export function SalidasPage() {
         </Select>
       </div>
 
+      {/* ── Mobile cards ─────────────────────────────────────────────────── */}
+      {isLoading ? (
+        <div className="flex flex-col gap-2 md:hidden">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 flex flex-col gap-1">
+                  <Skeleton className="h-3.5 w-28" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+              <div className="mt-2 flex justify-between">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-14" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? null : (
+        <div className="flex flex-col gap-2 md:hidden">
+          {filtered.map((movement) => (
+            <div
+              key={movement.id}
+              onClick={() => navigate(`/admin/salidas/${movement.id}`)}
+              className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-mono font-medium truncate">
+                    {movement.document_number ?? '—'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {movement.warehouse?.name ?? '—'}
+                    {movement.lines?.[0] && (
+                      <> · <DestinationCell movement={movement} /></>
+                    )}
+                  </p>
+                </div>
+                <span className="text-xs shrink-0 text-muted-foreground">
+                  {MOVEMENT_TYPE_LABELS[movement.movement_type] ?? movement.movement_type}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs">
+                <Badge
+                  variant={STATUS_VARIANT[movement.status] ?? 'outline'}
+                  className="text-[10px] h-4 px-1.5"
+                >
+                  {STATUS_LABELS[movement.status] ?? movement.status}
+                </Badge>
+                <div className="flex flex-col items-end gap-0.5">
+                  <span className="font-mono font-medium text-foreground">
+                    {movement.total_mxn != null ? formatMoney(movement.total_mxn, 'MXN') : '—'}
+                  </span>
+                  <span className="text-muted-foreground">{formatFechaCorta(movement.created_at)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Table ──────────────────────────────────────────────────────────── */}
-      <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="hidden md:block rounded-lg border bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="text-xs uppercase tracking-wide text-muted-foreground hover:bg-transparent">

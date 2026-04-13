@@ -191,8 +191,60 @@ export function ItemsPage() {
         </Select>
       </div>
 
+      {/* ── Mobile cards ─────────────────────────────────────────────────── */}
+      {isLoading ? (
+        <div className="flex flex-col gap-2 md:hidden">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 flex flex-col gap-1">
+                  <Skeleton className="h-3.5 w-36" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+                <Skeleton className="h-5 w-10 rounded-full" />
+              </div>
+              <div className="mt-2 flex justify-between">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? null : (
+        <div className="flex flex-col gap-2 md:hidden">
+          {filtered.map((item) => (
+            <div
+              key={item.id}
+              onClick={() => navigate(`/admin/inventario/${item.id}`)}
+              className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">{item.category?.name ?? '—'} · {item.unit?.code ?? ''}</p>
+                </div>
+                <CurrencyBadge currency={item.native_currency} size="sm" />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                <span className="font-mono">{item.sku}</span>
+                <span>
+                  Stock:{' '}
+                  <strong className={(() => {
+                    const qty = stockMap.get(item.id) ?? 0
+                    const belowReorder = item.reorder_point != null && qty < item.reorder_point
+                    return belowReorder ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'
+                  })()}>
+                    {formatQuantity(stockMap.get(item.id) ?? 0)}
+                  </strong>
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Table ────────────────────────────────────────────────────────── */}
-      <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="hidden md:block rounded-lg border bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="text-xs uppercase tracking-wide text-muted-foreground hover:bg-transparent">

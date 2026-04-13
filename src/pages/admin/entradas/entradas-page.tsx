@@ -26,6 +26,7 @@ import { DataTable, createColumnHelper } from '@/components/shared/data-table'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -386,7 +387,59 @@ export default function EntradasPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Mobile cards */}
+      {!isLoading && movements.length === 0 ? null : (
+        <div className="flex flex-col gap-2 md:hidden">
+          {isLoading
+            ? Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <Skeleton className="h-3.5 w-28" />
+                      <Skeleton className="h-3 w-20" />
+                    </div>
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </div>
+                  <div className="mt-2 flex justify-between">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-3 w-14" />
+                  </div>
+                </div>
+              ))
+            : movements.map((m) => (
+                <div
+                  key={m.id}
+                  onClick={() => alert(`Ver detalle: ${m.id}`)}
+                  className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-mono font-medium truncate">
+                        {m.document_number ?? <span className="text-muted-foreground">—</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {m.warehouse ? `${m.warehouse.code} – ${m.warehouse.name}` : '—'}
+                      </p>
+                    </div>
+                    <Badge variant={typeVariant(m.movement_type) as any} className="text-xs whitespace-nowrap shrink-0">
+                      {MOVEMENT_TYPE_LABELS[m.movement_type] ?? m.movement_type}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <StatusBadge status={m.status} />
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="font-mono font-medium text-foreground">
+                        {m.total_mxn != null ? `$${m.total_mxn.toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '—'}
+                      </span>
+                      <span className="text-muted-foreground">{formatFechaCorta(m.created_at)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+        </div>
+      )}
+
+      {/* Table (desktop) */}
       {!isLoading && movements.length === 0 ? (
         <EmptyState
           title="Sin entradas"
@@ -397,13 +450,15 @@ export default function EntradasPage() {
           }}
         />
       ) : (
-        <DataTable
-          columns={columns as any}
-          data={movements}
-          isLoading={isLoading}
-          emptyMessage="Sin entradas para los filtros seleccionados."
-          onRowClick={(row) => alert(`Ver detalle: ${row.id}`)}
-        />
+        <div className="hidden md:block">
+          <DataTable
+            columns={columns as any}
+            data={movements}
+            isLoading={isLoading}
+            emptyMessage="Sin entradas para los filtros seleccionados."
+            onRowClick={(row) => alert(`Ver detalle: ${row.id}`)}
+          />
+        </div>
       )}
 
       {/* Cancel confirmation */}
