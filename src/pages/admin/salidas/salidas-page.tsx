@@ -45,8 +45,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type MovementLine = {
+  destination_type: string | null
+  crop_lot?: { name: string; code: string } | null
+  equipment?: { name: string; code: string } | null
+  employee?: { full_name: string; employee_code: string } | null
+}
+
 type MovementWithWarehouse = StockMovement & {
   warehouse?: { id: string; name: string; code: string }
+  lines?: MovementLine[]
 }
 
 const EXIT_TYPES = [
@@ -56,15 +64,6 @@ const EXIT_TYPES = [
   'exit_waste',
   'exit_sale',
 ] as const
-
-const DESTINATION_TYPE_LABELS: Record<string, string> = {
-  crop_lot: 'Lote de cultivo',
-  equipment: 'Tractor / Equipo',
-  employee: 'Empleado',
-  maintenance: 'Mantenimiento',
-  waste: 'Merma',
-  other: 'Otro',
-}
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Borrador',
@@ -107,7 +106,7 @@ export function SalidasPage() {
   const { data: movements = [], isLoading } = useList<MovementWithWarehouse>(
     'stock_movements',
     {
-      select: '*, warehouse:warehouses(*)',
+      select: '*, warehouse:warehouses(*), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
       orderBy: 'created_at',
       ascending: false,
     }
@@ -337,34 +336,32 @@ export function SalidasPage() {
 // ─── Destination cell helper ──────────────────────────────────────────────────
 
 function DestinationCell({ movement }: { movement: MovementWithWarehouse }) {
-  // destination_type lives on lines; since we don't join lines in the list query,
-  // we derive a best-effort label from movement_type
-  const destType = deriveDestinationType(movement.movement_type)
+  const line = movement.lines?.[0]
 
-  if (!destType) return <span className="text-xs text-muted-foreground">—</span>
+  if (!line) return <span className="text-xs text-muted-foreground">—</span>
 
-  return (
-    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-      {DESTINATION_TYPE_LABELS[destType] ?? destType}
-    </span>
-  )
-}
+  const destType = line.destination_type
 
-function deriveDestinationType(movementType: string): string | null {
-  switch (movementType) {
-    case 'exit_consumption':
-      return 'crop_lot'
-    case 'exit_waste':
-      return 'waste'
-    case 'exit_sale':
-      return 'other'
-    case 'exit_transfer':
-      return 'other'
-    case 'exit_adjustment':
-      return 'other'
-    default:
-      return null
+  if (destType === 'crop_lot' && line.crop_lot) {
+    return <span className="text-sm">{line.crop_lot.name}</span>
   }
+  if (destType === 'equipment' && line.equipment) {
+    return <span className="text-sm">{line.equipment.name}</span>
+  }
+  if (destType === 'employee' && line.employee) {
+    return <span className="text-sm">{line.employee.full_name}</span>
+  }
+  if (destType === 'maintenance') {
+    return <span className="text-sm text-muted-foreground">Mantenimiento</span>
+  }
+  if (destType === 'waste') {
+    return <span className="text-sm text-muted-foreground">Merma</span>
+  }
+  if (destType === 'other') {
+    return <span className="text-sm text-muted-foreground">Otro</span>
+  }
+
+  return <span className="text-xs text-muted-foreground">—</span>
 }
 
 export default SalidasPage

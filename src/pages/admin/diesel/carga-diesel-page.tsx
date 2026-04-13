@@ -337,7 +337,7 @@ export function CargaDieselPage() {
       }
 
       const tractorName = selectedEquipment
-        ? `${selectedEquipment.code} – ${selectedEquipment.name}`
+        ? `${selectedEquipment.name} (${selectedEquipment.code})`
         : 'Tractor'
 
       setSummary({ litros, tractorName, rendimiento, costo: lineTotalMxn })

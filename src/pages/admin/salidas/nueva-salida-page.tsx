@@ -239,7 +239,7 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
                 <SelectContent>
                   {warehouses.map((w) => (
                     <SelectItem key={w.id} value={w.id}>
-                      {w.code} — {w.name}
+                      {w.name} <span className="text-muted-foreground ml-1">({w.code})</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -309,8 +309,7 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
                 <SelectContent>
                   {(cropLots as any[]).map((lot) => (
                     <SelectItem key={lot.id} value={lot.id}>
-                      Lote {lot.code} — {lot.crop_type}
-                      {lot.hectares != null ? ` · ${lot.hectares} ha` : ''}
+                      {lot.name ?? `Lote ${lot.code}`} <span className="text-xs text-muted-foreground ml-1">({lot.code})</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -334,9 +333,7 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
                 <SelectContent>
                   {equipment.map((eq) => (
                     <SelectItem key={eq.id} value={eq.id}>
-                      {eq.code} — {eq.name}
-                      {eq.brand ? ` · ${eq.brand}` : ''}
-                      {eq.model ? ` ${eq.model}` : ''}
+                      {eq.name} <span className="text-xs text-muted-foreground ml-1">({eq.code})</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -526,7 +523,7 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack }: Step2Props) {
                             <SelectItem key={it.id} value={it.id}>
                               <span className="flex items-center gap-1.5">
                                 {it.is_diesel && <Fuel className="size-3 text-yellow-500" />}
-                                {it.sku} — {it.name}
+                                {it.name} <span className="text-xs text-muted-foreground ml-1">({it.sku})</span>
                               </span>
                             </SelectItem>
                           ))}

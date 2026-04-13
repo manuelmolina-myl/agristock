@@ -6,6 +6,7 @@ import { SuppliersTab } from './catalogos/suppliers-tab'
 import { WarehousesTab } from './catalogos/warehouses-tab'
 import { EmployeesTab } from './catalogos/employees-tab'
 import { EquipmentTab } from './catalogos/equipment-tab'
+import { LotsTab } from './catalogos/lots-tab'
 
 const TABS = [
   { value: 'categories', label: 'Categorías', component: <CategoriesTab /> },
@@ -14,6 +15,7 @@ const TABS = [
   { value: 'warehouses', label: 'Almacenes', component: <WarehousesTab /> },
   { value: 'employees', label: 'Empleados', component: <EmployeesTab /> },
   { value: 'equipment', label: 'Equipos', component: <EquipmentTab /> },
+  { value: 'lots', label: 'Lotes', component: <LotsTab /> },
 ]
 
 export default function CatalogosPage() {

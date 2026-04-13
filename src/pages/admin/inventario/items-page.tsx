@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, MoreHorizontal, Eye, Pencil, Trash2, Package } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { useItems, useCategories, useSoftDelete } from '@/hooks/use-supabase-query'
+import { useItems, useCategories, useSoftDelete, useItemStock } from '@/hooks/use-supabase-query'
 import type { Item } from '@/lib/database.types'
+import { formatQuantity } from '@/lib/utils'
 
 import { PageHeader } from '@/components/custom/page-header'
 import { CurrencyBadge } from '@/components/custom/currency-badge'
@@ -59,6 +60,7 @@ function TableSkeleton() {
           <TableCell><Skeleton className="h-3.5 w-24" /></TableCell>
           <TableCell><Skeleton className="h-3.5 w-12" /></TableCell>
           <TableCell><Skeleton className="h-4 w-10 rounded-full" /></TableCell>
+          <TableCell><Skeleton className="h-3.5 w-12" /></TableCell>
           <TableCell><Skeleton className="h-3.5 w-8" /></TableCell>
           <TableCell><Skeleton className="h-4 w-16 rounded-full" /></TableCell>
           <TableCell />
@@ -76,6 +78,16 @@ export function ItemsPage() {
   const { data: items = [], isLoading } = useItems()
   const { data: categories = [] } = useCategories()
   const softDelete = useSoftDelete('items')
+  const { data: stockData } = useItemStock()
+
+  const stockMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const s of stockData ?? []) {
+      const current = map.get(s.item_id) ?? 0
+      map.set(s.item_id, current + (s.quantity ?? 0))
+    }
+    return map
+  }, [stockData])
 
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
@@ -189,6 +201,7 @@ export function ItemsPage() {
               <TableHead>Categoría</TableHead>
               <TableHead className="w-20">Unidad</TableHead>
               <TableHead className="w-20">Moneda</TableHead>
+              <TableHead className="w-24 text-right">Stock</TableHead>
               <TableHead className="w-28 text-right">Pto. reorden</TableHead>
               <TableHead className="w-24">Estado</TableHead>
               <TableHead className="w-10" />
@@ -199,7 +212,7 @@ export function ItemsPage() {
               <TableSkeleton />
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="p-0">
+                <TableCell colSpan={9} className="p-0">
                   <EmptyState
                     icon={<Package className="size-5" />}
                     title={search || categoryFilter !== 'all' || currencyFilter !== 'all' ? 'Sin resultados' : 'Sin ítems aún'}
@@ -251,6 +264,17 @@ export function ItemsPage() {
                   </TableCell>
                   <TableCell>
                     <CurrencyBadge currency={item.native_currency} size="sm" />
+                  </TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {(() => {
+                      const qty = stockMap.get(item.id) ?? 0
+                      const belowReorder = item.reorder_point != null && qty < item.reorder_point
+                      return (
+                        <span className={belowReorder ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                          {formatQuantity(qty)}
+                        </span>
+                      )
+                    })()}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums">
                     {item.reorder_point != null ? item.reorder_point : '—'}

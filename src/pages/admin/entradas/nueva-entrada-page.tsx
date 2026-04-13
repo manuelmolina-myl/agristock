@@ -356,7 +356,7 @@ export default function NuevaEntradaPage() {
                       <SelectContent>
                         {warehouses.map((w) => (
                           <SelectItem key={w.id} value={w.id}>
-                            {w.code} – {w.name}
+                            {w.name} <span className="text-muted-foreground ml-1">({w.code})</span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -487,8 +487,7 @@ export default function NuevaEntradaPage() {
                                 <SelectContent>
                                   {items.map((it) => (
                                     <SelectItem key={it.id} value={it.id}>
-                                      <span className="font-mono text-muted-foreground mr-1">{it.sku}</span>
-                                      {it.name}
+                                      {it.name} <span className="text-xs text-muted-foreground ml-1">({it.sku})</span>
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
