@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,6 +23,7 @@ import {
   useEmployees,
   useItems,
   useList,
+  useFxRates,
 } from '@/hooks/use-supabase-query'
 import type {
   DestinationType,
@@ -103,7 +104,6 @@ const step1Schema = z.object({
     'exit_sale',
   ]),
   date: z.string().min(1, 'Selecciona una fecha'),
-  fx_rate: z.coerce.number().min(0.01, 'Tipo de cambio inválido'),
   notes: z.string().optional(),
 })
 
@@ -178,7 +178,6 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
     defaultValues: {
       movement_type: 'exit_consumption',
       date: new Date().toISOString().slice(0, 10),
-      fx_rate: 17.5,
       destination_type: 'crop_lot',
       ...defaultValues,
     },
@@ -251,19 +250,6 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
           )}
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="fx_rate">Tipo de cambio (MXN/USD)</Label>
-          <Input
-            id="fx_rate"
-            type="number"
-            step="0.0001"
-            min="0.01"
-            {...register('fx_rate')}
-          />
-          {errors.fx_rate && (
-            <p className="text-xs text-destructive">{errors.fx_rate.message}</p>
-          )}
-        </div>
       </div>
 
       <Separator />
@@ -408,9 +394,10 @@ interface Step2Props {
   defaultValues: Partial<Step2Values>
   onNext: (data: Step2Values) => void
   onBack: () => void
+  fxRate: number
 }
 
-function Step2Partidas({ step1, defaultValues, onNext, onBack }: Step2Props) {
+function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxRate }: Step2Props) {
   const { data: items = [] } = useItems()
   const { data: employees = [] } = useEmployees()
   const { activeSeason } = useAuth()
@@ -475,7 +462,7 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack }: Step2Props) {
     const cost = line.unit_cost_native ?? 0
     const qty = line.quantity ?? 0
     const currency = line.native_currency ?? 'MXN'
-    const mxn = currency === 'USD' ? cost * (step1.fx_rate ?? 1) : cost
+    const mxn = currency === 'USD' ? cost * (latestFxRate ?? 1) : cost
     return sum + mxn * qty
   }, 0)
 
@@ -758,9 +745,10 @@ interface Step3Props {
   onSaveDraft: () => Promise<void>
   onRegister: () => Promise<void>
   isSubmitting: boolean
+  fxRate: number
 }
 
-function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmitting }: Step3Props) {
+function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmitting, fxRate: latestFxRate }: Step3Props) {
   const { data: warehouses = [] } = useWarehouses()
   const { data: items = [] } = useItems()
   const { data: cropLots = [] } = useCropLots()
@@ -789,7 +777,7 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
     const cost = line.unit_cost_native ?? 0
     const qty = line.quantity ?? 0
     const currency = line.native_currency ?? 'MXN'
-    const mxn = currency === 'USD' ? cost * (step1.fx_rate ?? 1) : cost
+    const mxn = currency === 'USD' ? cost * (latestFxRate ?? 1) : cost
     return sum + mxn * qty
   }, 0)
 
@@ -815,10 +803,6 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
             <dt className="text-xs text-muted-foreground">Destino</dt>
             <dd>{getDestinationLabel()}</dd>
           </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">T/C</dt>
-            <dd className="font-mono">{step1.fx_rate}</dd>
-          </div>
           {step1.notes && (
             <div className="col-span-2">
               <dt className="text-xs text-muted-foreground">Notas</dt>
@@ -841,7 +825,7 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
             const lineTotalNative = (line.unit_cost_native ?? 0) * (line.quantity ?? 0)
             const lineTotalMxn =
               line.native_currency === 'USD'
-                ? lineTotalNative * (step1.fx_rate ?? 1)
+                ? lineTotalNative * (latestFxRate ?? 1)
                 : lineTotalNative
             return (
               <div key={i} className="px-4 py-3 flex items-center justify-between gap-4">
@@ -915,6 +899,12 @@ export function NuevaSalidaPage() {
   const navigate = useNavigate()
   const { organization, activeSeason, profile } = useAuth()
 
+  const { data: fxRates = [] } = useFxRates()
+  const latestFxRate = useMemo(() => {
+    const usd = (fxRates as any[]).find((r: any) => r.currency_from === 'USD' && r.currency_to === 'MXN')
+    return usd?.rate ?? 17
+  }, [fxRates])
+
   const [currentStep, setCurrentStep] = useState(1)
   const [step1Data, setStep1Data] = useState<Step1Values | null>(null)
   const [step2Data, setStep2Data] = useState<Step2Values | null>(null)
@@ -947,7 +937,7 @@ export function NuevaSalidaPage() {
           const cost = line.unit_cost_native ?? 0
           const qty = line.quantity ?? 0
           const mxn =
-            line.native_currency === 'USD' ? cost * (step1Data.fx_rate ?? 1) : cost
+            line.native_currency === 'USD' ? cost * (latestFxRate ?? 1) : cost
           return sum + mxn * qty
         }, 0)
 
@@ -955,7 +945,7 @@ export function NuevaSalidaPage() {
           const cost = line.unit_cost_native ?? 0
           const qty = line.quantity ?? 0
           const usd =
-            line.native_currency === 'USD' ? cost : cost / (step1Data.fx_rate ?? 1)
+            line.native_currency === 'USD' ? cost : cost / (latestFxRate ?? 1)
           return sum + usd * qty
         }, 0)
 
@@ -967,7 +957,7 @@ export function NuevaSalidaPage() {
             season_id: activeSeason.id,
             movement_type: step1Data.movement_type,
             warehouse_id: step1Data.warehouse_id,
-            fx_rate: step1Data.fx_rate,
+            fx_rate: latestFxRate,
             fx_source: 'manual',
             fx_date: step1Data.date,
             total_mxn: totalMxn,
@@ -989,7 +979,7 @@ export function NuevaSalidaPage() {
           const lineTotalNative = (line.unit_cost_native ?? 0) * line.quantity
           const lineTotalMxn =
             line.native_currency === 'USD'
-              ? lineTotalNative * (step1Data.fx_rate ?? 1)
+              ? lineTotalNative * (latestFxRate ?? 1)
               : lineTotalNative
 
           return {
@@ -1000,7 +990,7 @@ export function NuevaSalidaPage() {
             native_currency: line.native_currency,
             unit_cost_mxn:
               line.native_currency === 'USD'
-                ? line.unit_cost_native * (step1Data.fx_rate ?? 1)
+                ? line.unit_cost_native * (latestFxRate ?? 1)
                 : line.unit_cost_native,
             line_total_native: lineTotalNative,
             line_total_mxn: lineTotalMxn,
@@ -1085,6 +1075,7 @@ export function NuevaSalidaPage() {
           defaultValues={step2Data ?? {}}
           onNext={handleStep2Next}
           onBack={() => setCurrentStep(1)}
+          fxRate={latestFxRate}
         />
       )}
 
@@ -1096,6 +1087,7 @@ export function NuevaSalidaPage() {
           onSaveDraft={() => submitMovement('draft')}
           onRegister={() => submitMovement('posted')}
           isSubmitting={isSubmitting}
+          fxRate={latestFxRate}
         />
       )}
 
