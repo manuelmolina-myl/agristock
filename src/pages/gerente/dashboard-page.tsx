@@ -107,7 +107,6 @@ function useValorInventario(orgId: string | undefined, seasonId: string | undefi
       const { data, error } = await db
         .from('item_stock')
         .select('quantity, avg_cost_mxn')
-        .eq('organization_id', orgId)
         .eq('season_id', seasonId)
       if (error) throw error
       return (data as Array<{ quantity: number; avg_cost_mxn: number }>).reduce(
@@ -115,7 +114,7 @@ function useValorInventario(orgId: string | undefined, seasonId: string | undefi
         0,
       )
     },
-    enabled: !!orgId && !!seasonId,
+    enabled: !!seasonId,
   })
 }
 
@@ -144,7 +143,6 @@ function useBajoReorden(orgId: string | undefined, seasonId: string | undefined)
       const { data, error } = await db
         .from('item_stock')
         .select('quantity, item:items!inner(reorder_point)')
-        .eq('organization_id', orgId)
         .eq('season_id', seasonId)
         .gt('item.reorder_point', 0)
       if (error) throw error
@@ -167,12 +165,12 @@ function useDieselMes(orgId: string | undefined, seasonId: string | undefined) {
       const { data, error } = await db
         .from('stock_movement_lines')
         .select(
-          'diesel_liters, movement:stock_movements!inner(organization_id, season_id, status, posted_at, item:items!inner(is_diesel))',
+          'diesel_liters, item:items!inner(is_diesel), movement:stock_movements!inner(organization_id, season_id, status, posted_at)',
         )
+        .eq('item.is_diesel', true)
         .eq('movement.organization_id', orgId)
         .eq('movement.season_id', seasonId)
         .eq('movement.status', 'posted')
-        .eq('movement.item.is_diesel', true)
         .gte('movement.posted_at', startOfMonth.toISOString())
       if (error) throw error
       const rows = data as Array<{ diesel_liters: number | null }>
