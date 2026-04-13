@@ -1,24 +1,31 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus,
-  Search,
   MoreHorizontal,
   Eye,
-  ArrowUpFromLine,
+  CheckCircle,
+  XCircle,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useList } from '@/hooks/use-supabase-query'
-import type { StockMovement } from '@/lib/database.types'
+import { useAuth } from '@/hooks/use-auth'
+import { supabase } from '@/lib/supabase'
 import { MOVEMENT_TYPE_LABELS } from '@/lib/constants'
-import { formatFechaCorta, formatMoney } from '@/lib/utils'
+import { formatFechaCorta, formatHora } from '@/lib/utils'
+
+import type { StockMovement, MovementStatus } from '@/lib/database.types'
 
 import { PageHeader } from '@/components/custom/page-header'
+import { MoneyDisplay } from '@/components/custom/money-display'
 import { EmptyState } from '@/components/custom/empty-state'
+import { DataTable, createColumnHelper } from '@/components/shared/data-table'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -26,22 +33,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,10 +62,12 @@ type MovementLine = {
   employee?: { full_name: string; employee_code: string } | null
 }
 
-type MovementWithWarehouse = StockMovement & {
+type ExitMovement = StockMovement & {
   warehouse?: { id: string; name: string; code: string }
   lines?: MovementLine[]
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const EXIT_TYPES = [
   'exit_consumption',
@@ -65,333 +77,41 @@ const EXIT_TYPES = [
   'exit_sale',
 ] as const
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Record<MovementStatus, string> = {
   draft: 'Borrador',
   posted: 'Registrado',
   cancelled: 'Cancelado',
 }
 
-const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  draft: 'outline',
-  posted: 'default',
-  cancelled: 'destructive',
-}
+// ─── Badge helpers ────────────────────────────────────────────────────────────
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function TableSkeleton() {
-  return (
-    <>
-      {Array.from({ length: 8 }).map((_, i) => (
-        <TableRow key={i}>
-          <TableCell><Skeleton className="h-3.5 w-24" /></TableCell>
-          <TableCell><Skeleton className="h-3.5 w-20" /></TableCell>
-          <TableCell><Skeleton className="h-3.5 w-28" /></TableCell>
-          <TableCell><Skeleton className="h-3.5 w-24" /></TableCell>
-          <TableCell><Skeleton className="h-3.5 w-32" /></TableCell>
-          <TableCell><Skeleton className="h-3.5 w-20 ml-auto" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-20 rounded-full" /></TableCell>
-          <TableCell />
-        </TableRow>
-      ))}
-    </>
-  )
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
-
-export function SalidasPage() {
-  const navigate = useNavigate()
-
-  const { data: movements = [], isLoading } = useList<MovementWithWarehouse>(
-    'stock_movements',
-    {
-      select: '*, warehouse:warehouses(*), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
-      orderBy: 'created_at',
-      ascending: false,
-    }
-  )
-
-  const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string>('all')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-
-  // Filter to exit types only then apply UI filters
-  const filtered = movements
-    .filter((m) => EXIT_TYPES.includes(m.movement_type as typeof EXIT_TYPES[number]))
-    .filter((m) => {
-      const q = search.trim().toLowerCase()
-      if (
-        q &&
-        !m.document_number?.toLowerCase().includes(q) &&
-        !m.reference_external?.toLowerCase().includes(q) &&
-        !m.warehouse?.name.toLowerCase().includes(q)
-      ) {
-        return false
-      }
-      if (typeFilter !== 'all' && m.movement_type !== typeFilter) return false
-      if (statusFilter !== 'all' && m.status !== statusFilter) return false
-      return true
-    })
-
-  function handleCopy(docNumber: string | null) {
-    if (!docNumber) return
-    navigator.clipboard.writeText(docNumber).then(() => {
-      toast.success('Folio copiado')
-    })
+function typeVariant(type: string) {
+  switch (type) {
+    case 'exit_consumption': return 'default'
+    case 'exit_transfer':    return 'secondary'
+    case 'exit_adjustment':  return 'outline'
+    case 'exit_waste':       return 'destructive'
+    case 'exit_sale':        return 'secondary'
+    default:                 return 'outline'
   }
+}
 
+function StatusBadge({ status }: { status: MovementStatus }) {
+  const classes: Record<MovementStatus, string> = {
+    draft:     'bg-muted text-muted-foreground border-muted-foreground/20',
+    posted:    'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800',
+    cancelled: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800',
+  }
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <PageHeader
-        title="Salidas"
-        description="Registro de salidas del almacén"
-        actions={
-          <Button size="sm" onClick={() => navigate('/admin/salidas/nueva')}>
-            <Plus className="mr-1.5 size-3.5" />
-            Nueva salida
-          </Button>
-        }
-      />
-
-      {/* ── Filter row ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar folio, referencia o almacén…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
-          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? 'all')}>
-            <SelectTrigger className="h-8 text-xs sm:w-40 sm:text-sm"><SelectValue placeholder="Tipo" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los tipos</SelectItem>
-              {EXIT_TYPES.map((t) => (
-                <SelectItem key={t} value={t}>{MOVEMENT_TYPE_LABELS[t] ?? t}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? 'all')}>
-            <SelectTrigger className="h-8 text-xs sm:w-36 sm:text-sm"><SelectValue placeholder="Estado" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="draft">Borrador</SelectItem>
-              <SelectItem value="posted">Registrado</SelectItem>
-              <SelectItem value="cancelled">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* ── Mobile cards ─────────────────────────────────────────────────── */}
-      {isLoading ? (
-        <div className="flex flex-col gap-2 md:hidden">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border bg-card p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex-1 flex flex-col gap-1">
-                  <Skeleton className="h-3.5 w-28" />
-                  <Skeleton className="h-3 w-20" />
-                </div>
-                <Skeleton className="h-5 w-16 rounded-full" />
-              </div>
-              <div className="mt-2 flex justify-between">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-3 w-14" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : filtered.length === 0 ? null : (
-        <div className="flex flex-col gap-2 md:hidden">
-          {filtered.map((movement) => (
-            <div
-              key={movement.id}
-              onClick={() => navigate(`/admin/salidas/${movement.id}`)}
-              className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-mono font-medium truncate">
-                    {movement.document_number ?? '—'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {movement.warehouse?.name ?? '—'}
-                    {movement.lines?.[0] && (
-                      <> · <DestinationCell movement={movement} /></>
-                    )}
-                  </p>
-                </div>
-                <span className="text-xs shrink-0 text-muted-foreground">
-                  {MOVEMENT_TYPE_LABELS[movement.movement_type] ?? movement.movement_type}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-xs">
-                <Badge
-                  variant={STATUS_VARIANT[movement.status] ?? 'outline'}
-                  className="text-[10px] h-4 px-1.5"
-                >
-                  {STATUS_LABELS[movement.status] ?? movement.status}
-                </Badge>
-                <div className="flex flex-col items-end gap-0.5">
-                  <span className="font-mono font-medium text-foreground">
-                    {movement.total_mxn != null ? formatMoney(movement.total_mxn, 'MXN') : '—'}
-                  </span>
-                  <span className="text-muted-foreground">{formatFechaCorta(movement.created_at)}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Table ──────────────────────────────────────────────────────────── */}
-      <div className="hidden md:block rounded-lg border bg-card overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="text-xs uppercase tracking-wide text-muted-foreground hover:bg-transparent">
-              <TableHead className="w-32">Folio</TableHead>
-              <TableHead className="w-28">Fecha</TableHead>
-              <TableHead className="w-36">Tipo</TableHead>
-              <TableHead>Almacén</TableHead>
-              <TableHead>Destino</TableHead>
-              <TableHead className="w-32 text-right">Total MXN</TableHead>
-              <TableHead className="w-28">Estado</TableHead>
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableSkeleton />
-            ) : filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="p-0">
-                  <EmptyState
-                    icon={<ArrowUpFromLine className="size-5" />}
-                    title={
-                      search || typeFilter !== 'all' || statusFilter !== 'all'
-                        ? 'Sin resultados'
-                        : 'Sin salidas aún'
-                    }
-                    description={
-                      search || typeFilter !== 'all' || statusFilter !== 'all'
-                        ? 'Prueba con otros filtros o términos de búsqueda.'
-                        : 'Registra la primera salida del almacén para empezar.'
-                    }
-                    action={
-                      !search && typeFilter === 'all' && statusFilter === 'all'
-                        ? {
-                            label: '+ Nueva salida',
-                            onClick: () => navigate('/admin/salidas/nueva'),
-                          }
-                        : undefined
-                    }
-                  />
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.map((movement) => (
-                <TableRow
-                  key={movement.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/admin/salidas/${movement.id}`)}
-                >
-                  <TableCell>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {movement.document_number ?? '—'}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm tabular-nums">
-                    {formatFechaCorta(movement.created_at)}
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm">
-                      {MOVEMENT_TYPE_LABELS[movement.movement_type] ?? movement.movement_type}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm font-medium">
-                      {movement.warehouse?.name ?? '—'}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    {/* destination_type comes from first line — shown as badge */}
-                    <DestinationCell movement={movement} />
-                  </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums font-mono">
-                    {movement.total_mxn != null
-                      ? formatMoney(movement.total_mxn, 'MXN')
-                      : '—'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={STATUS_VARIANT[movement.status] ?? 'outline'}
-                      className="text-[10px] h-4 px-1.5"
-                    >
-                      {STATUS_LABELS[movement.status] ?? movement.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={<Button variant="ghost" size="icon" className="size-7" />}
-                      >
-                        <MoreHorizontal className="size-3.5" />
-                        <span className="sr-only">Acciones</span>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem
-                          onClick={() => navigate(`/admin/salidas/${movement.id}`)}
-                        >
-                          <Eye className="mr-2 size-3.5" />
-                          Ver detalle
-                        </DropdownMenuItem>
-                        {movement.document_number && (
-                          <DropdownMenuItem
-                            onClick={() => handleCopy(movement.document_number)}
-                          >
-                            Copiar folio
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* ── Summary footer ─────────────────────────────────────────────────── */}
-      {!isLoading && filtered.length > 0 && (
-        <p className="text-xs text-muted-foreground text-right">
-          {filtered.length} {filtered.length === 1 ? 'salida' : 'salidas'}
-          {filtered.some((m) => m.total_mxn != null) && (
-            <>
-              {' · '}
-              Total:{' '}
-              <span className="font-mono font-medium">
-                {formatMoney(
-                  filtered.reduce((sum, m) => sum + (m.total_mxn ?? 0), 0),
-                  'MXN'
-                )}
-              </span>
-            </>
-          )}
-        </p>
-      )}
-    </div>
+    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${classes[status]}`}>
+      {STATUS_LABELS[status]}
+    </span>
   )
 }
 
 // ─── Destination cell helper ──────────────────────────────────────────────────
 
-function DestinationCell({ movement }: { movement: MovementWithWarehouse }) {
+function DestinationCell({ movement }: { movement: ExitMovement }) {
   const line = movement.lines?.[0]
 
   if (!line) return <span className="text-xs text-muted-foreground">—</span>
@@ -418,6 +138,374 @@ function DestinationCell({ movement }: { movement: MovementWithWarehouse }) {
   }
 
   return <span className="text-xs text-muted-foreground">—</span>
+}
+
+// ─── Column helper ────────────────────────────────────────────────────────────
+
+const colHelper = createColumnHelper<ExitMovement>()
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export function SalidasPage() {
+  const navigate = useNavigate()
+  const { activeSeason } = useAuth()
+
+  // Filters
+  const [filtersOpen,  setFiltersOpen]  = useState(false)
+  const [filterType,   setFilterType]   = useState<string>('all')
+  const [filterWh,     setFilterWh]     = useState<string>('all')
+  const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [filterFrom,   setFilterFrom]   = useState<string>('')
+  const [filterTo,     setFilterTo]     = useState<string>('')
+  const activeFilterCount = [filterType, filterWh, filterStatus, filterFrom, filterTo].filter(v => v !== 'all' && v !== '').length
+
+  // Cancel dialog
+  const [cancelTarget, setCancelTarget] = useState<ExitMovement | null>(null)
+  const [cancelling,   setCancelling]   = useState(false)
+
+  // Fetch all movements (exit types filtered client-side)
+  const { data: rawMovements = [], isLoading, refetch } = useList<ExitMovement>(
+    'stock_movements',
+    {
+      select: '*, warehouse:warehouses(id, name, code), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
+      filters: activeSeason?.id ? { season_id: activeSeason.id } : {},
+      enabled: !!activeSeason?.id,
+    }
+  )
+
+  // Client-side: keep only exit types, then apply UI filters
+  const movements = useMemo(() => {
+    return rawMovements
+      .filter((m) => EXIT_TYPES.includes(m.movement_type as typeof EXIT_TYPES[number]))
+      .filter((m) => filterType   === 'all' || m.movement_type === filterType)
+      .filter((m) => filterWh     === 'all' || m.warehouse_id  === filterWh)
+      .filter((m) => filterStatus === 'all' || m.status        === filterStatus)
+      .filter((m) => {
+        if (!filterFrom && !filterTo) return true
+        const d = m.created_at.slice(0, 10)
+        if (filterFrom && d < filterFrom) return false
+        if (filterTo   && d > filterTo)   return false
+        return true
+      })
+  }, [rawMovements, filterType, filterWh, filterStatus, filterFrom, filterTo])
+
+  // Unique warehouses from fetched data (for filter select)
+  const warehouses = useMemo(() => {
+    const map = new Map<string, string>()
+    rawMovements.forEach((m) => {
+      if (m.warehouse) map.set(m.warehouse.id, `${m.warehouse.code} – ${m.warehouse.name}`)
+    })
+    return Array.from(map.entries())
+  }, [rawMovements])
+
+  // Handle post (draft → posted)
+  async function handlePost(m: ExitMovement) {
+    try {
+      const { error } = await (supabase as any)
+        .from('stock_movements')
+        .update({ status: 'posted' })
+        .eq('id', m.id)
+      if (error) throw error
+      toast.success('Salida registrada correctamente')
+      refetch()
+    } catch {
+      toast.error('Error al registrar la salida')
+    }
+  }
+
+  // Handle cancel (posted → cancelled)
+  async function handleCancel() {
+    if (!cancelTarget) return
+    setCancelling(true)
+    try {
+      const { error } = await (supabase as any)
+        .from('stock_movements')
+        .update({ status: 'cancelled' })
+        .eq('id', cancelTarget.id)
+      if (error) throw error
+      toast.success('Salida cancelada')
+      refetch()
+    } catch {
+      toast.error('Error al cancelar la salida')
+    } finally {
+      setCancelling(false)
+      setCancelTarget(null)
+    }
+  }
+
+  // ─── Columns ─────────────────────────────────────────────────────────────
+
+  const columns = [
+    colHelper.accessor('document_number', {
+      header: 'Folio',
+      cell: (info) => (
+        <span className="font-mono text-xs text-foreground">
+          {info.getValue() ?? <span className="text-muted-foreground">—</span>}
+        </span>
+      ),
+    }),
+    colHelper.accessor('movement_type', {
+      header: 'Tipo',
+      cell: (info) => (
+        <Badge variant={typeVariant(info.getValue()) as any} className="text-xs whitespace-nowrap">
+          {MOVEMENT_TYPE_LABELS[info.getValue()] ?? info.getValue()}
+        </Badge>
+      ),
+    }),
+    colHelper.accessor('warehouse_id', {
+      header: 'Almacén',
+      cell: (info) => {
+        const row = info.row.original
+        return (
+          <span className="text-sm">
+            {row.warehouse ? `${row.warehouse.code} – ${row.warehouse.name}` : '—'}
+          </span>
+        )
+      },
+    }),
+    colHelper.display({
+      id: 'destination',
+      header: 'Destino',
+      cell: (info) => <DestinationCell movement={info.row.original} />,
+    }),
+    colHelper.accessor('total_mxn', {
+      header: () => <span className="block text-right">Total MXN</span>,
+      cell: (info) => (
+        <div className="flex justify-end">
+          <MoneyDisplay amount={info.getValue() ?? 0} currency="MXN" />
+        </div>
+      ),
+    }),
+    colHelper.accessor('status', {
+      header: 'Estado',
+      cell: (info) => <StatusBadge status={info.getValue()} />,
+    }),
+    colHelper.accessor('created_at', {
+      header: 'Fecha',
+      cell: (info) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-medium">{formatFechaCorta(info.getValue())}</span>
+          <span className="text-[11px] text-muted-foreground">{formatHora(info.getValue())}</span>
+        </div>
+      ),
+    }),
+    colHelper.display({
+      id: 'actions',
+      header: '',
+      cell: (info) => {
+        const row = info.row.original
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()} />}
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/admin/salidas/${row.id}`) }}>
+                <Eye className="mr-2 h-3.5 w-3.5" />
+                Ver detalle
+              </DropdownMenuItem>
+              {row.status === 'draft' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handlePost(row) }} className="text-emerald-600 focus:text-emerald-600">
+                    <CheckCircle className="mr-2 h-3.5 w-3.5" />
+                    Registrar
+                  </DropdownMenuItem>
+                </>
+              )}
+              {row.status === 'posted' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setCancelTarget(row) }} className="text-destructive focus:text-destructive">
+                    <XCircle className="mr-2 h-3.5 w-3.5" />
+                    Cancelar
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
+    }),
+  ]
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      {/* Header */}
+      <PageHeader
+        title="Salidas"
+        description="Registro de salidas del almacén"
+        actions={
+          <Button size="sm" onClick={() => navigate('/admin/salidas/nueva')}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Nueva salida
+          </Button>
+        }
+      />
+
+      {/* Filters — collapsible on mobile */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted md:hidden"
+        >
+          <SlidersHorizontal className="size-3.5" />
+          Filtros
+          {activeFilterCount > 0 && (
+            <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{activeFilterCount}</Badge>
+          )}
+        </button>
+        <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 ${filtersOpen ? 'mt-3' : 'hidden md:grid'}`}>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Tipo</Label>
+            <Select value={filterType} onValueChange={(v) => setFilterType(v ?? 'all')}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los tipos</SelectItem>
+                {EXIT_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>{MOVEMENT_TYPE_LABELS[t]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Almacén</Label>
+            <Select value={filterWh} onValueChange={(v) => setFilterWh(v ?? 'all')}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {warehouses.map(([id, label]) => (
+                  <SelectItem key={id} value={id}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Estado</Label>
+            <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? 'all')}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="draft">Borrador</SelectItem>
+                <SelectItem value="posted">Registrado</SelectItem>
+                <SelectItem value="cancelled">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Desde</Label>
+            <Input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="h-8 text-xs" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Hasta</Label>
+            <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="h-8 text-xs" />
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile cards */}
+      {!isLoading && movements.length === 0 ? null : (
+        <div className="flex flex-col gap-2 md:hidden">
+          {isLoading
+            ? Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <Skeleton className="h-3.5 w-28" />
+                      <Skeleton className="h-3 w-20" />
+                    </div>
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </div>
+                  <div className="mt-2 flex justify-between">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-3 w-14" />
+                  </div>
+                </div>
+              ))
+            : movements.map((m) => (
+                <div
+                  key={m.id}
+                  onClick={() => navigate(`/admin/salidas/${m.id}`)}
+                  className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-mono font-medium truncate">
+                        {m.document_number ?? <span className="text-muted-foreground">—</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {m.warehouse ? `${m.warehouse.code} – ${m.warehouse.name}` : '—'}
+                        {m.lines?.[0] && <> · <DestinationCell movement={m} /></>}
+                      </p>
+                    </div>
+                    <Badge variant={typeVariant(m.movement_type) as any} className="text-xs whitespace-nowrap shrink-0">
+                      {MOVEMENT_TYPE_LABELS[m.movement_type] ?? m.movement_type}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <StatusBadge status={m.status} />
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="font-mono font-medium text-foreground">
+                        {m.total_mxn != null ? `$${m.total_mxn.toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '—'}
+                      </span>
+                      <span className="text-muted-foreground">{formatFechaCorta(m.created_at)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+        </div>
+      )}
+
+      {/* Table (desktop) */}
+      {!isLoading && movements.length === 0 ? (
+        <EmptyState
+          title="Sin salidas"
+          description="Aún no hay salidas registradas con los filtros seleccionados."
+          action={{
+            label: 'Nueva salida',
+            onClick: () => navigate('/admin/salidas/nueva'),
+          }}
+        />
+      ) : (
+        <div className="hidden md:block">
+          <DataTable
+            columns={columns as any}
+            data={movements}
+            isLoading={isLoading}
+            emptyMessage="Sin salidas para los filtros seleccionados."
+            onRowClick={(row) => navigate(`/admin/salidas/${row.id}`)}
+          />
+        </div>
+      )}
+
+      {/* Cancel confirmation */}
+      <AlertDialog open={!!cancelTarget} onOpenChange={(o) => !o && setCancelTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar esta salida?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción revertirá el movimiento de inventario asociado. No se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {cancelling ? 'Cancelando…' : 'Sí, cancelar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
 }
 
 export default SalidasPage
