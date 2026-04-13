@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Fuel, ChevronRight, Check, Info, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
@@ -27,6 +29,8 @@ interface FormState {
   operatorId: string
   litros: string
   horometroActual: string
+  kmActual: string
+  costoPorLitro: string
   notas: string
 }
 
@@ -201,15 +205,23 @@ export function CargaDieselPage() {
     operatorId: '',
     litros: '',
     horometroActual: '',
+    kmActual: '',
+    costoPorLitro: '',
     notas: '',
   })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [submittedAt, setSubmittedAt] = useState<Date | null>(null)
   const [summary, setSummary] = useState<{
     litros: number
     tractorName: string
+    tractorCode: string
+    operatorName: string
     rendimiento: number | null
     costo: number
+    costoPorLitro: number
+    horometroAntes: number | null
+    horometroDespues: number | null
   } | null>(null)
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -244,7 +256,34 @@ export function CargaDieselPage() {
     [equipment, form.equipmentId]
   )
 
+  const selectedEmployee = useMemo(
+    () => employees.find((e) => e.id === form.operatorId) ?? null,
+    [employees, form.operatorId]
+  )
+
   const lastHorometro = lastLine?.equipment_hours_after ?? selectedEquipment?.current_hours
+
+  // Default cost from diesel item avg_cost when equipment changes or item loads
+  const defaultCostoPorLitro = useMemo(() => {
+    const item = dieselItem as (Item & { avg_cost_native?: number; avg_cost_mxn?: number }) | null | undefined
+    return item?.avg_cost_native ?? item?.avg_cost_mxn ?? 0
+  }, [dieselItem])
+
+  // Effective cost: custom input or fallback to default
+  const effectiveCostoPorLitro = useMemo(() => {
+    if (form.costoPorLitro !== '') {
+      const v = parseFloat(form.costoPorLitro)
+      return isNaN(v) ? defaultCostoPorLitro : v
+    }
+    return defaultCostoPorLitro
+  }, [form.costoPorLitro, defaultCostoPorLitro])
+
+  // Total cost preview
+  const totalCostoPreview = useMemo(() => {
+    const litros = parseFloat(form.litros)
+    if (!litros || litros <= 0) return null
+    return litros * effectiveCostoPorLitro
+  }, [form.litros, effectiveCostoPorLitro])
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -257,6 +296,7 @@ export function CargaDieselPage() {
 
     const litros = parseFloat(form.litros)
     const horometroActual = form.horometroActual ? parseFloat(form.horometroActual) : null
+    const kmActual = form.kmActual ? parseFloat(form.kmActual) : null
 
     if (!form.equipmentId) {
       toast.error('Selecciona un tractor')
@@ -282,6 +322,8 @@ export function CargaDieselPage() {
     setSubmitting(true)
 
     try {
+      const now = new Date()
+
       // 1. Create stock_movement
       const { data: movement, error: movErr } = await db
         .from('stock_movements')
@@ -290,7 +332,7 @@ export function CargaDieselPage() {
           season_id: activeSeason.id,
           movement_type: 'exit_consumption',
           status: 'posted',
-          posted_at: new Date().toISOString(),
+          posted_at: now.toISOString(),
           notes: form.notas || null,
         })
         .select()
@@ -298,8 +340,8 @@ export function CargaDieselPage() {
 
       if (movErr) throw movErr
 
-      // 2. Determine unit cost
-      const unitCostMxn = dieselItem ? (dieselItem as Item & { avg_cost_mxn?: number }).avg_cost_mxn ?? 0 : 0
+      // 2. Determine unit cost (override if provided)
+      const unitCostMxn = effectiveCostoPorLitro
       const lineTotalMxn = unitCostMxn * litros
 
       // 3. Create stock_movement_line
@@ -318,27 +360,55 @@ export function CargaDieselPage() {
         diesel_liters: litros,
         equipment_hours_before: lastHorometro ?? null,
         equipment_hours_after: horometroActual,
-        notes: form.notas || null,
+        equipment_km_before: selectedEquipment?.current_km ?? null,
+        equipment_km_after: kmActual,
+        cost_center_notes: form.notas || null,
       })
 
       if (lineErr) throw lineErr
 
-      // 4. Compute rendimiento for summary
+      // 4. Update equipment current_hours and current_km
+      if (horometroActual != null) {
+        await db
+          .from('equipment')
+          .update({ current_hours: horometroActual })
+          .eq('id', form.equipmentId)
+      }
+      if (kmActual != null) {
+        await db
+          .from('equipment')
+          .update({ current_km: kmActual })
+          .eq('id', form.equipmentId)
+      }
+
+      // 5. Compute rendimiento for summary
       let rendimiento: number | null = null
       if (lastHorometro != null && horometroActual != null) {
         const delta = horometroActual - lastHorometro
         if (delta > 0) rendimiento = litros / delta
       }
 
-      const tractorName = selectedEquipment
-        ? `${selectedEquipment.name} (${selectedEquipment.code})`
-        : 'Tractor'
+      const tractorName = selectedEquipment?.name ?? 'Tractor'
+      const tractorCode = selectedEquipment?.code ?? ''
+      const operatorName = selectedEmployee?.full_name ?? '—'
 
-      setSummary({ litros, tractorName, rendimiento, costo: lineTotalMxn })
+      setSummary({
+        litros,
+        tractorName,
+        tractorCode,
+        operatorName,
+        rendimiento,
+        costo: lineTotalMxn,
+        costoPorLitro: unitCostMxn,
+        horometroAntes: lastHorometro ?? null,
+        horometroDespues: horometroActual,
+      })
+      setSubmittedAt(now)
       setSubmitted(true)
 
       queryClient.invalidateQueries({ queryKey: ['diesel-lines'] })
       queryClient.invalidateQueries({ queryKey: ['diesel-last-line'] })
+      queryClient.invalidateQueries({ queryKey: ['equipment'] })
 
       toast.success(`Carga registrada: ${formatQuantity(litros, 1)}L para ${tractorName}`)
     } catch (err) {
@@ -350,9 +420,10 @@ export function CargaDieselPage() {
   }
 
   function handleNuevaCarga() {
-    setForm({ equipmentId: '', operatorId: '', litros: '', horometroActual: '', notas: '' })
+    setForm({ equipmentId: '', operatorId: '', litros: '', horometroActual: '', kmActual: '', costoPorLitro: '', notas: '' })
     setSummary(null)
     setSubmitted(false)
+    setSubmittedAt(null)
   }
 
   // ── Success screen ────────────────────────────────────────────────────────
@@ -375,9 +446,16 @@ export function CargaDieselPage() {
             <div className="flex size-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">
               <Check className="size-8" />
             </div>
-            <div className="flex flex-col gap-1">
-              <p className="text-lg font-semibold">{summary.tractorName}</p>
-              <p className="text-4xl font-bold tabular-nums text-primary">
+
+            <div className="flex flex-col items-center gap-1">
+              <div className="flex items-center gap-2">
+                <p className="text-lg font-semibold">{summary.tractorName}</p>
+                <Badge variant="secondary" className="font-mono text-xs">
+                  {summary.tractorCode}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">{summary.operatorName}</p>
+              <p className="text-4xl font-bold tabular-nums text-primary mt-1">
                 {formatQuantity(summary.litros, 1)} L
               </p>
             </div>
@@ -386,11 +464,18 @@ export function CargaDieselPage() {
 
             <div className="grid grid-cols-2 gap-4 w-full text-left">
               <div>
-                <p className="text-xs text-muted-foreground">Costo estimado</p>
+                <p className="text-xs text-muted-foreground">Costo por litro</p>
                 <p className="text-base font-semibold font-mono">
+                  {formatMoney(summary.costoPorLitro, 'MXN')}/L
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total cargado</p>
+                <p className="text-base font-semibold font-mono text-primary">
                   {formatMoney(summary.costo, 'MXN')}
                 </p>
               </div>
+
               {summary.rendimiento != null && (
                 <div>
                   <p className="text-xs text-muted-foreground">Rendimiento</p>
@@ -399,19 +484,26 @@ export function CargaDieselPage() {
                   </p>
                 </div>
               )}
-              {lastHorometro != null && (
+
+              {(summary.horometroAntes != null || summary.horometroDespues != null) && (
                 <div>
-                  <p className="text-xs text-muted-foreground">Horóm. anterior</p>
+                  <p className="text-xs text-muted-foreground">Horómetro</p>
                   <p className="text-base font-semibold font-mono">
-                    {formatQuantity(lastHorometro, 1)} h
+                    {summary.horometroAntes != null
+                      ? `${formatQuantity(summary.horometroAntes, 1)} → `
+                      : ''}
+                    {summary.horometroDespues != null
+                      ? `${formatQuantity(summary.horometroDespues, 1)} h`
+                      : '—'}
                   </p>
                 </div>
               )}
-              {form.horometroActual && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Horóm. actual</p>
-                  <p className="text-base font-semibold font-mono">
-                    {formatQuantity(parseFloat(form.horometroActual), 1)} h
+
+              {submittedAt && (
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Fecha y hora</p>
+                  <p className="text-sm font-medium">
+                    {format(submittedAt, "d 'de' MMMM yyyy, HH:mm", { locale: es })}
                   </p>
                 </div>
               )}
@@ -531,11 +623,64 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 4. Horómetro ─────────────────────────────────────────────────── */}
+        {/* ── 4. Costo por litro ───────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
               4
+            </div>
+            <Label htmlFor="costo-litro" className="text-base font-semibold">
+              Costo por litro (MXN)
+            </Label>
+          </div>
+
+          {defaultCostoPorLitro > 0 && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 border px-3 py-2 text-sm text-muted-foreground">
+              <Info className="size-3.5 shrink-0" />
+              <span>
+                Costo promedio del artículo:{' '}
+                <span className="font-mono font-medium text-foreground">
+                  {formatMoney(defaultCostoPorLitro, 'MXN')}/L
+                </span>
+              </span>
+            </div>
+          )}
+
+          <Input
+            id="costo-litro"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            placeholder={
+              defaultCostoPorLitro > 0
+                ? `Ej. ${formatQuantity(defaultCostoPorLitro, 2)}`
+                : 'Ej. 24.50'
+            }
+            value={form.costoPorLitro}
+            onChange={(e) => set('costoPorLitro', e.target.value)}
+            disabled={submitting}
+            className="h-12 text-lg font-mono"
+          />
+
+          {/* Total cost preview */}
+          {totalCostoPreview != null && (
+            <div className="flex items-center justify-between rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
+              <span className="text-sm text-muted-foreground">Total estimado</span>
+              <span className="font-mono font-semibold text-primary">
+                {formatMoney(totalCostoPreview, 'MXN')}
+              </span>
+            </div>
+          )}
+        </section>
+
+        <Separator />
+
+        {/* ── 5. Horómetro ─────────────────────────────────────────────────── */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+              5
             </div>
             <Label htmlFor="horometro" className="text-base font-semibold">
               Horómetro actual
@@ -590,15 +735,54 @@ export function CargaDieselPage() {
               </div>
             )
           })()}
+
+          {/* ── Kilómetros (opcional) ───────────────────────────────────────── */}
+          <div className="flex flex-col gap-2 mt-1">
+            <Label htmlFor="km-actual" className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              Kilómetros actuales
+              <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                Opcional
+              </Badge>
+            </Label>
+
+            {selectedEquipment?.current_km != null && (
+              <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 border px-3 py-2 text-sm text-muted-foreground">
+                <Info className="size-3.5 shrink-0" />
+                <span>
+                  Odómetro anterior:{' '}
+                  <span className="font-mono font-medium text-foreground">
+                    {formatQuantity(selectedEquipment.current_km, 0)} km
+                  </span>
+                </span>
+              </div>
+            )}
+
+            <Input
+              id="km-actual"
+              type="number"
+              inputMode="decimal"
+              min={selectedEquipment?.current_km ?? 0}
+              step="1"
+              placeholder={
+                selectedEquipment?.current_km != null
+                  ? `Mayor a ${formatQuantity(selectedEquipment.current_km, 0)}`
+                  : 'Ej. 45230'
+              }
+              value={form.kmActual}
+              onChange={(e) => set('kmActual', e.target.value)}
+              disabled={submitting}
+              className="h-10 font-mono"
+            />
+          </div>
         </section>
 
         <Separator />
 
-        {/* ── 5. Notas ─────────────────────────────────────────────────────── */}
+        {/* ── 6. Notas ─────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs font-bold">
-              5
+              6
             </div>
             <Label htmlFor="notas" className="text-base font-semibold text-muted-foreground">
               Notas / Folio de ticket{' '}
@@ -611,7 +795,7 @@ export function CargaDieselPage() {
           <textarea
             id="notas"
             rows={3}
-            placeholder="Folio de ticket, observaciones, km de odómetro…"
+            placeholder="Folio de ticket, observaciones…"
             value={form.notas}
             onChange={(e) => set('notas', e.target.value)}
             disabled={submitting}

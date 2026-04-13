@@ -24,6 +24,7 @@ const SalidasPage = lazy(() => import('@/pages/admin/salidas/salidas-page'))
 const NuevaSalidaPage = lazy(() => import('@/pages/admin/salidas/nueva-salida-page'))
 const DieselPage = lazy(() => import('@/pages/admin/diesel/diesel-page'))
 const CargaDieselPage = lazy(() => import('@/pages/admin/diesel/carga-diesel-page'))
+const DieselTractorPage = lazy(() => import('@/pages/admin/diesel/diesel-tractor-page'))
 const LotesPage = lazy(() => import('@/pages/admin/lotes/lotes-page'))
 const LoteDetailPage = lazy(() => import('@/pages/admin/lotes/lote-detail-page'))
 const EquiposPage = lazy(() => import('@/pages/admin/equipos/equipos-page'))
@@ -101,6 +102,7 @@ export default function App() {
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
+          <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
           <Route path="lotes" element={<LotesPage />} />
           <Route path="lotes/:id" element={<LoteDetailPage />} />
           <Route path="equipos" element={<EquiposPage />} />
@@ -133,6 +135,7 @@ export default function App() {
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
+          <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
           <Route path="lotes" element={<LotesPage />} />
           <Route path="lotes/:id" element={<LoteDetailPage />} />
           <Route path="equipos" element={<EquiposPage />} />
@@ -163,6 +166,7 @@ export default function App() {
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
+          <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
         </Route>
 
         {/* Supervisor routes */}
