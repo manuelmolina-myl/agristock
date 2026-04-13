@@ -21,6 +21,13 @@ const EntradasPage = lazy(() => import('@/pages/admin/entradas/entradas-page'))
 const NuevaEntradaPage = lazy(() => import('@/pages/admin/entradas/nueva-entrada-page'))
 const SalidasPage = lazy(() => import('@/pages/admin/salidas/salidas-page'))
 const NuevaSalidaPage = lazy(() => import('@/pages/admin/salidas/nueva-salida-page'))
+const DieselPage = lazy(() => import('@/pages/admin/diesel/diesel-page'))
+const CargaDieselPage = lazy(() => import('@/pages/admin/diesel/carga-diesel-page'))
+const LotesPage = lazy(() => import('@/pages/admin/lotes/lotes-page'))
+const LoteDetailPage = lazy(() => import('@/pages/admin/lotes/lote-detail-page'))
+const EquiposPage = lazy(() => import('@/pages/admin/equipos/equipos-page'))
+const EquipoDetailPage = lazy(() => import('@/pages/admin/equipos/equipo-detail-page'))
+const AuditoriaPage = lazy(() => import('@/pages/admin/auditoria/auditoria-page'))
 
 // Gerente
 const GerenteDashboard = lazy(() => import('@/pages/gerente/dashboard-page'))
@@ -44,27 +51,20 @@ function LoadingFallback() {
 
 function RoleRedirect() {
   const { profile, isLoading } = useAuth()
-
   if (isLoading) return <LoadingFallback />
-
   if (!profile) return <Navigate to="/login" replace />
-
   const route = ROLE_ROUTES[profile.role as UserRole]
   return <Navigate to={route} replace />
 }
 
 function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRole[]; children: React.ReactNode }) {
   const { user, profile, isLoading } = useAuth()
-
   if (isLoading) return <LoadingFallback />
-
   if (!user || !profile) return <Navigate to="/login" replace />
-
   if (!allowedRoles.includes(profile.role as UserRole)) {
     const route = ROLE_ROUTES[profile.role as UserRole]
     return <Navigate to={route} replace />
   }
-
   return <>{children}</>
 }
 
@@ -74,8 +74,6 @@ export default function App() {
       <Routes>
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
-
-        {/* Redirect root to role dashboard */}
         <Route path="/" element={<RoleRedirect />} />
 
         {/* Admin routes (Super Admin) */}
@@ -96,6 +94,13 @@ export default function App() {
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="diesel" element={<DieselPage />} />
+          <Route path="diesel/cargar" element={<CargaDieselPage />} />
+          <Route path="lotes" element={<LotesPage />} />
+          <Route path="lotes/:id" element={<LoteDetailPage />} />
+          <Route path="equipos" element={<EquiposPage />} />
+          <Route path="equipos/:id" element={<EquipoDetailPage />} />
+          <Route path="auditoria" element={<AuditoriaPage />} />
           <Route path="configuracion" element={<CatalogosPage />} />
           <Route path="tipo-cambio" element={<FxRatesPage />} />
         </Route>
@@ -118,6 +123,13 @@ export default function App() {
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="diesel" element={<DieselPage />} />
+          <Route path="diesel/cargar" element={<CargaDieselPage />} />
+          <Route path="lotes" element={<LotesPage />} />
+          <Route path="lotes/:id" element={<LoteDetailPage />} />
+          <Route path="equipos" element={<EquiposPage />} />
+          <Route path="equipos/:id" element={<EquipoDetailPage />} />
+          <Route path="auditoria" element={<AuditoriaPage />} />
           <Route path="configuracion" element={<CatalogosPage />} />
           <Route path="tipo-cambio" element={<FxRatesPage />} />
         </Route>
@@ -138,6 +150,8 @@ export default function App() {
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="diesel" element={<DieselPage />} />
+          <Route path="diesel/cargar" element={<CargaDieselPage />} />
         </Route>
 
         {/* Supervisor routes */}
