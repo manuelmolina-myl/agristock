@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
@@ -24,24 +24,18 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    session: null,
-    profile: null,
-    organization: null,
-    activeSeason: null,
-    isLoading: true,
-  })
-
-  const fetchUserData = useCallback(async (userId: string) => {
-    const { data: profile } = await db
+async function fetchUserData(userId: string) {
+  try {
+    const { data: profile, error: profileErr } = await db
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single()
 
-    if (!profile) return null
+    if (profileErr || !profile) {
+      console.error('Error fetching profile:', profileErr?.message)
+      return null
+    }
 
     const { data: organization } = await db
       .from('organizations')
@@ -54,44 +48,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select('*')
       .eq('organization_id', (profile as Profile).organization_id)
       .eq('status', 'active')
-      .single()
+      .maybeSingle()
 
     return {
       profile: profile as Profile,
       organization: (organization as Organization) ?? null,
       season: (season as Season) ?? null,
     }
-  }, [])
+  } catch (e) {
+    console.error('fetchUserData error:', e)
+    return null
+  }
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    session: null,
+    profile: null,
+    organization: null,
+    activeSeason: null,
+    isLoading: true,
+  })
+  // Skip onAuthStateChange handler when signIn is managing state directly
+  const signingIn = useRef(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const userData = await fetchUserData(session.user.id)
-        setState({
-          user: session.user,
-          session,
-          profile: userData?.profile ?? null,
-          organization: userData?.organization ?? null,
-          activeSeason: userData?.season ?? null,
-          isLoading: false,
-        })
-      } else {
-        setState(prev => ({ ...prev, isLoading: false }))
-      }
-    })
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const userData = await fetchUserData(session.user.id)
-          setState({
-            user: session.user,
-            session,
-            profile: userData?.profile ?? null,
-            organization: userData?.organization ?? null,
-            activeSeason: userData?.season ?? null,
-            isLoading: false,
-          })
+        // Skip if signIn() is handling this
+        if (signingIn.current) return
+
+        if (event === 'INITIAL_SESSION') {
+          if (session?.user) {
+            const userData = await fetchUserData(session.user.id)
+            setState({
+              user: session.user,
+              session,
+              profile: userData?.profile ?? null,
+              organization: userData?.organization ?? null,
+              activeSeason: userData?.season ?? null,
+              isLoading: false,
+            })
+          } else {
+            setState(prev => ({ ...prev, isLoading: false }))
+          }
         } else if (event === 'SIGNED_OUT') {
           setState({
             user: null,
@@ -101,31 +102,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             activeSeason: null,
             isLoading: false,
           })
+        } else if (event === 'TOKEN_REFRESHED' && session) {
+          setState(prev => ({ ...prev, session, user: session.user }))
         }
+        // Ignore SIGNED_IN — handled by signIn() directly
       }
     )
 
     return () => subscription.unsubscribe()
-  }, [fetchUserData])
+  }, [])
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
+    signingIn.current = true
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
 
-    const userData = await fetchUserData(data.user.id)
-    if (!userData?.profile) throw new Error('Perfil no encontrado')
+      const userData = await fetchUserData(data.user.id)
+      if (!userData?.profile) throw new Error('Perfil no encontrado')
 
-    setState({
-      user: data.user,
-      session: data.session,
-      profile: userData.profile,
-      organization: userData.organization,
-      activeSeason: userData.season,
-      isLoading: false,
-    })
+      setState({
+        user: data.user,
+        session: data.session,
+        profile: userData.profile,
+        organization: userData.organization,
+        activeSeason: userData.season,
+        isLoading: false,
+      })
 
-    return { role: userData.profile.role }
-  }, [fetchUserData])
+      return { role: userData.profile.role }
+    } finally {
+      // Small delay to let any pending SIGNED_IN events pass
+      setTimeout(() => { signingIn.current = false }, 1000)
+    }
+  }, [])
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
