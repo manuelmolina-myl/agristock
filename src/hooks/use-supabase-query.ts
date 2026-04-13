@@ -230,6 +230,8 @@ export function useItemStock(filters?: Record<string, unknown>) {
   const { activeSeason } = useAuth()
   return useList<ItemStock & { item?: Item & { category?: Category; unit?: Unit }; warehouse?: { name: string; code: string } }>('item_stock', {
     select: '*, item:items(*, category:categories(*), unit:units(*)), warehouse:warehouses(*)',
+    orderBy: 'quantity',
+    ascending: false,
     filters: { season_id: activeSeason?.id, ...filters },
     enabled: !!activeSeason?.id,
   })
