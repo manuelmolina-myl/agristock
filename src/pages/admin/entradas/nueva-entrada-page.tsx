@@ -440,8 +440,96 @@ export default function NuevaEntradaPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            {/* Lines table */}
-            <div className="rounded-md border border-border overflow-hidden">
+            {/* ── Mobile card view (< md) ─────────────────────────────────── */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {fields.map((field, idx) => {
+                const lineItem = items.find((it) => it.id === watchedLines[idx]?.item_id)
+                const currency = lineItem?.native_currency ?? 'MXN'
+                const total    = lineTotals[idx]
+
+                return (
+                  <div key={field.id} className="rounded-xl border border-border bg-card p-3 space-y-3">
+                    {/* Artículo — full width */}
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">Artículo</Label>
+                      <Controller
+                        control={form.control}
+                        name={`lines.${idx}.item_id`}
+                        render={({ field: f }) => (
+                          <SearchableSelect
+                            value={f.value}
+                            onValueChange={f.onChange}
+                            options={items.map((it) => ({ value: it.id, label: it.name, sublabel: it.sku }))}
+                            placeholder="Seleccionar artículo"
+                            searchPlaceholder="Buscar artículo…"
+                            emptyMessage="Sin artículos."
+                            triggerClassName="h-9 text-sm"
+                          />
+                        )}
+                      />
+                      <FieldError message={form.formState.errors.lines?.[idx]?.item_id?.message} />
+                    </div>
+
+                    {/* Cantidad + Costo unitario side by side */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs text-muted-foreground">Cantidad</Label>
+                        <Input
+                          type="number"
+                          step="0.001"
+                          min="0.001"
+                          className="h-9 text-sm font-mono"
+                          {...form.register(`lines.${idx}.quantity`)}
+                        />
+                        <FieldError message={form.formState.errors.lines?.[idx]?.quantity?.message} />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs text-muted-foreground">Costo unitario</Label>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            className="h-9 text-sm font-mono min-w-0"
+                            {...form.register(`lines.${idx}.unit_cost_native`)}
+                          />
+                          <CurrencyBadge currency={currency} size="sm" />
+                        </div>
+                        <FieldError message={form.formState.errors.lines?.[idx]?.unit_cost_native?.message} />
+                      </div>
+                    </div>
+
+                    {/* Total + botón eliminar */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs text-muted-foreground">Total: </span>
+                        <span className="font-mono text-sm font-medium">
+                          {CURRENCY_SYMBOLS[currency]}{formatQuantity(total?.totalNative ?? 0, 2)}
+                        </span>
+                        {currency !== 'MXN' && (
+                          <span className="font-mono text-xs text-muted-foreground ml-1">
+                            ({formatMoney(total?.totalMxn ?? 0, 'MXN')})
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-muted-foreground hover:text-destructive"
+                        disabled={fields.length === 1}
+                        onClick={() => remove(idx)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* ── Desktop table view (md+) ────────────────────────────────── */}
+            <div className="hidden md:block rounded-md border border-border overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30 hover:bg-muted/30">
@@ -541,7 +629,7 @@ export default function NuevaEntradaPage() {
               </Table>
             </div>
 
-            {/* Add line button */}
+            {/* Agregar partida */}
             <Button
               type="button"
               variant="outline"

@@ -479,42 +479,42 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
                 overStock && 'border-orange-400 dark:border-orange-500'
               )}
             >
-              {/* Row 1: item + qty + cost */}
-              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-start">
-                {/* Item selector */}
-                <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Ítem</Label>
-                  <Controller
-                    name={`lines.${index}.item_id`}
-                    control={control}
-                    render={({ field: f }) => (
-                      <SearchableSelect
-                        value={f.value}
-                        onValueChange={(v) => {
-                          f.onChange(v)
-                          if (v) handleItemChange(index, v)
-                        }}
-                        options={items.map((it) => ({
-                          value: it.id,
-                          label: it.is_diesel ? `⛽ ${it.name}` : it.name,
-                          sublabel: it.sku,
-                        }))}
-                        placeholder="Seleccionar ítem"
-                        searchPlaceholder="Buscar ítem…"
-                        emptyMessage="Sin artículos."
-                        triggerClassName="h-8 text-sm"
-                      />
-                    )}
-                  />
-                  {errors.lines?.[index]?.item_id && (
-                    <p className="text-xs text-destructive">
-                      {errors.lines[index]?.item_id?.message}
-                    </p>
+              {/* Row 1: ítem — full width */}
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs">Ítem</Label>
+                <Controller
+                  name={`lines.${index}.item_id`}
+                  control={control}
+                  render={({ field: f }) => (
+                    <SearchableSelect
+                      value={f.value}
+                      onValueChange={(v) => {
+                        f.onChange(v)
+                        if (v) handleItemChange(index, v)
+                      }}
+                      options={items.map((it) => ({
+                        value: it.id,
+                        label: it.is_diesel ? `⛽ ${it.name}` : it.name,
+                        sublabel: it.sku,
+                      }))}
+                      placeholder="Seleccionar ítem"
+                      searchPlaceholder="Buscar ítem…"
+                      emptyMessage="Sin artículos."
+                      triggerClassName="h-8 text-sm"
+                    />
                   )}
-                </div>
+                />
+                {errors.lines?.[index]?.item_id && (
+                  <p className="text-xs text-destructive">
+                    {errors.lines[index]?.item_id?.message}
+                  </p>
+                )}
+              </div>
 
+              {/* Row 2: cantidad + costo + moneda */}
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-[1fr_1fr_auto]">
                 {/* Quantity */}
-                <div className="flex flex-col gap-1 w-28">
+                <div className="flex flex-col gap-1">
                   <Label className="text-xs">
                     Cantidad
                     {available != null && (
@@ -538,7 +538,7 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
                 </div>
 
                 {/* Cost (read-only) */}
-                <div className="flex flex-col gap-1 w-32">
+                <div className="flex flex-col gap-1">
                   <Label className="text-xs">Costo unit.</Label>
                   <Input
                     type="number"
@@ -550,7 +550,7 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
                 </div>
 
                 {/* Currency (read-only) */}
-                <div className="flex flex-col gap-1 w-20">
+                <div className="flex flex-col gap-1 col-span-2 md:col-span-1 md:w-20">
                   <Label className="text-xs">Moneda</Label>
                   <Input
                     className="h-8 text-sm bg-muted/40 uppercase"
