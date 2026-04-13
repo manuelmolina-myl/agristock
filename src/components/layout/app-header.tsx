@@ -196,7 +196,7 @@ function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut} variant="destructive">
+        <DropdownMenuItem onSelect={handleSignOut} variant="destructive">
           <LogOut />
           <span>Cerrar sesión</span>
         </DropdownMenuItem>
