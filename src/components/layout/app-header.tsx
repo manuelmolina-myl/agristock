@@ -16,7 +16,6 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -196,10 +195,14 @@ function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={handleSignOut} variant="destructive">
-          <LogOut />
-          <span>Cerrar sesión</span>
-        </DropdownMenuItem>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-destructive outline-none hover:bg-destructive/10 focus:bg-destructive/10"
+        >
+          <LogOut className="size-4" />
+          Cerrar sesión
+        </button>
       </DropdownMenuContent>
     </DropdownMenu>
   )
