@@ -13,6 +13,7 @@ import {
   ClipboardList,
   Warehouse,
   DollarSign,
+  Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -73,6 +74,7 @@ const ADMIN_NAV: NavSection[] = [
     items: [
       { label: 'Tipo de cambio', to: '/tipo-cambio',   icon: DollarSign },
       { label: 'Auditoría',      to: '/auditoria',     icon: ShieldCheck },
+      { label: 'Cierre temporada', to: '/cierre-temporada', icon: Lock },
       { label: 'Configuración',  to: '/configuracion', icon: Settings },
     ],
   },

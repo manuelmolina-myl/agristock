@@ -28,6 +28,9 @@ const LoteDetailPage = lazy(() => import('@/pages/admin/lotes/lote-detail-page')
 const EquiposPage = lazy(() => import('@/pages/admin/equipos/equipos-page'))
 const EquipoDetailPage = lazy(() => import('@/pages/admin/equipos/equipo-detail-page'))
 const AuditoriaPage = lazy(() => import('@/pages/admin/auditoria/auditoria-page'))
+const ReportesPage = lazy(() => import('@/pages/admin/reportes/reportes-page'))
+const ReportViewerPage = lazy(() => import('@/pages/admin/reportes/report-viewer-page'))
+const CierreTemporadaPage = lazy(() => import('@/pages/admin/cierre-temporada-page'))
 
 // Gerente
 const GerenteDashboard = lazy(() => import('@/pages/gerente/dashboard-page'))
@@ -100,9 +103,12 @@ export default function App() {
           <Route path="lotes/:id" element={<LoteDetailPage />} />
           <Route path="equipos" element={<EquiposPage />} />
           <Route path="equipos/:id" element={<EquipoDetailPage />} />
+          <Route path="reportes" element={<ReportesPage />} />
+          <Route path="reportes/:slug" element={<ReportViewerPage />} />
           <Route path="auditoria" element={<AuditoriaPage />} />
           <Route path="configuracion" element={<CatalogosPage />} />
           <Route path="tipo-cambio" element={<FxRatesPage />} />
+          <Route path="cierre-temporada" element={<CierreTemporadaPage />} />
         </Route>
 
         {/* Gerente routes */}
@@ -129,9 +135,12 @@ export default function App() {
           <Route path="lotes/:id" element={<LoteDetailPage />} />
           <Route path="equipos" element={<EquiposPage />} />
           <Route path="equipos/:id" element={<EquipoDetailPage />} />
+          <Route path="reportes" element={<ReportesPage />} />
+          <Route path="reportes/:slug" element={<ReportViewerPage />} />
           <Route path="auditoria" element={<AuditoriaPage />} />
           <Route path="configuracion" element={<CatalogosPage />} />
           <Route path="tipo-cambio" element={<FxRatesPage />} />
+          <Route path="cierre-temporada" element={<CierreTemporadaPage />} />
         </Route>
 
         {/* Almacenista routes */}
