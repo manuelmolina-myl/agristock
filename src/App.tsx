@@ -7,7 +7,8 @@ import type { UserRole } from '@/lib/database.types'
 // Layout
 const AppLayout = lazy(() => import('@/components/layout/app-layout'))
 
-// Auth
+// Public
+const LandingPage = lazy(() => import('@/pages/landing-page'))
 const LoginPage = lazy(() => import('@/pages/auth/login-page'))
 
 // Admin (Super Admin)
@@ -52,7 +53,7 @@ function LoadingFallback() {
   )
 }
 
-function RoleRedirect() {
+function DashboardRedirect() {
   const { profile, isLoading } = useAuth()
   if (isLoading) return <LoadingFallback />
   if (!profile) return <Navigate to="/login" replace />
@@ -76,8 +77,9 @@ export default function App() {
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
         {/* Public */}
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<RoleRedirect />} />
+        <Route path="/dashboard" element={<DashboardRedirect />} />
 
         {/* Admin routes (Super Admin) */}
         <Route
