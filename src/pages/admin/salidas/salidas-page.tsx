@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import {
   Plus,
   MoreHorizontal,
@@ -148,6 +149,7 @@ const colHelper = createColumnHelper<ExitMovement>()
 
 export function SalidasPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const { activeSeason } = useAuth()
 
   // Filters
@@ -312,7 +314,7 @@ export function SalidasPage() {
               <MoreHorizontal className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/admin/salidas/${row.id}`) }}>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`${basePath}/salidas/${row.id}`) }}>
                 <Eye className="mr-2 h-3.5 w-3.5" />
                 Ver detalle
               </DropdownMenuItem>
@@ -350,7 +352,7 @@ export function SalidasPage() {
         title="Salidas"
         description="Registro de salidas del almacén"
         actions={
-          <Button size="sm" onClick={() => navigate('/admin/salidas/nueva')}>
+          <Button size="sm" onClick={() => navigate(`${basePath}/salidas/nueva`)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             Nueva salida
           </Button>
@@ -440,7 +442,7 @@ export function SalidasPage() {
             : movements.map((m) => (
                 <div
                   key={m.id}
-                  onClick={() => navigate(`/admin/salidas/${m.id}`)}
+                  onClick={() => navigate(`${basePath}/salidas/${m.id}`)}
                   className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -481,7 +483,7 @@ export function SalidasPage() {
           description="Aún no hay salidas registradas con los filtros seleccionados."
           action={{
             label: 'Nueva salida',
-            onClick: () => navigate('/admin/salidas/nueva'),
+            onClick: () => navigate(`${basePath}/salidas/nueva`),
           }}
         />
       ) : (
@@ -491,7 +493,7 @@ export function SalidasPage() {
             data={movements}
             isLoading={isLoading}
             emptyMessage="Sin salidas para los filtros seleccionados."
-            onRowClick={(row) => navigate(`/admin/salidas/${row.id}`)}
+            onRowClick={(row) => navigate(`${basePath}/salidas/${row.id}`)}
           />
         </div>
       )}

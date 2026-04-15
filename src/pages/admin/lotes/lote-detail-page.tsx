@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useBasePath } from '@/hooks/use-base-path'
 import { ArrowLeft, Layers, MapPin, Leaf, DollarSign, BarChart3, Calendar } from 'lucide-react'
 
 import { useRecord } from '@/hooks/use-supabase-query'
@@ -181,6 +182,7 @@ function ConsumosTab({ lotId }: { lotId: string }) {
 export function LoteDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const basePath = useBasePath()
 
   const { data: lot, isLoading } = useRecord<CropLot>('crops_lots', id)
 
@@ -209,7 +211,7 @@ export function LoteDetailPage() {
           variant="ghost"
           size="sm"
           className="w-fit -ml-1"
-          onClick={() => navigate('/admin/lotes')}
+          onClick={() => navigate(`${basePath}/lotes`)}
         >
           <ArrowLeft className="mr-1.5 size-3.5" />
           Lotes
@@ -218,7 +220,7 @@ export function LoteDetailPage() {
           icon={<Layers className="size-5" />}
           title="Lote no encontrado"
           description="El lote que buscas no existe o fue eliminado."
-          action={{ label: 'Volver a Lotes', onClick: () => navigate('/admin/lotes') }}
+          action={{ label: 'Volver a Lotes', onClick: () => navigate(`${basePath}/lotes`) }}
         />
       </div>
     )
@@ -234,7 +236,7 @@ export function LoteDetailPage() {
           variant="ghost"
           size="sm"
           className="w-fit -ml-1 text-muted-foreground"
-          onClick={() => navigate('/admin/lotes')}
+          onClick={() => navigate(`${basePath}/lotes`)}
         >
           <ArrowLeft className="mr-1.5 size-3.5" />
           Lotes

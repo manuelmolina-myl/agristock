@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -93,6 +94,7 @@ function FormSkeleton() {
 export function ItemFormPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const isEditing = !!id
 
   const { data: item, isLoading: itemLoading } = useItem(id)
@@ -166,11 +168,11 @@ export function ItemFormPage() {
       if (isEditing) {
         await updateItem.mutateAsync({ id: id!, values: payload })
         toast.success('Ítem actualizado')
-        navigate(`/admin/inventario/${id}`)
+        navigate(`${basePath}/inventario/${id}`)
       } else {
         const created = await createItem.mutateAsync(payload)
         toast.success('Ítem creado')
-        navigate(`/admin/inventario/${(created as Item).id}`)
+        navigate(`${basePath}/inventario/${(created as Item).id}`)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error desconocido'
@@ -201,7 +203,7 @@ export function ItemFormPage() {
             size="icon"
             className="size-8"
             onClick={() =>
-              navigate(isEditing ? `/admin/inventario/${id}` : '/admin/inventario')
+              navigate(isEditing ? `${basePath}/inventario/${id}` : `${basePath}/inventario`)
             }
           >
             <ArrowLeft className="size-4" />
@@ -215,7 +217,7 @@ export function ItemFormPage() {
             variant="outline"
             size="sm"
             onClick={() =>
-              navigate(isEditing ? `/admin/inventario/${id}` : '/admin/inventario')
+              navigate(isEditing ? `${basePath}/inventario/${id}` : `${basePath}/inventario`)
             }
           >
             Cancelar

@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useBasePath } from '@/hooks/use-base-path'
 import {
   ArrowLeft,
   Truck,
@@ -270,6 +271,7 @@ function RefaccionesTab({ equipmentId }: { equipmentId: string }) {
 export function EquipoDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const basePath = useBasePath()
 
   const { data: equipo, isLoading } = useRecord<Equipment>('equipment', id)
 
@@ -296,7 +298,7 @@ export function EquipoDetailPage() {
           variant="ghost"
           size="sm"
           className="w-fit -ml-1"
-          onClick={() => navigate('/admin/equipos')}
+          onClick={() => navigate(`${basePath}/equipos`)}
         >
           <ArrowLeft className="mr-1.5 size-3.5" />
           Equipos
@@ -305,7 +307,7 @@ export function EquipoDetailPage() {
           icon={<Truck className="size-5" />}
           title="Equipo no encontrado"
           description="El equipo que buscas no existe o fue eliminado."
-          action={{ label: 'Volver a Equipos', onClick: () => navigate('/admin/equipos') }}
+          action={{ label: 'Volver a Equipos', onClick: () => navigate(`${basePath}/equipos`) }}
         />
       </div>
     )
@@ -323,7 +325,7 @@ export function EquipoDetailPage() {
           variant="ghost"
           size="sm"
           className="w-fit -ml-1 text-muted-foreground"
-          onClick={() => navigate('/admin/equipos')}
+          onClick={() => navigate(`${basePath}/equipos`)}
         >
           <ArrowLeft className="mr-1.5 size-3.5" />
           Equipos

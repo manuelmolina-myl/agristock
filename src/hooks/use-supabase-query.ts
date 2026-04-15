@@ -10,6 +10,7 @@ import type {
   Warehouse,
   Equipment,
   Employee,
+  Solicitud,
 } from '@/lib/database.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,6 +32,8 @@ type TableName =
   | 'adjustment_reasons'
   | 'seasons'
   | 'audit_log'
+  | 'solicitudes'
+  | 'solicitud_lines'
 
 // ─── Generic list hook ───────────────────────────────────────────────────────
 
@@ -243,4 +246,14 @@ export function useFxRates() {
 
 export function useAdjustmentReasons() {
   return useList('adjustment_reasons', { orderBy: 'label', ascending: true })
+}
+
+export function useSolicitudes(filters?: Record<string, unknown>) {
+  return useList<Solicitud>('solicitudes', {
+    select:
+      '*, requester:profiles!solicitudes_requested_by_fkey(full_name), crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name)',
+    orderBy: 'created_at',
+    ascending: false,
+    filters,
+  })
 }

@@ -42,6 +42,13 @@ const AlmacenistaDashboard = lazy(() => import('@/pages/almacenista/dashboard-pa
 
 // Supervisor
 const SupervisorDashboard = lazy(() => import('@/pages/supervisor/dashboard-page'))
+const SupervisorSolicitudes = lazy(() => import('@/pages/supervisor/solicitudes-page'))
+const SupervisorNuevaSolicitud = lazy(() => import('@/pages/supervisor/nueva-solicitud-page'))
+const SupervisorSolicitudDetail = lazy(() => import('@/pages/supervisor/solicitud-detail-page'))
+
+// Admin solicitudes
+const SolicitudesAdminPage = lazy(() => import('@/pages/admin/solicitudes/solicitudes-admin-page'))
+const SolicitudReviewPage = lazy(() => import('@/pages/admin/solicitudes/solicitud-review-page'))
 
 function LoadingFallback() {
   return (
@@ -113,6 +120,8 @@ export default function App() {
           <Route path="configuracion" element={<CatalogosPage />} />
           <Route path="tipo-cambio" element={<FxRatesPage />} />
           <Route path="cierre-temporada" element={<CierreTemporadaPage />} />
+          <Route path="solicitudes" element={<SolicitudesAdminPage />} />
+          <Route path="solicitudes/:id" element={<SolicitudReviewPage />} />
         </Route>
 
         {/* Gerente routes */}
@@ -143,9 +152,9 @@ export default function App() {
           <Route path="reportes" element={<ReportesPage />} />
           <Route path="reportes/:slug" element={<ReportViewerPage />} />
           <Route path="auditoria" element={<AuditoriaPage />} />
-          <Route path="configuracion" element={<CatalogosPage />} />
           <Route path="tipo-cambio" element={<FxRatesPage />} />
-          <Route path="cierre-temporada" element={<CierreTemporadaPage />} />
+          <Route path="solicitudes" element={<SolicitudesAdminPage />} />
+          <Route path="solicitudes/:id" element={<SolicitudReviewPage />} />
         </Route>
 
         {/* Almacenista routes */}
@@ -179,6 +188,9 @@ export default function App() {
           }
         >
           <Route index element={<SupervisorDashboard />} />
+          <Route path="solicitudes" element={<SupervisorSolicitudes />} />
+          <Route path="solicitudes/nueva" element={<SupervisorNuevaSolicitud />} />
+          <Route path="solicitudes/:id" element={<SupervisorSolicitudDetail />} />
         </Route>
 
         {/* Catch-all */}

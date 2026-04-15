@@ -272,3 +272,48 @@ export interface Database {
     Enums: Record<string, unknown>
   }
 }
+
+// ─── Solicitudes ─────────────────────────────────────────────────────────────
+
+export type SolicitudStatus = 'pendiente' | 'aprobada' | 'rechazada' | 'entregada'
+export type SolicitudUrgency = 'baja' | 'normal' | 'alta' | 'urgente'
+
+export interface Solicitud {
+  id: string
+  organization_id: string
+  season_id: string
+  requested_by: string
+  destination_type: DestinationType | null
+  crop_lot_id: string | null
+  equipment_id: string | null
+  employee_id: string | null
+  destination_notes: string | null
+  status: SolicitudStatus
+  urgency: SolicitudUrgency
+  notes: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  review_notes: string | null
+  delivered_at: string | null
+  delivered_by: string | null
+  created_at: string
+  updated_at: string | null
+  // Joined
+  requester?: { full_name: string }
+  crop_lot?: CropLot
+  equipment?: Equipment
+  employee?: Employee
+  lines?: SolicitudLine[]
+}
+
+export interface SolicitudLine {
+  id: string
+  solicitud_id: string
+  item_id: string
+  quantity_requested: number
+  quantity_approved: number | null
+  notes: string | null
+  created_at: string
+  // Joined
+  item?: Item
+}

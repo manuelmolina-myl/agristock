@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import {
   Plus,
   MoreHorizontal,
@@ -112,6 +113,7 @@ const colHelper = createColumnHelper<EntryMovement>()
 
 export default function EntradasPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const { activeSeason } = useAuth()
 
   // Filters
@@ -310,7 +312,7 @@ export default function EntradasPage() {
         title="Entradas"
         description="Registro de entradas al almacén"
         actions={
-          <Button size="sm" onClick={() => navigate('/admin/entradas/nueva')}>
+          <Button size="sm" onClick={() => navigate(`${basePath}/entradas/nueva`)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             Nueva entrada
           </Button>
@@ -437,7 +439,7 @@ export default function EntradasPage() {
           description="Aún no hay entradas registradas con los filtros seleccionados."
           action={{
             label: 'Nueva entrada',
-            onClick: () => navigate('/admin/entradas/nueva'),
+            onClick: () => navigate(`${basePath}/entradas/nueva`),
           }}
         />
       ) : (

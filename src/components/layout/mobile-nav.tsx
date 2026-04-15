@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -5,6 +6,8 @@ import {
   ArrowLeftRight,
   BarChart3,
   MoreHorizontal,
+  Fuel,
+  ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -20,14 +23,32 @@ interface MobileNavItem {
 function useMobileNavItems(): MobileNavItem[] {
   const { profile } = useAuth()
   const base = profile?.role ? ROLE_ROUTES[profile.role] : '/'
+  const role = profile?.role
 
-  return [
-    { label: 'Inicio',       to: base,                    icon: LayoutDashboard, exact: true },
-    { label: 'Inventario',   to: `${base}/inventario`,    icon: Package },
-    { label: 'Movimientos',  to: `${base}/entradas`,      icon: ArrowLeftRight },
-    { label: 'Reportes',     to: `${base}/reportes`,      icon: BarChart3 },
-    { label: 'Más',          to: `${base}/configuracion`, icon: MoreHorizontal },
-  ]
+  return useMemo(() => {
+    switch (role) {
+      case 'supervisor':
+        return [
+          { label: 'Inicio',       to: base,                    icon: LayoutDashboard, exact: true },
+          { label: 'Solicitudes',  to: `${base}/solicitudes`,   icon: ClipboardList },
+        ]
+      case 'almacenista':
+        return [
+          { label: 'Inicio',       to: base,                    icon: LayoutDashboard, exact: true },
+          { label: 'Inventario',   to: `${base}/inventario`,    icon: Package },
+          { label: 'Movimientos',  to: `${base}/entradas`,      icon: ArrowLeftRight },
+          { label: 'Diésel',       to: `${base}/diesel`,        icon: Fuel },
+        ]
+      default: // super_admin, gerente
+        return [
+          { label: 'Inicio',       to: base,                    icon: LayoutDashboard, exact: true },
+          { label: 'Inventario',   to: `${base}/inventario`,    icon: Package },
+          { label: 'Movimientos',  to: `${base}/entradas`,      icon: ArrowLeftRight },
+          { label: 'Reportes',     to: `${base}/reportes`,      icon: BarChart3 },
+          { label: 'Más',          to: `${base}/configuracion`, icon: MoreHorizontal },
+        ]
+    }
+  }, [role, base])
 }
 
 export function MobileNav() {

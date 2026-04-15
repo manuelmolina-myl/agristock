@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import { ArrowLeft, Download, FileSpreadsheet, Clock } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -826,6 +827,7 @@ function SalidasLoteReport({ orgName }: { orgName: string }) {
 export default function ReportViewerPage() {
   const { slug = '' } = useParams<{ slug: string }>()
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const { organization } = useAuth()
 
   const meta = REPORT_META[slug]
@@ -834,7 +836,7 @@ export default function ReportViewerPage() {
   if (!meta) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <Button variant="ghost" size="sm" className="w-fit gap-1.5" onClick={() => navigate('/admin/reportes')}>
+        <Button variant="ghost" size="sm" className="w-fit gap-1.5" onClick={() => navigate(`${basePath}/reportes`)}>
           <ArrowLeft className="size-3.5" />
           Reportes
         </Button>
@@ -851,7 +853,7 @@ export default function ReportViewerPage() {
           variant="ghost"
           size="sm"
           className="w-fit gap-1.5 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate('/admin/reportes')}
+          onClick={() => navigate(`${basePath}/reportes`)}
         >
           <ArrowLeft className="size-3.5" />
           Reportes

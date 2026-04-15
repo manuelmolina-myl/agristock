@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -199,6 +200,7 @@ function LotCard({
 
 export function LotesPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const { activeSeason } = useAuth()
   const { data: _lots = [], isLoading } = useCropLots()
   const lots = _lots as CropLot[]
@@ -318,7 +320,7 @@ export function LotesPage() {
             <LotCard
               key={lot.id}
               lot={lot}
-              onClick={() => navigate(`/admin/lotes/${lot.id}`)}
+              onClick={() => navigate(`${basePath}/lotes/${lot.id}`)}
               onEdit={() => openEdit(lot)}
               onDelete={() => openDelete(lot.id)}
             />

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import {
   FileText,
   Package,
@@ -107,6 +108,7 @@ const REPORTS: ReportCard[] = [
 
 export default function ReportesPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -141,7 +143,7 @@ export default function ReportesPage() {
                   size="sm"
                   variant="outline"
                   className="w-full"
-                  onClick={() => navigate(`/admin/reportes/${report.slug}`)}
+                  onClick={() => navigate(`${basePath}/reportes/${report.slug}`)}
                 >
                   Generar
                 </Button>

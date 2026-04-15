@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import {
   ArrowLeft,
   Pencil,
@@ -138,6 +139,7 @@ function StockTab({ itemId, minStock, maxStock, reorderPoint }: {
 export function ItemDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const basePath = useBasePath()
 
   const { data: item, isLoading } = useItem(id)
   const softDelete = useSoftDelete('items')
@@ -149,7 +151,7 @@ export function ItemDetailPage() {
     try {
       await softDelete.mutateAsync(item.id)
       toast.success(`"${item.name}" eliminado`)
-      navigate('/admin/inventario')
+      navigate(`${basePath}/inventario`)
     } catch {
       toast.error('No se pudo eliminar el ítem')
     }
@@ -176,7 +178,7 @@ export function ItemDetailPage() {
   if (!item) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <Button variant="ghost" size="sm" className="w-fit -ml-1" onClick={() => navigate('/admin/inventario')}>
+        <Button variant="ghost" size="sm" className="w-fit -ml-1" onClick={() => navigate(`${basePath}/inventario`)}>
           <ArrowLeft className="mr-1.5 size-3.5" />
           Inventario
         </Button>
@@ -184,7 +186,7 @@ export function ItemDetailPage() {
           icon={<Package className="size-5" />}
           title="Ítem no encontrado"
           description="El ítem que buscas no existe o fue eliminado."
-          action={{ label: 'Volver al inventario', onClick: () => navigate('/admin/inventario') }}
+          action={{ label: 'Volver al inventario', onClick: () => navigate(`${basePath}/inventario`) }}
         />
       </div>
     )
@@ -198,7 +200,7 @@ export function ItemDetailPage() {
           variant="ghost"
           size="sm"
           className="w-fit -ml-1 text-muted-foreground"
-          onClick={() => navigate('/admin/inventario')}
+          onClick={() => navigate(`${basePath}/inventario`)}
         >
           <ArrowLeft className="mr-1.5 size-3.5" />
           Inventario
@@ -228,7 +230,7 @@ export function ItemDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate(`/admin/inventario/${item.id}/editar`)}
+              onClick={() => navigate(`${basePath}/inventario/${item.id}/editar`)}
             >
               <Pencil className="mr-1.5 size-3.5" />
               Editar

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import {
   Fuel,
   DollarSign,
@@ -280,6 +281,7 @@ interface MobileCardProps {
 
 function MobileDieselCard({ line, rendimiento, isAnomalo, onCancel }: MobileCardProps) {
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -297,7 +299,7 @@ function MobileDieselCard({ line, rendimiento, isAnomalo, onCancel }: MobileCard
                 className="text-sm font-medium truncate hover:text-primary hover:underline text-left block w-full"
                 onClick={(e) => {
                   e.stopPropagation()
-                  navigate(`/admin/diesel/tractor/${line.equipment!.id}`)
+                  navigate(`${basePath}/diesel/tractor/${line.equipment!.id}`)
                 }}
               >
                 {line.equipment.name}
@@ -369,6 +371,7 @@ function MobileDieselCard({ line, rendimiento, isAnomalo, onCancel }: MobileCard
 
 export function DieselPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const queryClient = useQueryClient()
   const { organization } = useAuth()
   const orgId = organization?.id ?? ''
@@ -535,7 +538,7 @@ export function DieselPage() {
         title="Diésel"
         description="Control de consumo de combustible"
         actions={
-          <Button size="sm" onClick={() => navigate('/admin/diesel/cargar')}>
+          <Button size="sm" onClick={() => navigate(`${basePath}/diesel/cargar`)}>
             + Carga rápida
           </Button>
         }
@@ -738,7 +741,7 @@ export function DieselPage() {
                       activeFilterCount === 0
                         ? {
                             label: '+ Carga rápida',
-                            onClick: () => navigate('/admin/diesel/cargar'),
+                            onClick: () => navigate(`${basePath}/diesel/cargar`),
                           }
                         : undefined
                     }
@@ -773,7 +776,7 @@ export function DieselPage() {
                           <button
                             type="button"
                             className="text-sm font-medium leading-tight hover:text-primary hover:underline text-left"
-                            onClick={() => navigate(`/admin/diesel/tractor/${line.equipment!.id}`)}
+                            onClick={() => navigate(`${basePath}/diesel/tractor/${line.equipment!.id}`)}
                           >
                             {line.equipment.name}
                           </button>
@@ -850,7 +853,7 @@ export function DieselPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-44">
                           <DropdownMenuItem
-                            onClick={() => navigate(`/admin/diesel/${line.movement_id}`)}
+                            onClick={() => navigate(`${basePath}/diesel/${line.movement_id}`)}
                           >
                             Ver detalle
                           </DropdownMenuItem>

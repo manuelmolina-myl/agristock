@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -156,6 +157,7 @@ function FieldError({ message }: { message?: string }) {
 
 export default function NuevaEntradaPage() {
   const navigate  = useNavigate()
+  const basePath = useBasePath()
   const { organization, activeSeason, profile } = useAuth()
 
   const [step,       setStep]       = useState(1)
@@ -293,7 +295,7 @@ export default function NuevaEntradaPage() {
           ? 'Entrada registrada correctamente'
           : 'Borrador guardado correctamente'
       )
-      navigate('/admin/entradas')
+      navigate(`${basePath}/entradas`)
     } catch (err: any) {
       console.error(err)
       toast.error(err?.message ?? 'Error al guardar la entrada')
@@ -311,7 +313,7 @@ export default function NuevaEntradaPage() {
         title="Nueva entrada"
         description="Registra una entrada de inventario al almacén"
         actions={
-          <Button variant="ghost" size="sm" onClick={() => navigate('/admin/entradas')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`${basePath}/entradas`)}>
             <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
             Cancelar
           </Button>
@@ -839,7 +841,7 @@ export default function NuevaEntradaPage() {
           type="button"
           variant="outline"
           size="sm"
-          onClick={step === 1 ? () => navigate('/admin/entradas') : goBack}
+          onClick={step === 1 ? () => navigate(`${basePath}/entradas`) : goBack}
           disabled={submitting}
         >
           <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />

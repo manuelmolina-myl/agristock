@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -986,6 +987,7 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
 
 export function NuevaSalidaPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const { organization, activeSeason, profile } = useAuth()
 
   const { data: fxRates = [] } = useFxRates()
@@ -1132,7 +1134,7 @@ export function NuevaSalidaPage() {
             ? 'Salida registrada correctamente'
             : 'Borrador guardado'
         )
-        navigate('/admin/salidas')
+        navigate(`${basePath}/salidas`)
       } catch (err: any) {
         console.error(err)
         toast.error(err.message ?? 'Error al guardar la salida')
@@ -1152,7 +1154,7 @@ export function NuevaSalidaPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/admin/salidas')}
+            onClick={() => navigate(`${basePath}/salidas`)}
           >
             Cancelar
           </Button>

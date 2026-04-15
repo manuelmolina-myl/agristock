@@ -60,6 +60,7 @@ const ADMIN_NAV: NavSection[] = [
       { label: 'Entradas',    to: '/entradas',     icon: ArrowDownToLine },
       { label: 'Salidas',     to: '/salidas',      icon: ArrowUpFromLine },
       { label: 'Diésel',      to: '/diesel',       icon: Fuel },
+      { label: 'Solicitudes', to: '/solicitudes',  icon: ClipboardList },
     ],
   },
   {
@@ -77,6 +78,35 @@ const ADMIN_NAV: NavSection[] = [
       { label: 'Auditoría',      to: '/auditoria',     icon: ShieldCheck },
       { label: 'Cierre temporada', to: '/cierre-temporada', icon: Lock },
       { label: 'Configuración',  to: '/configuracion', icon: Settings },
+    ],
+  },
+]
+
+const GERENTE_NAV: NavSection[] = [
+  {
+    heading: 'Operación',
+    items: [
+      { label: 'Dashboard',   to: '',              icon: LayoutDashboard },
+      { label: 'Inventario',  to: '/inventario',   icon: Package },
+      { label: 'Entradas',    to: '/entradas',     icon: ArrowDownToLine },
+      { label: 'Salidas',     to: '/salidas',      icon: ArrowUpFromLine },
+      { label: 'Diésel',      to: '/diesel',       icon: Fuel },
+      { label: 'Solicitudes', to: '/solicitudes',  icon: ClipboardList },
+    ],
+  },
+  {
+    heading: 'Análisis',
+    items: [
+      { label: 'Lotes',       to: '/lotes',        icon: MapPin },
+      { label: 'Equipos',     to: '/equipos',      icon: Tractor },
+      { label: 'Reportes',    to: '/reportes',     icon: BarChart3 },
+    ],
+  },
+  {
+    heading: 'Sistema',
+    items: [
+      { label: 'Tipo de cambio', to: '/tipo-cambio', icon: DollarSign },
+      { label: 'Auditoría',      to: '/auditoria',   icon: ShieldCheck },
     ],
   },
 ]
@@ -106,7 +136,8 @@ const SUPERVISOR_NAV: NavSection[] = [
 
 function navSectionsForRole(role: UserRole | undefined): NavSection[] {
   if (!role) return []
-  if (role === 'super_admin' || role === 'gerente') return ADMIN_NAV
+  if (role === 'super_admin') return ADMIN_NAV
+  if (role === 'gerente') return GERENTE_NAV
   if (role === 'almacenista') return ALMACENISTA_NAV
   if (role === 'supervisor') return SUPERVISOR_NAV
   return []

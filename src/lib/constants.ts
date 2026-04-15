@@ -53,3 +53,25 @@ export const CATEGORY_ICONS: Record<string, string> = {
 }
 
 export const TIMEZONE = 'America/Mazatlan'
+
+export const SOLICITUD_STATUS_LABELS: Record<string, string> = {
+  pendiente: 'Pendiente',
+  aprobada: 'Aprobada',
+  rechazada: 'Rechazada',
+  entregada: 'Entregada',
+}
+
+export const SOLICITUD_URGENCY_LABELS: Record<string, string> = {
+  baja: 'Baja',
+  normal: 'Normal',
+  alta: 'Alta',
+  urgente: 'Urgente',
+}
+
+export const DESTINATION_TYPE_LABELS: Record<string, string> = {
+  crop_lot: 'Lote de cultivo',
+  equipment: 'Equipo',
+  employee: 'Empleado',
+  maintenance: 'Mantenimiento',
+  other: 'Otro',
+}

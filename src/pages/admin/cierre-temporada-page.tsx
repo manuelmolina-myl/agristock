@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -578,6 +579,7 @@ function Step3Confirmation({
 export function CierreTemporadaPage() {
   const { organization, activeSeason, profile } = useAuth()
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const queryClient = useQueryClient()
 
   const [step, setStep] = useState(1)
@@ -755,7 +757,7 @@ export function CierreTemporadaPage() {
         description: `La temporada "${activeSeason.name}" fue cerrada y se creó la nueva temporada ${nextYear}.`,
       })
 
-      navigate('/admin')
+      navigate(basePath)
     } catch (err) {
       console.error(err)
       toast.error('Error al cerrar la temporada', {

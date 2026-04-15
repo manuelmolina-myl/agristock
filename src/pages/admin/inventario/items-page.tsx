@@ -4,6 +4,7 @@ import { Plus, Search, MoreHorizontal, Eye, Pencil, Trash2, Package } from 'luci
 import { toast } from 'sonner'
 
 import { useItems, useCategories, useSoftDelete, useItemStock } from '@/hooks/use-supabase-query'
+import { useBasePath } from '@/hooks/use-base-path'
 import type { Item } from '@/lib/database.types'
 import { formatQuantity } from '@/lib/utils'
 
@@ -74,6 +75,7 @@ function TableSkeleton() {
 
 export function ItemsPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
 
   const { data: items = [], isLoading } = useItems()
   const { data: categories = [] } = useCategories()
@@ -127,7 +129,7 @@ export function ItemsPage() {
         title="Inventario"
         description="Catálogo de ítems y materiales"
         actions={
-          <Button size="sm" onClick={() => navigate('/admin/inventario/nuevo')}>
+          <Button size="sm" onClick={() => navigate(`${basePath}/inventario/nuevo`)}>
             <Plus className="mr-1.5 size-3.5" />
             Nuevo ítem
           </Button>
@@ -215,7 +217,7 @@ export function ItemsPage() {
           {filtered.map((item) => (
             <div
               key={item.id}
-              onClick={() => navigate(`/admin/inventario/${item.id}`)}
+              onClick={() => navigate(`${basePath}/inventario/${item.id}`)}
               className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
             >
               <div className="flex items-center justify-between gap-2">
@@ -275,7 +277,7 @@ export function ItemsPage() {
                     }
                     action={
                       !search && categoryFilter === 'all' && currencyFilter === 'all'
-                        ? { label: '+ Nuevo ítem', onClick: () => navigate('/admin/inventario/nuevo') }
+                        ? { label: '+ Nuevo ítem', onClick: () => navigate(`${basePath}/inventario/nuevo`) }
                         : undefined
                     }
                   />
@@ -286,7 +288,7 @@ export function ItemsPage() {
                 <TableRow
                   key={item.id}
                   className="cursor-pointer"
-                  onClick={() => navigate(`/admin/inventario/${item.id}`)}
+                  onClick={() => navigate(`${basePath}/inventario/${item.id}`)}
                 >
                   <TableCell>
                     <span className="font-mono text-xs text-muted-foreground">
@@ -348,11 +350,11 @@ export function ItemsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={() => navigate(`/admin/inventario/${item.id}`)}>
+                        <DropdownMenuItem onClick={() => navigate(`${basePath}/inventario/${item.id}`)}>
                           <Eye className="mr-2 size-3.5" />
                           Ver detalle
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => navigate(`/admin/inventario/${item.id}/editar`)}>
+                        <DropdownMenuItem onClick={() => navigate(`${basePath}/inventario/${item.id}/editar`)}>
                           <Pencil className="mr-2 size-3.5" />
                           Editar
                         </DropdownMenuItem>

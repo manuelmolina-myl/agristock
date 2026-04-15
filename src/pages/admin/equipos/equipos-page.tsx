@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -224,6 +225,7 @@ function EquipoCard({
 
 export function EquiposPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const { data: equipos = [], isLoading } = useEquipment()
 
   const create = useCreate<Equipment>('equipment')
@@ -344,7 +346,7 @@ export function EquiposPage() {
             <EquipoCard
               key={eq.id}
               equipo={eq as Equipment}
-              onClick={() => navigate(`/admin/equipos/${eq.id}`)}
+              onClick={() => navigate(`${basePath}/equipos/${eq.id}`)}
               onEdit={() => openEdit(eq as Equipment)}
               onDelete={() => openDelete(eq.id)}
             />

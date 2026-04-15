@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBasePath } from '@/hooks/use-base-path'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Fuel, ChevronRight, Check, Info, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -196,6 +197,7 @@ function LitrosInput({ value, onChange, disabled }: LitrosInputProps) {
 
 export function CargaDieselPage() {
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const queryClient = useQueryClient()
   const { organization, activeSeason, profile } = useAuth()
   const orgId = organization?.id ?? ''
@@ -432,7 +434,7 @@ export function CargaDieselPage() {
         <PageHeader
           title="Carga registrada"
           actions={
-            <Button variant="ghost" size="sm" onClick={() => navigate('/admin/diesel')}>
+            <Button variant="ghost" size="sm" onClick={() => navigate(`${basePath}/diesel`)}>
               <ArrowLeft className="mr-1.5 size-3.5" />
               Volver
             </Button>
@@ -499,7 +501,7 @@ export function CargaDieselPage() {
               <Button className="w-full" onClick={handleNuevaCarga}>
                 + Nueva carga
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => navigate('/admin/diesel')}>
+              <Button variant="outline" className="w-full" onClick={() => navigate(`${basePath}/diesel`)}>
                 Ver historial
               </Button>
             </div>
@@ -519,7 +521,7 @@ export function CargaDieselPage() {
         title="Carga rápida de diésel"
         description="Registra el consumo de combustible"
         actions={
-          <Button variant="ghost" size="sm" onClick={() => navigate('/admin/diesel')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`${basePath}/diesel`)}>
             <ArrowLeft className="mr-1.5 size-3.5" />
             Volver
           </Button>
