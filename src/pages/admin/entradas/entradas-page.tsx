@@ -8,6 +8,7 @@ import {
   CheckCircle,
   XCircle,
   SlidersHorizontal,
+  Printer,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -18,6 +19,7 @@ import {
   MOVEMENT_TYPE_LABELS,
 } from '@/lib/constants'
 import { formatFechaCorta, formatHora } from '@/lib/utils'
+import { generateEntradaPDF } from '@/lib/generate-entrada-pdf'
 
 import type { StockMovement, MovementStatus } from '@/lib/database.types'
 
@@ -115,7 +117,7 @@ export default function EntradasPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
   const canSeePrices = useCanSeePrices()
-  const { activeSeason } = useAuth()
+  const { activeSeason, organization } = useAuth()
 
   // Filters
   const [filtersOpen,  setFiltersOpen]  = useState(false)
@@ -164,6 +166,35 @@ export default function EntradasPage() {
     })
     return Array.from(map.entries())
   }, [rawMovements])
+
+  // Handle print nota
+  async function handlePrintNota(m: EntryMovement) {
+    try {
+      const db = supabase as any
+      const { data: mov, error } = await db
+        .from('stock_movements')
+        .select('*, warehouse:warehouses!stock_movements_warehouse_id_fkey(*), supplier:suppliers(*), lines:stock_movement_lines(*, item:items(*, unit:units(*)))')
+        .eq('id', m.id)
+        .single()
+      if (error) throw error
+
+      let receivedByName: string | undefined
+      if (mov.received_by_employee_id) {
+        const { data: emp } = await db.from('employees').select('full_name').eq('id', mov.received_by_employee_id).single()
+        receivedByName = emp?.full_name
+      }
+
+      generateEntradaPDF({
+        movement: mov,
+        organization: organization!,
+        supplierName: mov.supplier?.name,
+        receivedByName,
+      })
+    } catch (err: any) {
+      console.error(err)
+      toast.error('Error al generar el PDF')
+    }
+  }
 
   // Handle post (draft → posted)
   async function handlePost(m: EntryMovement) {
@@ -274,10 +305,14 @@ export default function EntradasPage() {
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); alert(`Ver detalle: ${row.id}`) }}>
                 <Eye className="mr-2 h-3.5 w-3.5" />
                 Ver
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handlePrintNota(row) }}>
+                <Printer className="mr-2 h-3.5 w-3.5" />
+                Imprimir nota
               </DropdownMenuItem>
               {row.status === 'draft' && (
                 <>

@@ -8,6 +8,7 @@ import {
   CheckCircle,
   XCircle,
   SlidersHorizontal,
+  Printer,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -16,6 +17,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase'
 import { MOVEMENT_TYPE_LABELS } from '@/lib/constants'
 import { formatFechaCorta, formatHora } from '@/lib/utils'
+import { generateValePDF } from '@/lib/generate-vale-pdf'
 
 import type { StockMovement, MovementStatus } from '@/lib/database.types'
 
@@ -151,7 +153,7 @@ export function SalidasPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
   const canSeePrices = useCanSeePrices()
-  const { activeSeason } = useAuth()
+  const { activeSeason, organization } = useAuth()
 
   // Filters
   const [filtersOpen,  setFiltersOpen]  = useState(false)
@@ -170,7 +172,7 @@ export function SalidasPage() {
   const { data: rawMovements = [], isLoading, refetch } = useList<ExitMovement>(
     'stock_movements',
     {
-      select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
+      select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), received_by:employees!stock_movements_received_by_employee_id_fkey(full_name), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
       filters: activeSeason?.id ? { season_id: activeSeason.id } : {},
       enabled: !!activeSeason?.id,
     }
@@ -200,6 +202,42 @@ export function SalidasPage() {
     })
     return Array.from(map.entries())
   }, [rawMovements])
+
+  // Handle print vale
+  async function handlePrintVale(m: ExitMovement) {
+    try {
+      const db = supabase as any
+      const { data: mov, error } = await db
+        .from('stock_movements')
+        .select('*, warehouse:warehouses!stock_movements_warehouse_id_fkey(*), lines:stock_movement_lines(*, item:items(*, unit:units(*)))')
+        .eq('id', m.id)
+        .single()
+      if (error) throw error
+
+      // Fetch employee names if IDs exist
+      let deliveredByName: string | undefined
+      let receivedByName: string | undefined
+      if (mov.delivered_by_employee_id) {
+        const { data: emp } = await db.from('employees').select('full_name').eq('id', mov.delivered_by_employee_id).single()
+        deliveredByName = emp?.full_name
+      }
+      if (mov.received_by_employee_id) {
+        const { data: emp } = await db.from('employees').select('full_name').eq('id', mov.received_by_employee_id).single()
+        receivedByName = emp?.full_name
+      }
+
+      generateValePDF({
+        movement: mov,
+        organization: organization!,
+        deliveredByName,
+        receivedByName,
+        canSeePrices,
+      })
+    } catch (err: any) {
+      console.error(err)
+      toast.error('Error al generar el PDF')
+    }
+  }
 
   // Handle post (draft → posted)
   async function handlePost(m: ExitMovement) {
@@ -275,9 +313,9 @@ export function SalidasPage() {
       id: 'receiver',
       header: 'Recibe',
       cell: (info) => {
-        const notes = info.row.original.notes ?? ''
-        if (!notes.startsWith('Recibe:')) return <span className="text-xs text-muted-foreground">—</span>
-        const name = notes.split('.')[0].replace('Recibe: ', '')
+        const row = info.row.original as any
+        const name = row.received_by?.full_name
+        if (!name) return <span className="text-xs text-muted-foreground">—</span>
         return <span className="text-sm">{name}</span>
       },
     }),
@@ -314,10 +352,14 @@ export function SalidasPage() {
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`${basePath}/salidas/${row.id}`) }}>
                 <Eye className="mr-2 h-3.5 w-3.5" />
                 Ver detalle
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handlePrintVale(row) }}>
+                <Printer className="mr-2 h-3.5 w-3.5" />
+                Imprimir vale
               </DropdownMenuItem>
               {row.status === 'draft' && (
                 <>

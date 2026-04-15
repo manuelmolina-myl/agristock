@@ -324,20 +324,17 @@ export function CargaDieselPage() {
       const { data: movement, error: movErr } = await db
         .from('stock_movements')
         .insert({
-          organization_id: orgId,
-          season_id: activeSeason.id,
-          movement_type: 'exit_consumption',
-          warehouse_id: defaultWarehouse.id,
-          status: 'posted',
-          posted_at: now.toISOString(),
-          posted_by: profile?.id ?? null,
-          notes: selectedReceiver
-            ? form.notas
-              ? `Recibe: ${selectedReceiver.full_name}. ${form.notas}`
-              : `Recibe: ${selectedReceiver.full_name}`
-            : form.notas || null,
-          total_mxn: 0,
-          total_native: 0,
+          organization_id:         orgId,
+          season_id:               activeSeason.id,
+          movement_type:           'exit_consumption',
+          warehouse_id:            defaultWarehouse.id,
+          status:                  'posted',
+          posted_at:               now.toISOString(),
+          posted_by:               profile?.id ?? null,
+          notes:                   form.notas || null,
+          received_by_employee_id: form.receiverId || null,
+          total_mxn:               0,
+          total_native:            0,
         })
         .select()
         .single()

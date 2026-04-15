@@ -119,7 +119,8 @@ const step1Schema = z.object({
   ]),
   date: z.string().min(1, 'Selecciona una fecha'),
   notes: z.string().optional(),
-  receiver_employee_id: z.string().min(1, 'Selecciona quién recibe'),
+  delivered_by_employee_id: z.string().optional(),
+  received_by_employee_id: z.string().optional(),
 })
 
 type Step1aValues = z.infer<typeof step1aSchema>
@@ -421,30 +422,56 @@ function Step2Detalles({ step1a, defaultValues, onNext, onBack }: Step2DetallesP
         )}
       </div>
 
-      {/* Recibe */}
+      {/* Entrega */}
       <div className="flex flex-col gap-1.5">
-        <Label>Recibe <span className="text-destructive">*</span></Label>
+        <Label>Entrega (almacén)</Label>
         <Controller
-          name="receiver_employee_id"
+          name="delivered_by_employee_id"
           control={control}
           render={({ field }) => (
             <SearchableSelect
               value={field.value ?? ''}
               onValueChange={field.onChange}
-              options={employees.map((emp) => ({
-                value: emp.id,
-                label: emp.full_name,
-                sublabel: emp.employee_code,
-              }))}
-              placeholder="Seleccionar quién recibe el material"
+              options={[
+                { value: '', label: 'Sin especificar' },
+                ...employees.map((emp) => ({
+                  value: emp.id,
+                  label: emp.full_name,
+                  sublabel: emp.employee_code,
+                })),
+              ]}
+              placeholder="Quien entrega desde el almacén"
               searchPlaceholder="Buscar empleado…"
               emptyMessage="Sin empleados."
             />
           )}
         />
-        {errors.receiver_employee_id && (
-          <p className="text-xs text-destructive">{errors.receiver_employee_id.message}</p>
-        )}
+      </div>
+
+      {/* Recibe */}
+      <div className="flex flex-col gap-1.5">
+        <Label>Recibe (destino)</Label>
+        <Controller
+          name="received_by_employee_id"
+          control={control}
+          render={({ field }) => (
+            <SearchableSelect
+              value={field.value ?? ''}
+              onValueChange={field.onChange}
+              options={[
+                { value: '', label: 'Sin especificar' },
+                ...employees.map((emp) => ({
+                  value: emp.id,
+                  label: emp.full_name,
+                  sublabel: emp.employee_code,
+                })),
+              ]}
+              placeholder="Quien recibe en el destino"
+              searchPlaceholder="Buscar empleado…"
+              emptyMessage="Sin empleados."
+            />
+          )}
+        />
       </div>
 
       {/* Notas generales */}
@@ -892,12 +919,21 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
             <dt className="text-xs text-muted-foreground">Destino</dt>
             <dd>{getDestinationLabel()}</dd>
           </div>
-          {step1.receiver_employee_id && (() => {
-            const receiver = employees.find((e) => e.id === step1.receiver_employee_id)
-            return receiver ? (
-              <div className="col-span-2">
+          {step1.delivered_by_employee_id && (() => {
+            const emp = employees.find((e) => e.id === step1.delivered_by_employee_id)
+            return emp ? (
+              <div>
+                <dt className="text-xs text-muted-foreground">Entrega</dt>
+                <dd className="font-medium">{emp.full_name} <span className="text-muted-foreground font-normal font-mono text-xs">({emp.employee_code})</span></dd>
+              </div>
+            ) : null
+          })()}
+          {step1.received_by_employee_id && (() => {
+            const emp = employees.find((e) => e.id === step1.received_by_employee_id)
+            return emp ? (
+              <div>
                 <dt className="text-xs text-muted-foreground">Recibe</dt>
-                <dd className="font-medium">{receiver.full_name} <span className="text-muted-foreground font-normal font-mono text-xs">({receiver.employee_code})</span></dd>
+                <dd className="font-medium">{emp.full_name} <span className="text-muted-foreground font-normal font-mono text-xs">({emp.employee_code})</span></dd>
               </div>
             ) : null
           })()}
@@ -1041,13 +1077,6 @@ export function NuevaSalidaPage() {
         return
       }
 
-      // Build notes with receiver prefix
-      const receiverEmployee = allEmployees.find((e) => e.id === step1Data.receiver_employee_id)
-      const receiverPrefix = receiverEmployee ? `Recibe: ${receiverEmployee.full_name}. ` : ''
-      const notesWithReceiver = step1Data.notes
-        ? `${receiverPrefix}${step1Data.notes}`
-        : receiverPrefix || null
-
       setIsSubmitting(true)
       try {
         // 1. Build totals
@@ -1081,7 +1110,9 @@ export function NuevaSalidaPage() {
             total_mxn: totalMxn,
             total_usd: totalUsd,
             status,
-            notes: notesWithReceiver,
+            notes: step1Data.notes || null,
+            delivered_by_employee_id: step1Data.delivered_by_employee_id || null,
+            received_by_employee_id: step1Data.received_by_employee_id || null,
             created_by: profile?.id ?? null,
             ...(status === 'posted'
               ? { posted_at: new Date().toISOString(), posted_by: profile?.id ?? null }
@@ -1139,7 +1170,15 @@ export function NuevaSalidaPage() {
             ...(movement as StockMovement),
             lines: createdLines as StockMovementLine[],
           }
-          generateValePDF(movWithLines, organization)
+          const deliveredBy = allEmployees.find((e) => e.id === step1Data.delivered_by_employee_id)
+          const receivedBy = allEmployees.find((e) => e.id === step1Data.received_by_employee_id)
+          generateValePDF({
+            movement: movWithLines,
+            organization,
+            deliveredByName: deliveredBy?.full_name,
+            receivedByName: receivedBy?.full_name,
+            canSeePrices,
+          })
         }
 
         toast.success(
@@ -1155,7 +1194,7 @@ export function NuevaSalidaPage() {
         setIsSubmitting(false)
       }
     },
-    [step1Data, step2Data, organization, activeSeason, profile, navigate, latestFxRate, allEmployees]
+    [step1Data, step2Data, organization, activeSeason, profile, navigate, latestFxRate, allEmployees, canSeePrices]
   )
 
   return (

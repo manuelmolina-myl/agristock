@@ -199,11 +199,17 @@ export interface StockMovement {
   cancellation_reason: string | null
   notes: string | null
   attachment_urls: string[] | null
+  delivered_by_employee_id: string | null
+  received_by_employee_id: string | null
+  transport_notes: string | null
   created_at: string
   created_by: string | null
   // Joined
   warehouse?: Warehouse
+  counterpart_warehouse?: Warehouse
   supplier?: Supplier
+  delivered_by_employee?: Employee
+  received_by_employee?: Employee
   lines?: StockMovementLine[]
 }
 

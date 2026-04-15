@@ -5,58 +5,24 @@ import type { StockMovement, StockMovementLine, Organization, Item } from '@/lib
 import { MOVEMENT_TYPE_LABELS } from '@/lib/constants'
 import { formatFechaCorta, formatMoney, formatQuantity } from '@/lib/utils'
 
-// ─── Destination label helper ─────────────────────────────────────────────────
-
-const DESTINATION_TYPE_LABELS: Record<string, string> = {
-  crop_lot:    'Lote de cultivo',
-  equipment:   'Tractor / Equipo',
-  employee:    'Empleado',
-  maintenance: 'Mantenimiento',
-  waste:       'Merma',
-  other:       'Otro',
-}
-
-function getDestinationLabel(line: StockMovementLine): string {
-  const type = line.destination_type
-  if (!type) return '—'
-
-  if (type === 'crop_lot' && (line as any).crop_lot) {
-    const lot = (line as any).crop_lot
-    return `Lote ${lot.code ?? ''} — ${lot.crop_type ?? ''}`
-  }
-  if (type === 'equipment' && (line as any).equipment) {
-    const eq = (line as any).equipment
-    return `${eq.code ?? ''} — ${eq.name ?? ''}`
-  }
-  if (type === 'employee' && (line as any).employee) {
-    const emp = (line as any).employee
-    return `${emp.employee_code ?? ''} — ${emp.full_name ?? ''}`
-  }
-  return DESTINATION_TYPE_LABELS[type] ?? type
-}
-
 // ─── Options interface ────────────────────────────────────────────────────────
 
-export interface GenerateValePDFOptions {
+export interface GenerateEntradaPDFOptions {
   movement: StockMovement & { lines: StockMovementLine[] }
   organization: Organization
   items?: Item[]
-  deliveredByName?: string
+  supplierName?: string
   receivedByName?: string
-  destinationName?: string
-  canSeePrices?: boolean
 }
 
 // ─── Main export function ─────────────────────────────────────────────────────
 
-export function generateValePDF(options: GenerateValePDFOptions): void {
+export function generateEntradaPDF(options: GenerateEntradaPDFOptions): void {
   const {
     movement,
     organization,
-    deliveredByName,
+    supplierName,
     receivedByName,
-    destinationName,
-    canSeePrices = true,
   } = options
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
@@ -67,7 +33,7 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   const contentW = pageW - margin * 2
 
   // ── Colors ──────────────────────────────────────────────────────────────────
-  const GREEN: [number, number, number] = [22, 163, 74]    // #16A34A
+  const GREEN: [number, number, number] = [22, 163, 74]
   const GREEN_DARK: [number, number, number] = [15, 118, 53]
   const GRAY_DARK: [number, number, number] = [25, 25, 25]
   const GRAY_MID: [number, number, number] = [100, 100, 100]
@@ -75,7 +41,7 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   const GRAY_BG: [number, number, number] = [248, 250, 248]
   const WHITE: [number, number, number] = [255, 255, 255]
 
-  // ── Header band (30mm tall) ──────────────────────────────────────────────────
+  // ── Header band ──────────────────────────────────────────────────────────────
   const HEADER_H = 30
   doc.setFillColor(...GREEN)
   doc.rect(0, 0, pageW, HEADER_H, 'F')
@@ -105,7 +71,7 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   doc.setFontSize(17)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...WHITE)
-  doc.text('VALE DE SALIDA', pageW - margin, 11, { align: 'right' })
+  doc.text('NOTA DE ENTRADA', pageW - margin, 11, { align: 'right' })
 
   // Right: Folio
   doc.setFontSize(9)
@@ -132,21 +98,19 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   // ── Info section — 2 columns ─────────────────────────────────────────────────
   doc.setFillColor(...GRAY_BG)
   doc.setDrawColor(...GRAY_LIGHT)
-  doc.roundedRect(margin, y, contentW, 28, 2, 2, 'FD')
+  doc.roundedRect(margin, y, contentW, 36, 2, 2, 'FD')
 
   const col1x = margin + 5
   const col2x = margin + contentW / 2 + 2
 
-  // Labels (small caps)
+  // Row 1 labels
   doc.setFontSize(6.5)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(...GRAY_MID)
-  doc.text('ALMACÉN ORIGEN', col1x, y + 6)
-  doc.text('TIPO DE MOVIMIENTO', col2x, y + 6)
-  doc.text('DESTINO', col1x, y + 18)
-  doc.text('NOTAS', col2x, y + 18)
+  doc.text('ALMACÉN DESTINO', col1x, y + 6)
+  doc.text('TIPO DE ENTRADA', col2x, y + 6)
 
-  // Values
+  // Row 1 values
   doc.setFontSize(8.5)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...GRAY_DARK)
@@ -161,27 +125,38 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
     col2x, y + 12
   )
 
-  // Destination
-  const firstLine = movement.lines?.[0]
-  const destLabel = destinationName ?? (firstLine ? getDestinationLabel(firstLine) : '—')
-  doc.setFontSize(8)
-  doc.text(destLabel, col1x, y + 24)
+  // Row 2 labels
+  doc.setFontSize(6.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...GRAY_MID)
+  doc.text('PROVEEDOR', col1x, y + 20)
+  doc.text('REFERENCIA / FACTURA', col2x, y + 20)
 
-  // Notes (truncated)
+  // Row 2 values
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...GRAY_DARK)
+  doc.text(supplierName ?? (movement as any).supplier?.name ?? '—', col1x, y + 26)
+
+  const ref = (movement as any).reference_external ?? '—'
+  doc.text(ref, col2x, y + 26)
+
+  // Notes row
   if (movement.notes) {
+    doc.setFontSize(6.5)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7.5)
     doc.setTextColor(...GRAY_MID)
-    const noteText = doc.splitTextToSize(movement.notes, contentW / 2 - 8)
-    doc.text(noteText[0] ?? '', col2x, y + 24)
+    doc.text('NOTAS', col1x, y + 31)
+    doc.setFontSize(7.5)
+    doc.setTextColor(...GRAY_DARK)
+    const noteTrunc = doc.splitTextToSize(movement.notes, contentW - 10)
+    doc.text(noteTrunc[0] ?? '', col1x, y + 35)
   }
 
-  y += 36
+  y += 44
 
-  // ── Line items table ──────────────────────────────────────────────────────────
-  const numColBase = ['#', 'SKU', 'Descripción', 'Cantidad', 'Unidad']
-  const numColPrices = ['Costo Unit.', 'Total MXN']
-  const head = canSeePrices ? [...numColBase, ...numColPrices] : numColBase
+  // ── Line items table (always show costs for entries) ──────────────────────────
+  const head = ['#', 'SKU', 'Descripción', 'Cantidad', 'Unidad', 'Costo Unit.', 'Total MXN']
 
   const tableRows = movement.lines.map((line, i) => {
     const item = (line as any).item as any
@@ -189,25 +164,10 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
     const name = item?.name ?? line.item_id
     const qty  = formatQuantity(line.quantity)
     const unit = item?.unit?.code ?? ''
-    const row  = [`${i + 1}`, sku, name, qty, unit]
-    if (canSeePrices) {
-      row.push(formatMoney(line.unit_cost_native, line.native_currency))
-      row.push(formatMoney(line.line_total_mxn, 'MXN'))
-    }
-    return row
+    const costUnit  = formatMoney(line.unit_cost_native, line.native_currency)
+    const lineTotal = formatMoney(line.line_total_mxn, 'MXN')
+    return [`${i + 1}`, sku, name, qty, unit, costUnit, lineTotal]
   })
-
-  const colStyles: Record<number, object> = {
-    0: { cellWidth: 8, halign: 'center', textColor: GRAY_MID },
-    1: { cellWidth: 22, fontStyle: 'bold', textColor: GRAY_MID },
-    2: { cellWidth: 'auto' },
-    3: { cellWidth: 20, halign: 'right' },
-    4: { cellWidth: 14, halign: 'center' },
-  }
-  if (canSeePrices) {
-    colStyles[5] = { cellWidth: 24, halign: 'right', font: 'courier' }
-    colStyles[6] = { cellWidth: 28, halign: 'right', font: 'courier', fontStyle: 'bold' }
-  }
 
   autoTable(doc, {
     startY: y,
@@ -222,7 +182,15 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
       fontSize: 7.5,
     },
     alternateRowStyles: { fillColor: [245, 250, 245] },
-    columnStyles: colStyles,
+    columnStyles: {
+      0: { cellWidth: 8,  halign: 'center', textColor: GRAY_MID },
+      1: { cellWidth: 22, fontStyle: 'bold', textColor: GRAY_MID },
+      2: { cellWidth: 'auto' },
+      3: { cellWidth: 20, halign: 'right' },
+      4: { cellWidth: 14, halign: 'center' },
+      5: { cellWidth: 24, halign: 'right', font: 'courier' },
+      6: { cellWidth: 28, halign: 'right', font: 'courier', fontStyle: 'bold' },
+    },
     didDrawPage: (data) => {
       if (data.pageNumber > 1) {
         doc.setFillColor(...GREEN)
@@ -232,7 +200,7 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
         doc.setFont('helvetica', 'bold')
         doc.text(organization.name, margin, 7)
         doc.text(
-          `Vale de Salida — ${movement.document_number ?? ''}`,
+          `Nota de Entrada — ${movement.document_number ?? ''}`,
           pageW - margin, 7, { align: 'right' }
         )
       }
@@ -242,66 +210,60 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   const finalY = (doc as any).lastAutoTable.finalY as number
   let totY = finalY + 6
 
-  // ── Totals (only if canSeePrices) ─────────────────────────────────────────────
-  if (canSeePrices) {
-    const totalMxn = (movement as any).total_mxn
-      ?? movement.lines.reduce((s, l) => s + l.line_total_mxn, 0)
-    const totalUsd = (movement as any).total_usd
+  // ── Totals ─────────────────────────────────────────────────────────────────────
+  const totalMxn = (movement as any).total_mxn
+    ?? movement.lines.reduce((s, l) => s + l.line_total_mxn, 0)
+  const totalUsd = (movement as any).total_usd
 
-    const totalsX  = pageW - margin - 72
-    const amountX  = pageW - margin
+  const totalsX = pageW - margin - 72
+  const amountX = pageW - margin
 
-    doc.setFontSize(7.5)
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...GRAY_MID)
+  doc.text('Subtotal MXN:', totalsX, totY)
+  doc.setFont('courier', 'normal')
+  doc.setTextColor(...GRAY_DARK)
+  doc.text(formatMoney(totalMxn, 'MXN'), amountX, totY, { align: 'right' })
+
+  if (totalUsd && totalUsd > 0) {
+    totY += 5
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(...GRAY_MID)
-    doc.text('Subtotal MXN:', totalsX, totY)
+    doc.text('Total USD:', totalsX, totY)
     doc.setFont('courier', 'normal')
     doc.setTextColor(...GRAY_DARK)
-    doc.text(formatMoney(totalMxn, 'MXN'), amountX, totY, { align: 'right' })
-
-    if (totalUsd && totalUsd > 0) {
-      totY += 5
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(...GRAY_MID)
-      doc.text('Total USD:', totalsX, totY)
-      doc.setFont('courier', 'normal')
-      doc.setTextColor(...GRAY_DARK)
-      doc.text(formatMoney(totalUsd, 'USD'), amountX, totY, { align: 'right' })
-    }
-
-    totY += 3
-    doc.setDrawColor(...GRAY_LIGHT)
-    doc.line(totalsX, totY, pageW - margin, totY)
-    totY += 5
-
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9.5)
-    doc.setTextColor(...GREEN_DARK)
-    doc.text('TOTAL MXN:', totalsX, totY)
-    doc.setFont('courier', 'bold')
-    doc.setTextColor(...GRAY_DARK)
-    doc.text(formatMoney(totalMxn, 'MXN'), amountX, totY, { align: 'right' })
-
-    totY += 8
-  } else {
-    totY += 4
+    doc.text(formatMoney(totalUsd, 'USD'), amountX, totY, { align: 'right' })
   }
 
-  // ── Signature section ─────────────────────────────────────────────────────────
-  const sigH  = 36
-  const sigY  = Math.max(totY + 10, finalY + 44)
+  totY += 3
+  doc.setDrawColor(...GRAY_LIGHT)
+  doc.line(totalsX, totY, pageW - margin, totY)
+  totY += 5
 
-  // If not enough space, new page
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9.5)
+  doc.setTextColor(...GREEN_DARK)
+  doc.text('TOTAL MXN:', totalsX, totY)
+  doc.setFont('courier', 'bold')
+  doc.setTextColor(...GRAY_DARK)
+  doc.text(formatMoney(totalMxn, 'MXN'), amountX, totY, { align: 'right' })
+
+  totY += 8
+
+  // ── Signature section ─────────────────────────────────────────────────────────
+  const sigH = 36
+  const sigY = Math.max(totY + 10, finalY + 44)
+
   if (sigY + sigH > pageH - 14) {
     doc.addPage()
-    // re-draw mini header
     doc.setFillColor(...GREEN)
     doc.rect(0, 0, pageW, 10, 'F')
     doc.setTextColor(...WHITE)
     doc.setFontSize(7.5)
     doc.setFont('helvetica', 'bold')
     doc.text(organization.name, margin, 7)
-    doc.text(`Vale de Salida — ${movement.document_number ?? ''}`, pageW - margin, 7, { align: 'right' })
+    doc.text(`Nota de Entrada — ${movement.document_number ?? ''}`, pageW - margin, 7, { align: 'right' })
   }
 
   const sigBoxW = (contentW - 16) / 2
@@ -314,17 +276,14 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
     doc.setFillColor(252, 253, 252)
     doc.roundedRect(x, bY, sigBoxW, sigH, 2, 2, 'FD')
 
-    // signature line
     doc.setDrawColor(170, 170, 170)
     doc.line(x + 6, bY + 20, x + sigBoxW - 6, bY + 20)
 
-    // label
     doc.setFontSize(7)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(...GREEN_DARK)
     doc.text(title.toUpperCase(), x + sigBoxW / 2, bY + 26, { align: 'center' })
 
-    // name
     if (name) {
       doc.setFontSize(8)
       doc.setFont('helvetica', 'bold')
@@ -332,15 +291,14 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
       doc.text(name, x + sigBoxW / 2, bY + 31.5, { align: 'center' })
     }
 
-    // Firma sub-label
     doc.setFontSize(6)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(...GRAY_MID)
     doc.text('Firma', x + sigBoxW / 2, bY + 4, { align: 'center' })
   }
 
-  drawSignatureBox(sig1x, 'Entrega', deliveredByName)
-  drawSignatureBox(sig2x, 'Recibe',  receivedByName)
+  drawSignatureBox(sig1x, 'Entrega (Proveedor)', supplierName)
+  drawSignatureBox(sig2x, 'Recibe (Almacén)',    receivedByName)
 
   // ── Footer ─────────────────────────────────────────────────────────────────────
   const totalPages = doc.getNumberOfPages()
@@ -358,8 +316,8 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   }
 
   // ── Download ──────────────────────────────────────────────────────────────────
-  const filename = `vale-salida-${movement.document_number ?? movement.id.slice(0, 8)}.pdf`
+  const filename = `nota-entrada-${movement.document_number ?? movement.id.slice(0, 8)}.pdf`
   doc.save(filename)
 }
 
-export default generateValePDF
+export default generateEntradaPDF

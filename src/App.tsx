@@ -22,6 +22,8 @@ const EntradasPage = lazy(() => import('@/pages/admin/entradas/entradas-page'))
 const NuevaEntradaPage = lazy(() => import('@/pages/admin/entradas/nueva-entrada-page'))
 const SalidasPage = lazy(() => import('@/pages/admin/salidas/salidas-page'))
 const NuevaSalidaPage = lazy(() => import('@/pages/admin/salidas/nueva-salida-page'))
+const TraspasosPage = lazy(() => import('@/pages/admin/traspasos/traspasos-page'))
+const NuevoTraspasoPage = lazy(() => import('@/pages/admin/traspasos/nuevo-traspaso-page'))
 const DieselPage = lazy(() => import('@/pages/admin/diesel/diesel-page'))
 const CargaDieselPage = lazy(() => import('@/pages/admin/diesel/carga-diesel-page'))
 const DieselTractorPage = lazy(() => import('@/pages/admin/diesel/diesel-tractor-page'))
@@ -107,6 +109,8 @@ export default function App() {
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="traspasos" element={<TraspasosPage />} />
+          <Route path="traspasos/nuevo" element={<NuevoTraspasoPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
           <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
@@ -142,6 +146,8 @@ export default function App() {
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="traspasos" element={<TraspasosPage />} />
+          <Route path="traspasos/nuevo" element={<NuevoTraspasoPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
           <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
@@ -173,6 +179,8 @@ export default function App() {
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="traspasos" element={<TraspasosPage />} />
+          <Route path="traspasos/nuevo" element={<NuevoTraspasoPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
           <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
