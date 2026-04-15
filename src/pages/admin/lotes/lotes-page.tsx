@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useBasePath } from '@/hooks/use-base-path'
+import { useBasePath, useCanSeePrices } from '@/hooks/use-base-path'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -111,11 +111,13 @@ function LotCard({
   onClick,
   onEdit,
   onDelete,
+  canSeePrices,
 }: {
   lot: CropLot
   onClick: () => void
   onEdit: () => void
   onDelete: () => void
+  canSeePrices: boolean
 }) {
   const stripeColor = lot.color ?? '#94a3b8'
 
@@ -183,12 +185,16 @@ function LotCard({
 
         {/* Total cost + status */}
         <div className="flex items-center justify-between pt-2 border-t">
-          <div className="flex flex-col gap-0">
-            <span className="text-[10px] text-muted-foreground">Total consumido</span>
-            <span className="text-xs font-mono font-medium tabular-nums">
-              {formatMoney(0, 'MXN')}
-            </span>
-          </div>
+          {canSeePrices ? (
+            <div className="flex flex-col gap-0">
+              <span className="text-[10px] text-muted-foreground">Total consumido</span>
+              <span className="text-xs font-mono font-medium tabular-nums">
+                {formatMoney(0, 'MXN')}
+              </span>
+            </div>
+          ) : (
+            <span />
+          )}
           <StatusBadge status={lot.status} />
         </div>
       </CardContent>
@@ -201,6 +207,7 @@ function LotCard({
 export function LotesPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
+  const canSeePrices = useCanSeePrices()
   const { activeSeason } = useAuth()
   const { data: _lots = [], isLoading } = useCropLots()
   const lots = _lots as CropLot[]
@@ -323,6 +330,7 @@ export function LotesPage() {
               onClick={() => navigate(`${basePath}/lotes/${lot.id}`)}
               onEdit={() => openEdit(lot)}
               onDelete={() => openDelete(lot.id)}
+              canSeePrices={canSeePrices}
             />
           ))}
         </div>
