@@ -25,6 +25,7 @@ import { es } from 'date-fns/locale'
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
+import { useCanSeePrices } from '@/hooks/use-base-path'
 import { useEquipment } from '@/hooks/use-supabase-query'
 import type { StockMovementLine, Equipment, Employee, Item, StockMovement } from '@/lib/database.types'
 import { formatQuantity, formatMoney, formatFechaCorta } from '@/lib/utils'
@@ -140,9 +141,10 @@ function KpiCard({ icon, label, value, sub, loading }: KpiCardProps) {
 interface HistorialTabProps {
   lines: DieselLine[]
   avgRendimiento: number | null
+  canSeePrices: boolean
 }
 
-function HistorialTab({ lines, avgRendimiento }: HistorialTabProps) {
+function HistorialTab({ lines, avgRendimiento, canSeePrices }: HistorialTabProps) {
   if (lines.length === 0) {
     return (
       <EmptyState
@@ -182,7 +184,7 @@ function HistorialTab({ lines, avgRendimiento }: HistorialTabProps) {
                         ? `${formatQuantity(line.diesel_liters, 1)} L`
                         : '—'}
                     </span>
-                    {line.line_total_mxn != null && (
+                    {canSeePrices && line.line_total_mxn != null && (
                       <span className="text-xs text-muted-foreground font-mono">
                         {formatMoney(line.line_total_mxn, 'MXN')}
                       </span>
@@ -230,7 +232,7 @@ function HistorialTab({ lines, avgRendimiento }: HistorialTabProps) {
               <TableHead className="w-24 text-right">Litros</TableHead>
               <TableHead className="w-36">Horómetro</TableHead>
               <TableHead className="w-32">Rendimiento</TableHead>
-              <TableHead className="w-28 text-right">Costo</TableHead>
+              {canSeePrices && <TableHead className="w-28 text-right">Costo</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -292,13 +294,15 @@ function HistorialTab({ lines, avgRendimiento }: HistorialTabProps) {
                     )}
                   </TableCell>
 
-                  <TableCell className="text-right">
-                    {line.line_total_mxn != null ? (
-                      <MoneyDisplay amount={line.line_total_mxn} currency="MXN" />
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
+                  {canSeePrices && (
+                    <TableCell className="text-right">
+                      {line.line_total_mxn != null ? (
+                        <MoneyDisplay amount={line.line_total_mxn} currency="MXN" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               )
             })}
@@ -433,9 +437,10 @@ function RendimientoTab({ lines, avgRendimiento }: RendimientoTabProps) {
 
 interface ConsumoMensualTabProps {
   lines: DieselLine[]
+  canSeePrices: boolean
 }
 
-function ConsumoMensualTab({ lines }: ConsumoMensualTabProps) {
+function ConsumoMensualTab({ lines, canSeePrices }: ConsumoMensualTabProps) {
   const chartData = useMemo(() => {
     const byMonth: Record<string, { litros: number; costo: number }> = {}
     for (const l of lines) {
@@ -507,7 +512,7 @@ function ConsumoMensualTab({ lines }: ConsumoMensualTabProps) {
             <TableRow className="text-xs uppercase tracking-wide text-muted-foreground hover:bg-transparent">
               <TableHead>Mes</TableHead>
               <TableHead className="text-right">Litros</TableHead>
-              <TableHead className="text-right">Costo total</TableHead>
+              {canSeePrices && <TableHead className="text-right">Costo total</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -517,9 +522,11 @@ function ConsumoMensualTab({ lines }: ConsumoMensualTabProps) {
                 <TableCell className="text-right font-mono tabular-nums">
                   {formatQuantity(row.litros, 1)} L
                 </TableCell>
-                <TableCell className="text-right">
-                  <MoneyDisplay amount={row.costo} currency="MXN" />
-                </TableCell>
+                {canSeePrices && (
+                  <TableCell className="text-right">
+                    <MoneyDisplay amount={row.costo} currency="MXN" />
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
@@ -547,6 +554,7 @@ function equipmentTypeLabel(type: Equipment['type']): string {
 export function DieselTractorPage() {
   const { id: tractorId } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const canSeePrices = useCanSeePrices()
   useAuth()
 
   const [tab, setTab] = useState('historial')
@@ -675,11 +683,13 @@ export function DieselTractorPage() {
           value={`${formatQuantity(kpis.totalLitros, 0)} L`}
           sub={`${lines.length} ${lines.length === 1 ? 'carga' : 'cargas'}`}
         />
-        <KpiCard
-          icon={<TrendingDown className="size-4" />}
-          label="Gasto total"
-          value={formatMoney(kpis.totalGasto, 'MXN')}
-        />
+        {canSeePrices && (
+          <KpiCard
+            icon={<TrendingDown className="size-4" />}
+            label="Gasto total"
+            value={formatMoney(kpis.totalGasto, 'MXN')}
+          />
+        )}
         <KpiCard
           icon={<Gauge className="size-4" />}
           label="Rendimiento promedio"
@@ -706,7 +716,7 @@ export function DieselTractorPage() {
         </TabsList>
 
         <TabsContent value="historial" className="mt-4">
-          <HistorialTab lines={lines} avgRendimiento={kpis.rendimientoPromedio} />
+          <HistorialTab lines={lines} avgRendimiento={kpis.rendimientoPromedio} canSeePrices={canSeePrices} />
         </TabsContent>
 
         <TabsContent value="rendimiento" className="mt-4">
@@ -714,7 +724,7 @@ export function DieselTractorPage() {
         </TabsContent>
 
         <TabsContent value="mensual" className="mt-4">
-          <ConsumoMensualTab lines={lines} />
+          <ConsumoMensualTab lines={lines} canSeePrices={canSeePrices} />
         </TabsContent>
       </Tabs>
     </div>

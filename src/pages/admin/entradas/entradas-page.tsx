@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useBasePath } from '@/hooks/use-base-path'
+import { useBasePath, useCanSeePrices } from '@/hooks/use-base-path'
 import {
   Plus,
   MoreHorizontal,
@@ -114,6 +114,7 @@ const colHelper = createColumnHelper<EntryMovement>()
 export default function EntradasPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
+  const canSeePrices = useCanSeePrices()
   const { activeSeason } = useAuth()
 
   // Filters
@@ -240,14 +241,14 @@ export default function EntradasPage() {
         )
       },
     }),
-    colHelper.accessor('total_mxn', {
+    ...(canSeePrices ? [colHelper.accessor('total_mxn', {
       header: () => <span className="block text-right">Total MXN</span>,
       cell: (info) => (
         <div className="flex justify-end">
           <MoneyDisplay amount={info.getValue() ?? 0} currency="MXN" />
         </div>
       ),
-    }),
+    })] : []),
     colHelper.accessor('status', {
       header: 'Estado',
       cell: (info) => <StatusBadge status={info.getValue()} />,
@@ -421,9 +422,11 @@ export default function EntradasPage() {
                   <div className="mt-2 flex items-center justify-between text-xs">
                     <StatusBadge status={m.status} />
                     <div className="flex flex-col items-end gap-0.5">
-                      <span className="font-mono font-medium text-foreground">
-                        {m.total_mxn != null ? `$${m.total_mxn.toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '—'}
-                      </span>
+                      {canSeePrices && (
+                        <span className="font-mono font-medium text-foreground">
+                          {m.total_mxn != null ? `$${m.total_mxn.toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : '—'}
+                        </span>
+                      )}
                       <span className="text-muted-foreground">{formatFechaCorta(m.created_at)}</span>
                     </div>
                   </div>

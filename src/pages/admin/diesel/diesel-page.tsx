@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useBasePath } from '@/hooks/use-base-path'
+import { useBasePath, useCanSeePrices } from '@/hooks/use-base-path'
 import {
   Fuel,
   DollarSign,
@@ -146,7 +146,7 @@ function KpiCard({ icon, label, value, sub, loading }: KpiCardProps) {
 
 // ─── Table Skeleton ───────────────────────────────────────────────────────────
 
-function TableSkeleton() {
+function TableSkeleton({ canSeePrices }: { canSeePrices: boolean }) {
   return (
     <>
       {Array.from({ length: 7 }).map((_, i) => (
@@ -157,7 +157,7 @@ function TableSkeleton() {
           <TableCell><Skeleton className="h-3.5 w-16 ml-auto" /></TableCell>
           <TableCell><Skeleton className="h-3.5 w-28" /></TableCell>
           <TableCell><Skeleton className="h-3.5 w-20" /></TableCell>
-          <TableCell><Skeleton className="h-3.5 w-24 ml-auto" /></TableCell>
+          {canSeePrices && <TableCell><Skeleton className="h-3.5 w-24 ml-auto" /></TableCell>}
           <TableCell><Skeleton className="h-5 w-5 ml-auto" /></TableCell>
         </TableRow>
       ))}
@@ -277,9 +277,10 @@ interface MobileCardProps {
   rendimiento: number | null
   isAnomalo: boolean
   onCancel: (line: DieselLine) => void
+  canSeePrices: boolean
 }
 
-function MobileDieselCard({ line, rendimiento, isAnomalo, onCancel }: MobileCardProps) {
+function MobileDieselCard({ line, rendimiento, isAnomalo, onCancel, canSeePrices }: MobileCardProps) {
   const navigate = useNavigate()
   const basePath = useBasePath()
   const [expanded, setExpanded] = useState(false)
@@ -318,7 +319,7 @@ function MobileDieselCard({ line, rendimiento, isAnomalo, onCancel }: MobileCard
               ? `${formatQuantity(line.diesel_liters, 1)} L`
               : '—'}
           </span>
-          {line.line_total_mxn != null && (
+          {canSeePrices && line.line_total_mxn != null && (
             <span className="text-xs text-muted-foreground font-mono">
               {formatMoney(line.line_total_mxn, 'MXN')}
             </span>
@@ -372,6 +373,7 @@ function MobileDieselCard({ line, rendimiento, isAnomalo, onCancel }: MobileCard
 export function DieselPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
+  const canSeePrices = useCanSeePrices()
   const queryClient = useQueryClient()
   const { organization } = useAuth()
   const orgId = organization?.id ?? ''
@@ -619,12 +621,14 @@ export function DieselPage() {
           sub="del período filtrado"
           loading={isLoading}
         />
-        <KpiCard
-          icon={<DollarSign className="size-4" />}
-          label="Gasto total"
-          value={isLoading ? '—' : formatMoney(kpis.gastoTotal, 'MXN')}
-          loading={isLoading}
-        />
+        {canSeePrices && (
+          <KpiCard
+            icon={<DollarSign className="size-4" />}
+            label="Gasto total"
+            value={isLoading ? '—' : formatMoney(kpis.gastoTotal, 'MXN')}
+            loading={isLoading}
+          />
+        )}
         <KpiCard
           icon={<Gauge className="size-4" />}
           label="Rendimiento promedio"
@@ -702,6 +706,7 @@ export function DieselPage() {
                 rendimiento={rendimiento}
                 isAnomalo={isAnomalo}
                 onCancel={setCancelTarget}
+                canSeePrices={canSeePrices}
               />
             )
           })}
@@ -719,16 +724,16 @@ export function DieselPage() {
               <TableHead className="w-24 text-right">Litros</TableHead>
               <TableHead className="w-36">Horómetro</TableHead>
               <TableHead className="w-36">Rendimiento</TableHead>
-              <TableHead className="w-28 text-right">Costo MXN</TableHead>
+              {canSeePrices && <TableHead className="w-28 text-right">Costo MXN</TableHead>}
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableSkeleton />
+              <TableSkeleton canSeePrices={canSeePrices} />
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="p-0">
+                <TableCell colSpan={canSeePrices ? 8 : 7} className="p-0">
                   <EmptyState
                     icon={<Fuel className="size-5" />}
                     title={activeFilterCount > 0 ? 'Sin resultados' : 'Sin cargas de diésel'}
@@ -835,13 +840,15 @@ export function DieselPage() {
                     </TableCell>
 
                     {/* Costo */}
-                    <TableCell className="text-right">
-                      {line.line_total_mxn != null ? (
-                        <MoneyDisplay amount={line.line_total_mxn} currency="MXN" />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
+                    {canSeePrices && (
+                      <TableCell className="text-right">
+                        {line.line_total_mxn != null ? (
+                          <MoneyDisplay amount={line.line_total_mxn} currency="MXN" />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    )}
 
                     {/* Actions */}
                     <TableCell>
@@ -884,11 +891,15 @@ export function DieselPage() {
           <span className="font-mono font-medium">
             {formatQuantity(filtered.reduce((s, l) => s + (l.diesel_liters ?? 0), 0), 1)} L
           </span>
-          {' · '}
-          Total:{' '}
-          <span className="font-mono font-medium">
-            {formatMoney(filtered.reduce((s, l) => s + (l.line_total_mxn ?? 0), 0), 'MXN')}
-          </span>
+          {canSeePrices && (
+            <>
+              {' · '}
+              Total:{' '}
+              <span className="font-mono font-medium">
+                {formatMoney(filtered.reduce((s, l) => s + (l.line_total_mxn ?? 0), 0), 'MXN')}
+              </span>
+            </>
+          )}
         </p>
       )}
 

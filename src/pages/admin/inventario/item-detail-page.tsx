@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useBasePath } from '@/hooks/use-base-path'
+import { useBasePath, useCanSeePrices } from '@/hooks/use-base-path'
 import {
   ArrowLeft,
   Pencil,
@@ -60,11 +60,12 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 // ─── Stock table ──────────────────────────────────────────────────────────────
 
-function StockTab({ itemId, minStock, maxStock, reorderPoint }: {
+function StockTab({ itemId, minStock, maxStock, reorderPoint, canSeePrices }: {
   itemId: string
   minStock: number | null
   maxStock: number | null
   reorderPoint: number | null
+  canSeePrices: boolean
 }) {
   const { data: stockRows = [], isLoading } = useItemStock({ item_id: itemId })
 
@@ -95,8 +96,8 @@ function StockTab({ itemId, minStock, maxStock, reorderPoint }: {
           <TableRow className="text-xs uppercase tracking-wide text-muted-foreground hover:bg-transparent">
             <TableHead>Almacén</TableHead>
             <TableHead className="w-40">Cantidad</TableHead>
-            <TableHead className="w-36 text-right">Costo prom. nativo</TableHead>
-            <TableHead className="w-36 text-right">Costo prom. MXN</TableHead>
+            {canSeePrices && <TableHead className="w-36 text-right">Costo prom. nativo</TableHead>}
+            {canSeePrices && <TableHead className="w-36 text-right">Costo prom. MXN</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -120,12 +121,16 @@ function StockTab({ itemId, minStock, maxStock, reorderPoint }: {
                   />
                 </div>
               </TableCell>
-              <TableCell className="text-right text-sm tabular-nums">
-                {formatMoney(row.avg_cost_native, row.item?.native_currency ?? 'MXN')}
-              </TableCell>
-              <TableCell className="text-right text-sm tabular-nums">
-                {formatMoney(row.avg_cost_mxn, 'MXN')}
-              </TableCell>
+              {canSeePrices && (
+                <TableCell className="text-right text-sm tabular-nums">
+                  {formatMoney(row.avg_cost_native, row.item?.native_currency ?? 'MXN')}
+                </TableCell>
+              )}
+              {canSeePrices && (
+                <TableCell className="text-right text-sm tabular-nums">
+                  {formatMoney(row.avg_cost_mxn, 'MXN')}
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>
@@ -140,6 +145,7 @@ export function ItemDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const basePath = useBasePath()
+  const canSeePrices = useCanSeePrices()
 
   const { data: item, isLoading } = useItem(id)
   const softDelete = useSoftDelete('items')
@@ -375,6 +381,7 @@ export function ItemDetailPage() {
             minStock={item.min_stock}
             maxStock={item.max_stock}
             reorderPoint={item.reorder_point}
+            canSeePrices={canSeePrices}
           />
         </TabsContent>
 

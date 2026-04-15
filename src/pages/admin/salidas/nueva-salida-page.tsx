@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useBasePath } from '@/hooks/use-base-path'
+import { useBasePath, useCanSeePrices } from '@/hooks/use-base-path'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -480,9 +480,10 @@ interface Step2Props {
   onNext: (data: Step2Values) => void
   onBack: () => void
   fxRate: number
+  canSeePrices: boolean
 }
 
-function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxRate }: Step2Props) {
+function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxRate, canSeePrices }: Step2Props) {
   const { data: items = [] } = useItems()
   const { data: employees = [] } = useEmployees()
   const { activeSeason } = useAuth()
@@ -604,7 +605,7 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
               </div>
 
               {/* Row 2: cantidad + costo + moneda */}
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-[1fr_1fr_auto]">
+              <div className={canSeePrices ? "grid grid-cols-2 gap-3 md:grid-cols-[1fr_1fr_auto]" : "grid grid-cols-1 gap-3"}>
                 {/* Quantity */}
                 <div className="flex flex-col gap-1">
                   <Label className="text-xs">
@@ -629,27 +630,31 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
                   )}
                 </div>
 
-                {/* Cost (read-only) */}
-                <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Costo unit.</Label>
-                  <Input
-                    type="number"
-                    step="0.0001"
-                    className="h-8 text-sm bg-muted/40"
-                    readOnly
-                    {...register(`lines.${index}.unit_cost_native`)}
-                  />
-                </div>
+                {/* Cost (read-only) — hidden for almacenista */}
+                {canSeePrices && (
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs">Costo unit.</Label>
+                    <Input
+                      type="number"
+                      step="0.0001"
+                      className="h-8 text-sm bg-muted/40"
+                      readOnly
+                      {...register(`lines.${index}.unit_cost_native`)}
+                    />
+                  </div>
+                )}
 
-                {/* Currency (read-only) */}
-                <div className="flex flex-col gap-1 col-span-2 md:col-span-1 md:w-20">
-                  <Label className="text-xs">Moneda</Label>
-                  <Input
-                    className="h-8 text-sm bg-muted/40 uppercase"
-                    readOnly
-                    {...register(`lines.${index}.native_currency`)}
-                  />
-                </div>
+                {/* Currency (read-only) — hidden for almacenista */}
+                {canSeePrices && (
+                  <div className="flex flex-col gap-1 col-span-2 md:col-span-1 md:w-20">
+                    <Label className="text-xs">Moneda</Label>
+                    <Input
+                      className="h-8 text-sm bg-muted/40 uppercase"
+                      readOnly
+                      {...register(`lines.${index}.native_currency`)}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Over-stock warning */}
@@ -792,16 +797,18 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
       </div>
 
       {/* ── Totals ───────────────────────────────────────────────────────── */}
-      <div className="rounded-lg border bg-muted/30 p-4 flex justify-end">
-        <div className="flex flex-col items-end gap-1">
-          <span className="text-xs text-muted-foreground uppercase tracking-wide">
-            Total estimado
-          </span>
-          <span className="text-lg font-semibold tabular-nums font-mono">
-            {formatMoney(totalMxn, 'MXN')}
-          </span>
+      {canSeePrices && (
+        <div className="rounded-lg border bg-muted/30 p-4 flex justify-end">
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Total estimado
+            </span>
+            <span className="text-lg font-semibold tabular-nums font-mono">
+              {formatMoney(totalMxn, 'MXN')}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex justify-between">
         <Button type="button" variant="outline" onClick={onBack}>
@@ -827,9 +834,10 @@ interface Step3Props {
   onRegister: () => Promise<void>
   isSubmitting: boolean
   fxRate: number
+  canSeePrices: boolean
 }
 
-function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmitting, fxRate: latestFxRate }: Step3Props) {
+function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmitting, fxRate: latestFxRate, canSeePrices }: Step3Props) {
   const { data: warehouses = [] } = useWarehouses()
   const { data: items = [] } = useItems()
   const { data: cropLots = [] } = useCropLots()
@@ -928,30 +936,34 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
                     {line.cost_center_notes ? ` · ${line.cost_center_notes}` : ''}
                   </p>
                 </div>
-                <div className="flex flex-col items-end shrink-0">
-                  <span className="text-sm font-mono font-medium tabular-nums">
-                    {formatMoney(lineTotalMxn, 'MXN')}
-                  </span>
-                  {line.native_currency === 'USD' && (
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {formatMoney(lineTotalNative, 'USD')}
+                {canSeePrices && (
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-sm font-mono font-medium tabular-nums">
+                      {formatMoney(lineTotalMxn, 'MXN')}
                     </span>
-                  )}
-                </div>
+                    {line.native_currency === 'USD' && (
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {formatMoney(lineTotalNative, 'USD')}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
-        <div className="bg-muted/30 px-4 py-3 flex justify-end">
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">
-              Total MXN
-            </span>
-            <span className="text-base font-semibold tabular-nums font-mono">
-              {formatMoney(totalMxn, 'MXN')}
-            </span>
+        {canSeePrices && (
+          <div className="bg-muted/30 px-4 py-3 flex justify-end">
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                Total MXN
+              </span>
+              <span className="text-base font-semibold tabular-nums font-mono">
+                {formatMoney(totalMxn, 'MXN')}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── Actions ──────────────────────────────────────────────────────── */}
@@ -988,6 +1000,7 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
 export function NuevaSalidaPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
+  const canSeePrices = useCanSeePrices()
   const { organization, activeSeason, profile } = useAuth()
 
   const { data: fxRates = [] } = useFxRates()
@@ -1190,6 +1203,7 @@ export function NuevaSalidaPage() {
           onNext={handleStep3Next}
           onBack={() => setCurrentStep(2)}
           fxRate={latestFxRate}
+          canSeePrices={canSeePrices}
         />
       )}
 
@@ -1202,6 +1216,7 @@ export function NuevaSalidaPage() {
           onRegister={() => submitMovement('posted')}
           isSubmitting={isSubmitting}
           fxRate={latestFxRate}
+          canSeePrices={canSeePrices}
         />
       )}
 
