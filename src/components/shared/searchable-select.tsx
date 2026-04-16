@@ -71,7 +71,7 @@ export function SearchableSelect({
         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
       </PopoverTrigger>
       <PopoverContent
-        className="p-0! w-[var(--available-width,320px)]"
+        className="p-0! w-[var(--anchor-width)] min-w-[240px] max-w-[calc(100vw-2rem)]"
         align="start"
         sideOffset={4}
       >
