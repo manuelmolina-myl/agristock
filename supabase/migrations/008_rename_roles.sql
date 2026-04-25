@@ -4,18 +4,18 @@
 -- super_admin is reserved for future platform-wide admin
 -- ============================================================================
 
--- 1. Update check constraint on profiles.role
+-- 1. Migrate existing data first (must happen before constraint change)
+UPDATE profiles
+  SET role = 'admin'
+  WHERE role IN ('super_admin', 'gerente');
+
+-- 2. Update check constraint on profiles.role
 ALTER TABLE profiles
   DROP CONSTRAINT IF EXISTS profiles_role_check;
 
 ALTER TABLE profiles
   ADD CONSTRAINT profiles_role_check
   CHECK (role IN ('super_admin', 'admin', 'almacenista', 'supervisor'));
-
--- 2. Migrate existing data
-UPDATE profiles
-  SET role = 'admin'
-  WHERE role IN ('super_admin', 'gerente');
 
 -- 3. Drop and recreate RLS policies that referenced 'super_admin' or 'gerente'
 
