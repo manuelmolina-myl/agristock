@@ -24,6 +24,9 @@ const SalidasPage = lazy(() => import('@/pages/admin/salidas/salidas-page'))
 const NuevaSalidaPage = lazy(() => import('@/pages/admin/salidas/nueva-salida-page'))
 const TraspasosPage = lazy(() => import('@/pages/admin/traspasos/traspasos-page'))
 const NuevoTraspasoPage = lazy(() => import('@/pages/admin/traspasos/nuevo-traspaso-page'))
+const EntradaDetailPage = lazy(() => import('@/pages/admin/entradas/entrada-detail-page'))
+const SalidaDetailPage = lazy(() => import('@/pages/admin/salidas/salida-detail-page'))
+const TraspasoDetailPage = lazy(() => import('@/pages/admin/traspasos/traspaso-detail-page'))
 const DieselPage = lazy(() => import('@/pages/admin/diesel/diesel-page'))
 const CargaDieselPage = lazy(() => import('@/pages/admin/diesel/carga-diesel-page'))
 const DieselTractorPage = lazy(() => import('@/pages/admin/diesel/diesel-tractor-page'))
@@ -107,10 +110,13 @@ export default function App() {
           <Route path="inventario/:id/editar" element={<ItemFormPage />} />
           <Route path="entradas" element={<EntradasPage />} />
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
+          <Route path="entradas/:id" element={<EntradaDetailPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="salidas/:id" element={<SalidaDetailPage />} />
           <Route path="traspasos" element={<TraspasosPage />} />
           <Route path="traspasos/nuevo" element={<NuevoTraspasoPage />} />
+          <Route path="traspasos/:id" element={<TraspasoDetailPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
           <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
@@ -144,10 +150,13 @@ export default function App() {
           <Route path="inventario/:id/editar" element={<ItemFormPage />} />
           <Route path="entradas" element={<EntradasPage />} />
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
+          <Route path="entradas/:id" element={<EntradaDetailPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="salidas/:id" element={<SalidaDetailPage />} />
           <Route path="traspasos" element={<TraspasosPage />} />
           <Route path="traspasos/nuevo" element={<NuevoTraspasoPage />} />
+          <Route path="traspasos/:id" element={<TraspasoDetailPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
           <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
@@ -177,10 +186,13 @@ export default function App() {
           <Route path="inventario/:id" element={<ItemDetailPage />} />
           <Route path="entradas" element={<EntradasPage />} />
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
+          <Route path="entradas/:id" element={<EntradaDetailPage />} />
           <Route path="salidas" element={<SalidasPage />} />
           <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="salidas/:id" element={<SalidaDetailPage />} />
           <Route path="traspasos" element={<TraspasosPage />} />
           <Route path="traspasos/nuevo" element={<NuevoTraspasoPage />} />
+          <Route path="traspasos/:id" element={<TraspasoDetailPage />} />
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
           <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />

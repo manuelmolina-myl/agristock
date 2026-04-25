@@ -198,14 +198,16 @@ function KardexReport({ orgName }: { orgName: string }) {
 
   // Build kardex with running balance
   const kardex = useMemo(() => {
-    let saldo = 0
-    return lines.map((l) => {
+    const acc: Array<KardexLine & { entrada: number; salida: number; saldo: number }> = []
+    let running = 0
+    for (const l of lines) {
       const isEntry = l.movement?.movement_type?.startsWith('entry_')
       const entrada = isEntry ? l.quantity : 0
-      const salida  = isEntry ? 0 : l.quantity
-      saldo += isEntry ? l.quantity : -l.quantity
-      return { ...l, entrada, salida, saldo }
-    })
+      const salida = isEntry ? 0 : l.quantity
+      running += isEntry ? l.quantity : -l.quantity
+      acc.push({ ...l, entrada, salida, saldo: running })
+    }
+    return acc
   }, [lines])
 
   const HEAD = ['Fecha', 'Tipo Movimiento', 'Folio', 'Entrada', 'Salida', 'Saldo', 'Costo Promedio']
@@ -315,10 +317,10 @@ function KardexReport({ orgName }: { orgName: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ItemStockRow {
-  id: string
-  quantity_on_hand: number
-  average_cost_mxn: number
-  average_cost_usd?: number | null
+  item_id: string
+  warehouse_id: string
+  quantity: number
+  avg_cost_mxn: number
   item?: {
     sku: string
     name: string
@@ -340,15 +342,15 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
       let q = db
         .from('item_stock')
         .select(`
-          id,
-          quantity_on_hand,
-          average_cost_mxn,
-          average_cost_usd,
+          item_id,
+          warehouse_id,
+          quantity,
+          avg_cost_mxn,
           item:items(sku, name, category:categories(name), unit:units(code)),
           warehouse:warehouses(name, code)
         `)
         .eq('season_id', activeSeason?.id)
-        .gt('quantity_on_hand', 0)
+        .gt('quantity', 0)
 
       if (warehouseId !== 'all') q = q.eq('warehouse_id', warehouseId)
 
@@ -360,11 +362,10 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
   })
 
   const totals = useMemo(() => ({
-    mxn: stock.reduce((s, r) => s + (r.quantity_on_hand * (r.average_cost_mxn ?? 0)), 0),
-    usd: stock.reduce((s, r) => s + (r.quantity_on_hand * (r.average_cost_usd ?? 0)), 0),
+    mxn: stock.reduce((s, r) => s + (r.quantity * (r.avg_cost_mxn ?? 0)), 0),
   }), [stock])
 
-  const HEAD = ['SKU', 'Nombre', 'Categoría', 'Unidad', 'Cantidad', 'Costo Prom. Nativo', 'Valor Total MXN', 'Valor Total USD']
+  const HEAD = ['SKU', 'Nombre', 'Categoría', 'Unidad', 'Cantidad', 'Costo Prom. MXN', 'Valor Total MXN']
 
   function buildRows() {
     return stock.map((r) => [
@@ -372,14 +373,13 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
       r.item?.name ?? '—',
       r.item?.category?.name ?? '—',
       r.item?.unit?.code ?? '—',
-      formatQuantity(r.quantity_on_hand),
-      formatMoney(r.average_cost_mxn, 'MXN'),
-      formatMoney(r.quantity_on_hand * (r.average_cost_mxn ?? 0), 'MXN'),
-      formatMoney(r.quantity_on_hand * (r.average_cost_usd ?? 0), 'USD'),
+      formatQuantity(r.quantity),
+      formatMoney(r.avg_cost_mxn, 'MXN'),
+      formatMoney(r.quantity * (r.avg_cost_mxn ?? 0), 'MXN'),
     ])
   }
 
-  const footRow = ['', '', '', '', 'TOTAL', '', formatMoney(totals.mxn, 'MXN'), formatMoney(totals.usd, 'USD')]
+  const footRow = ['', '', '', '', 'TOTAL', '', formatMoney(totals.mxn, 'MXN')]
   const filtersLabel = `Almacén: ${warehouseId === 'all' ? 'Todos' : (warehouses.find((w) => w.id === warehouseId)?.name ?? warehouseId)}`
 
   return (
@@ -432,20 +432,17 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
             </TableHeader>
             <TableBody>
               {stock.map((r) => (
-                <TableRow key={r.id}>
+                <TableRow key={`${r.item_id}-${r.warehouse_id}`}>
                   <TableCell className="font-mono text-xs">{r.item?.sku ?? '—'}</TableCell>
                   <TableCell className="text-xs font-medium">{r.item?.name ?? '—'}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.item?.category?.name ?? '—'}</TableCell>
                   <TableCell className="text-xs">{r.item?.unit?.code ?? '—'}</TableCell>
-                  <TableCell className="text-right text-xs">{formatQuantity(r.quantity_on_hand)}</TableCell>
+                  <TableCell className="text-right text-xs">{formatQuantity(r.quantity)}</TableCell>
                   <TableCell className="text-right text-xs">
-                    <MoneyDisplay amount={r.average_cost_mxn} currency="MXN" />
+                    <MoneyDisplay amount={r.avg_cost_mxn} currency="MXN" />
                   </TableCell>
                   <TableCell className="text-right text-xs">
-                    <MoneyDisplay amount={r.quantity_on_hand * (r.average_cost_mxn ?? 0)} currency="MXN" />
-                  </TableCell>
-                  <TableCell className="text-right text-xs">
-                    <MoneyDisplay amount={r.quantity_on_hand * (r.average_cost_usd ?? 0)} currency="USD" />
+                    <MoneyDisplay amount={r.quantity * (r.avg_cost_mxn ?? 0)} currency="MXN" />
                   </TableCell>
                 </TableRow>
               ))}
@@ -456,9 +453,6 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
                 <TableCell />
                 <TableCell className="text-right text-xs font-semibold">
                   <MoneyDisplay amount={totals.mxn} currency="MXN" />
-                </TableCell>
-                <TableCell className="text-right text-xs font-semibold">
-                  <MoneyDisplay amount={totals.usd} currency="USD" />
                 </TableCell>
               </TableRow>
             </TableFooter>

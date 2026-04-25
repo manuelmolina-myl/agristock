@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-import type { StockMovement, StockMovementLine, Organization, Item } from '@/lib/database.types'
+import type { StockMovement, StockMovementLine, Organization, Item, Currency } from '@/lib/database.types'
 import { MOVEMENT_TYPE_LABELS } from '@/lib/constants'
 import { formatFechaCorta, formatMoney, formatQuantity } from '@/lib/utils'
 
@@ -20,16 +20,16 @@ function getDestinationLabel(line: StockMovementLine): string {
   const type = line.destination_type
   if (!type) return '—'
 
-  if (type === 'crop_lot' && (line as any).crop_lot) {
-    const lot = (line as any).crop_lot
+  if (type === 'crop_lot' && line.crop_lot) {
+    const lot = line.crop_lot
     return `Lote ${lot.code ?? ''} — ${lot.crop_type ?? ''}`
   }
-  if (type === 'equipment' && (line as any).equipment) {
-    const eq = (line as any).equipment
+  if (type === 'equipment' && line.equipment) {
+    const eq = line.equipment
     return `${eq.code ?? ''} — ${eq.name ?? ''}`
   }
-  if (type === 'employee' && (line as any).employee) {
-    const emp = (line as any).employee
+  if (type === 'employee' && line.employee) {
+    const emp = line.employee
     return `${emp.employee_code ?? ''} — ${emp.full_name ?? ''}`
   }
   return DESTINATION_TYPE_LABELS[type] ?? type
@@ -94,10 +94,10 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   }
 
   // Left: Address
-  if ((organization as any).address) {
+  if (organization.address) {
     doc.setFontSize(7)
     doc.setFont('helvetica', 'normal')
-    const addrLines = doc.splitTextToSize((organization as any).address as string, 80)
+    const addrLines = doc.splitTextToSize(organization.address, 80)
     doc.text(addrLines, margin, 21)
   }
 
@@ -116,7 +116,7 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   )
 
   // Right: Date + Status
-  const movDate = (movement as any).fx_date ?? (movement as any).created_at
+  const movDate = movement.fx_date ?? movement.created_at
   const statusLabel =
     movement.status === 'posted' ? 'REGISTRADO'
     : movement.status === 'draft' ? 'BORRADOR'
@@ -151,13 +151,12 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...GRAY_DARK)
 
-  const warehouseName =
-    (movement as any).warehouse?.name
-      ? `${(movement as any).warehouse.code} — ${(movement as any).warehouse.name}`
-      : '—'
+  const warehouseName = movement.warehouse
+    ? `${movement.warehouse.code} — ${movement.warehouse.name}`
+    : '—'
   doc.text(warehouseName, col1x, y + 12)
   doc.text(
-    MOVEMENT_TYPE_LABELS[(movement as any).movement_type] ?? (movement as any).movement_type,
+    MOVEMENT_TYPE_LABELS[movement.movement_type] ?? movement.movement_type,
     col2x, y + 12
   )
 
@@ -183,15 +182,15 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
   const numColPrices = ['Costo Unit.', 'Total MXN']
   const head = canSeePrices ? [...numColBase, ...numColPrices] : numColBase
 
-  const tableRows = movement.lines.map((line, i) => {
-    const item = (line as any).item as any
+  const tableRows = (movement.lines ?? []).map((line, i) => {
+    const item = line.item
     const sku  = item?.sku ?? '—'
     const name = item?.name ?? line.item_id
     const qty  = formatQuantity(line.quantity)
     const unit = item?.unit?.code ?? ''
-    const row  = [`${i + 1}`, sku, name, qty, unit]
+    const row: string[] = [`${i + 1}`, sku, name, qty, unit]
     if (canSeePrices) {
-      row.push(formatMoney(line.unit_cost_native, line.native_currency))
+      row.push(formatMoney(line.unit_cost_native, line.native_currency as Currency))
       row.push(formatMoney(line.line_total_mxn, 'MXN'))
     }
     return row
@@ -239,14 +238,15 @@ export function generateValePDF(options: GenerateValePDFOptions): void {
     },
   })
 
-  const finalY = (doc as any).lastAutoTable.finalY as number
+  const lastAutoTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable
+  const finalY = lastAutoTable?.finalY ?? y
   let totY = finalY + 6
 
   // ── Totals (only if canSeePrices) ─────────────────────────────────────────────
   if (canSeePrices) {
-    const totalMxn = (movement as any).total_mxn
-      ?? movement.lines.reduce((s, l) => s + l.line_total_mxn, 0)
-    const totalUsd = (movement as any).total_usd
+    const totalMxn = movement.total_mxn
+      ?? (movement.lines ?? []).reduce((s, l) => s + l.line_total_mxn, 0)
+    const totalUsd = movement.total_usd
 
     const totalsX  = pageW - margin - 72
     const amountX  = pageW - margin

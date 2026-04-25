@@ -269,7 +269,7 @@ export default function NuevoTraspasoPage() {
       if (entryErr) throw entryErr
 
       // 3. Lines for both movements
-      const exitLines = values.lines.map((line, i) => {
+      const exitLines = values.lines.map((line) => {
         const it = items.find((x: any) => x.id === line.item_id) as any
         const avgCost = originStockMap.get(line.item_id) !== undefined
           ? (itemStock as any[]).find((s: any) => s.warehouse_id === originWhId && s.item_id === line.item_id)?.avg_cost_mxn ?? 0
@@ -283,11 +283,10 @@ export default function NuevoTraspasoPage() {
           unit_cost_mxn:     avgCost,
           line_total_native: avgCost * line.quantity,
           line_total_mxn:    avgCost * line.quantity,
-          sort_order:        i,
         }
       })
 
-      const entryLines = values.lines.map((line, i) => {
+      const entryLines = values.lines.map((line) => {
         const it = items.find((x: any) => x.id === line.item_id) as any
         const avgCost = (itemStock as any[]).find((s: any) => s.warehouse_id === originWhId && s.item_id === line.item_id)?.avg_cost_mxn ?? 0
         return {
@@ -299,7 +298,6 @@ export default function NuevoTraspasoPage() {
           unit_cost_mxn:     avgCost,
           line_total_native: avgCost * line.quantity,
           line_total_mxn:    avgCost * line.quantity,
-          sort_order:        i,
         }
       })
 

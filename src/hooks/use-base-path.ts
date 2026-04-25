@@ -14,9 +14,15 @@ export function useBasePath(): string {
 
 /**
  * Returns whether the current user can see monetary values (costs, prices).
- * Almacenista should NOT see costs.
+ *
+ * - Almacenista: ve costos SOLO en entradas (necesario para operación).
+ *   No ve costos en salidas, traspasos, reportes, inventario, ni lotes.
+ * - Otros roles: ven todos los costos.
+ *
+ * @param context Dónde se va a mostrar el precio. 'entry' = entradas.
  */
-export function useCanSeePrices(): boolean {
+export function useCanSeePrices(context: 'entry' | 'general' = 'general'): boolean {
   const { profile } = useAuth()
-  return profile?.role !== 'almacenista'
+  if (profile?.role !== 'almacenista') return true
+  return context === 'entry'
 }

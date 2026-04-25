@@ -79,7 +79,7 @@ function KpiCard({
           </>
         ) : (
           <>
-            <p className="font-heading text-2xl font-semibold tabular-nums text-foreground">
+            <p className="font-heading text-xl sm:text-2xl font-semibold tabular-nums text-foreground leading-tight">
               {value}
             </p>
             {description && (
@@ -359,14 +359,14 @@ export function AdminDashboardPage() {
   const actividadQ = useActividadReciente(orgId)
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-4 sm:gap-6 p-4 sm:p-6">
       <PageHeader
         title="Dashboard"
         description="Resumen general de operaciones"
       />
 
       {/* ── KPI Row ── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <KpiCard
           label="Valor de inventario"
           value={formatMoney(valorQ.data ?? 0)}
@@ -413,13 +413,13 @@ export function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             {gastoQ.isLoading ? (
-              <Skeleton className="h-52 w-full" />
+              <Skeleton className="h-44 w-full" />
             ) : !gastoQ.data?.length ? (
-              <div className="flex h-52 items-center justify-center">
+              <div className="flex h-44 items-center justify-center">
                 <p className="text-sm text-muted-foreground">Sin movimientos registrados</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={210}>
+              <ResponsiveContainer width="100%" height={180}>
                 <AreaChart
                   data={gastoQ.data}
                   margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
@@ -433,20 +433,20 @@ export function AdminDashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                     tickFormatter={(v: string) => formatFechaCorta(v)}
                     tickLine={false}
                     axisLine={false}
                     interval="preserveStartEnd"
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                     tickFormatter={(v: number) =>
                       v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
                     }
                     tickLine={false}
                     axisLine={false}
-                    width={50}
+                    width={42}
                   />
                   <Tooltip content={<ChartTooltip />} />
                   <Area

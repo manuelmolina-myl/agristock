@@ -93,7 +93,7 @@ export function SupervisorSolicitudDetailPage() {
       toast.success('Solicitud cancelada')
       queryClient.invalidateQueries({ queryKey: ['solicitud', id] })
       queryClient.invalidateQueries({ queryKey: ['solicitudes'] })
-    } catch (err: unknown) {
+    } catch {
       toast.error('Error al cancelar la solicitud')
     }
   }

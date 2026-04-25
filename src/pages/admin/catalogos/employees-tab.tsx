@@ -5,8 +5,8 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { MoreHorizontal, Pencil, Trash2, Plus } from 'lucide-react'
 import { useEmployees, useCreate, useUpdate, useSoftDelete } from '@/hooks/use-supabase-query'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { CrudDialog } from '@/components/shared/crud-dialog'
 import { DeleteDialog } from '@/components/shared/delete-dialog'
 import { Button } from '@/components/ui/button'
@@ -103,11 +103,12 @@ export function EmployeesTab() {
 
   const columns = [
     helper.accessor('employee_code', { header: 'Núm. empleado', enableSorting: true }),
-    helper.accessor('full_name', { header: 'Nombre completo', enableSorting: true }),
+    helper.accessor('full_name', { header: 'Nombre completo', enableSorting: true, meta: { truncate: true } }),
     helper.accessor('role_field', {
       header: 'Rol / Puesto',
       cell: (info) => info.getValue() ?? '—',
       enableSorting: false,
+      meta: { hiddenOnMobile: true },
     }),
     helper.accessor('is_active', {
       header: 'Estado',
@@ -127,10 +128,10 @@ export function EmployeesTab() {
       cell: ({ row }) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => openEdit(row.original)}>
@@ -167,6 +168,7 @@ export function EmployeesTab() {
         data={data as Employee[]}
         isLoading={isLoading}
         searchKey="full_name"
+        tableFixed
         searchPlaceholder="Buscar empleados..."
         emptyMessage="No hay empleados registrados."
       />

@@ -7,12 +7,7 @@ import { formatFechaCorta, formatQuantity } from '@/lib/utils'
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export function generateTraspasoPDF(
-  movement: StockMovement & {
-    lines: (StockMovementLine & { item?: { sku?: string; name?: string; unit?: { code?: string } } })[]
-    counterpart_warehouse?: { name: string; code: string }
-    delivered_by_employee?: { employee_code?: string; full_name?: string } | null
-    received_by_employee?: { employee_code?: string; full_name?: string } | null
-  },
+  movement: StockMovement & { lines: StockMovementLine[] },
   organization: Organization
 ): void {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
@@ -38,10 +33,10 @@ export function generateTraspasoPDF(
   doc.setTextColor(...WHITE)
   doc.text(organization.name.toUpperCase(), margin, 11)
 
-  if ((organization as any).rfc) {
+  if (organization.rfc) {
     doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
-    doc.text(`RFC: ${(organization as any).rfc}`, margin, 17)
+    doc.text(`RFC: ${organization.rfc}`, margin, 17)
   }
 
   doc.setFontSize(16)
@@ -80,8 +75,8 @@ export function generateTraspasoPDF(
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...GRAY_DARK)
 
-  const originWh = movement.warehouse as any
-  const destWh   = movement.counterpart_warehouse as any
+  const originWh = movement.warehouse
+  const destWh   = movement.counterpart_warehouse
 
   const originLabel = originWh ? `${originWh.code} — ${originWh.name}` : '—'
   const destLabel   = destWh   ? `${destWh.code} — ${destWh.name}`     : '—'
@@ -90,7 +85,7 @@ export function generateTraspasoPDF(
   doc.text(destLabel,   col1x, y + 26)
   doc.text(formatFechaCorta(movDate), col2x, y + 13)
 
-  const transportNotes = (movement as any).transport_notes ?? '—'
+  const transportNotes = movement.transport_notes ?? '—'
   const notesClipped = doc.splitTextToSize(transportNotes, contentW / 2 - 10) as string[]
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
@@ -99,8 +94,8 @@ export function generateTraspasoPDF(
   y += 44
 
   // ── Lines table ───────────────────────────────────────────────────────────────
-  const tableRows = movement.lines.map((line, idx) => {
-    const item = line.item as any
+  const tableRows = (movement.lines ?? []).map((line, idx) => {
+    const item = line.item
     const sku  = item?.sku  ?? '—'
     const name = item?.name ?? line.item_id
     const qty  = formatQuantity(line.quantity)
@@ -150,7 +145,8 @@ export function generateTraspasoPDF(
     },
   })
 
-  const finalY = (doc as any).lastAutoTable.finalY as number
+  const lastAutoTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable
+  const finalY = lastAutoTable?.finalY ?? y
 
   // ── Signature boxes ───────────────────────────────────────────────────────────
 

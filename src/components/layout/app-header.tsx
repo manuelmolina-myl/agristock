@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { useLocation, NavLink, useNavigate } from 'react-router-dom'
 import { Sun, Moon, Search, LogOut, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
@@ -224,20 +225,22 @@ export function AppHeader() {
           {crumbs.map((crumb, index) => {
             const isLast = index === crumbs.length - 1
             return (
-              <BreadcrumbItem key={crumb.to}>
-                {isLast ? (
-                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                ) : (
-                  <>
+              <Fragment key={crumb.to}>
+                <BreadcrumbItem>
+                  {isLast ? (
+                    <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                  ) : (
                     <BreadcrumbLink render={<NavLink to={crumb.to} />}>
                       {crumb.label}
                     </BreadcrumbLink>
-                    <BreadcrumbSeparator>
-                      <ChevronRight />
-                    </BreadcrumbSeparator>
-                  </>
+                  )}
+                </BreadcrumbItem>
+                {!isLast && (
+                  <BreadcrumbSeparator>
+                    <ChevronRight />
+                  </BreadcrumbSeparator>
                 )}
-              </BreadcrumbItem>
+              </Fragment>
             )
           })}
         </BreadcrumbList>

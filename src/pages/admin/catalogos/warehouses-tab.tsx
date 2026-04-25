@@ -5,8 +5,8 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { MoreHorizontal, Pencil, Trash2, Plus } from 'lucide-react'
 import { useWarehouses, useCreate, useUpdate, useSoftDelete } from '@/hooks/use-supabase-query'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { CrudDialog } from '@/components/shared/crud-dialog'
 import { DeleteDialog } from '@/components/shared/delete-dialog'
 import { Button } from '@/components/ui/button'
@@ -99,13 +99,14 @@ export function WarehousesTab() {
 
   const columns = [
     helper.accessor('code', { header: 'Código', enableSorting: true }),
-    helper.accessor('name', { header: 'Nombre', enableSorting: true }),
+    helper.accessor('name', { header: 'Nombre', enableSorting: true, meta: { truncate: true } }),
     helper.accessor('address', {
       header: 'Dirección',
       cell: (info) => (
         <span className="truncate max-w-xs block">{info.getValue() ?? '—'}</span>
       ),
       enableSorting: false,
+      meta: { hiddenOnMobile: true },
     }),
     helper.accessor('is_active', {
       header: 'Estado',
@@ -125,10 +126,10 @@ export function WarehousesTab() {
       cell: ({ row }) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => openEdit(row.original)}>
@@ -166,6 +167,7 @@ export function WarehousesTab() {
         isLoading={isLoading}
         searchKey="name"
         searchPlaceholder="Buscar almacenes..."
+        tableFixed
         emptyMessage="No hay almacenes registrados."
       />
 

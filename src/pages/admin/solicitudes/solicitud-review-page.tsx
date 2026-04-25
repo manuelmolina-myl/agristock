@@ -107,10 +107,11 @@ export function SolicitudReviewPage() {
       for (const line of solicitud.lines ?? []) {
         const rawQty = approvedQtys[line.id]
         const qty = rawQty != null && rawQty !== '' ? Number(rawQty) : line.quantity_requested
-        await db
+        const { error: lineErr } = await db
           .from('solicitud_lines')
           .update({ quantity_approved: qty })
           .eq('id', line.id)
+        if (lineErr) throw lineErr
       }
 
       const { error } = await db

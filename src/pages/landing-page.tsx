@@ -298,7 +298,7 @@ export function LandingPage() {
               Cada usuario ve lo que necesita
             </h2>
             <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-              4 roles con permisos granulares. El almacenista no ve costos; el supervisor solo solicita.
+              4 roles con permisos granulares. El almacenista ve costos solo al recibir; el supervisor solo solicita.
             </p>
           </div>
 
@@ -318,8 +318,8 @@ export function LandingPage() {
               },
               {
                 role: 'Almacenista',
-                desc: 'Registra entradas y salidas, ve stock. No ve costos en pesos.',
-                features: ['Entradas y salidas', 'Stock en tiempo real', 'Carga de diesel', 'Sin acceso a costos'],
+                desc: 'Registra entradas y salidas. Ve costos solo al recibir material.',
+                features: ['Entradas y salidas', 'Stock en tiempo real', 'Carga de diesel', 'Costos solo en entradas'],
                 color: 'border-amber-500/30 bg-amber-500/5',
               },
               {

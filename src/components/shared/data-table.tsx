@@ -7,7 +7,6 @@ import {
   useReactTable,
   type ColumnDef,
   type SortingState,
-  createColumnHelper,
 } from '@tanstack/react-table'
 import {
   Table,
@@ -22,9 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export { createColumnHelper }
-
-// Re-export for convenience
+// Re-export for convenience (type-only is fine for fast refresh)
 export type { ColumnDef }
 
 interface DataTableProps<T> {
@@ -35,6 +32,7 @@ interface DataTableProps<T> {
   searchPlaceholder?: string
   onRowClick?: (row: T) => void
   emptyMessage?: string
+  tableFixed?: boolean
 }
 
 const SKELETON_ROWS = 6
@@ -47,6 +45,7 @@ export function DataTable<T>({
   searchPlaceholder = 'Buscar...',
   onRowClick,
   emptyMessage = 'Sin resultados.',
+  tableFixed = false,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -84,8 +83,8 @@ export function DataTable<T>({
         </div>
       )}
 
-      <div className="rounded-md border border-border overflow-hidden">
-        <Table>
+      <div className="rounded-md border border-border overflow-x-auto">
+        <Table className={tableFixed ? 'table-fixed' : undefined}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="bg-muted/30 hover:bg-muted/30">
@@ -97,7 +96,8 @@ export function DataTable<T>({
                       key={header.id}
                       className={cn(
                         'h-8 px-3 text-xs font-medium text-muted-foreground whitespace-nowrap',
-                        canSort && 'cursor-pointer select-none'
+                        canSort && 'cursor-pointer select-none',
+                        (header.column.columnDef.meta as { hiddenOnMobile?: boolean } | undefined)?.hiddenOnMobile && 'hidden sm:table-cell'
                       )}
                       onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                     >
@@ -127,8 +127,8 @@ export function DataTable<T>({
             {isLoading ? (
               Array.from({ length: SKELETON_ROWS }).map((_, i) => (
                 <TableRow key={i} className="hover:bg-transparent">
-                  {columns.map((_, j) => (
-                    <TableCell key={j} className="h-9 px-3 py-1.5">
+                  {columns.map((col, j) => (
+                    <TableCell key={j} className={cn('h-9 px-3 py-1.5', (col.meta as { hiddenOnMobile?: boolean } | undefined)?.hiddenOnMobile && 'hidden sm:table-cell')}>
                       <Skeleton className="h-4 w-full rounded" />
                     </TableCell>
                   ))}
@@ -153,11 +153,16 @@ export function DataTable<T>({
                   )}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="h-9 px-3 py-1.5 text-sm">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const meta = cell.column.columnDef.meta as { hiddenOnMobile?: boolean; truncate?: boolean } | undefined
+                    return (
+                      <TableCell key={cell.id} className={cn('h-9 px-3 py-1.5 text-sm', meta?.hiddenOnMobile && 'hidden sm:table-cell', meta?.truncate && 'max-w-0')}>
+                        {meta?.truncate ? (
+                          <div className="truncate">{flexRender(cell.column.columnDef.cell, cell.getContext())}</div>
+                        ) : flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    )
+                  })}
                 </TableRow>
               ))
             )}
