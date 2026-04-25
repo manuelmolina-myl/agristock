@@ -372,7 +372,7 @@ export default function EntradasPage() {
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Tipo</Label>
             <Select value={filterType} onValueChange={(v) => setFilterType(v ?? 'all')}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs"><SelectValue>{filterType === 'all' ? 'Todos los tipos' : (MOVEMENT_TYPE_LABELS[filterType] ?? filterType)}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos los tipos</SelectItem>
                 {ENTRY_TYPES.map((t) => (
@@ -384,7 +384,7 @@ export default function EntradasPage() {
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Almacén</Label>
             <Select value={filterWh} onValueChange={(v) => setFilterWh(v ?? 'all')}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs"><SelectValue>{filterWh === 'all' ? 'Todos' : (warehouses.find(([id]) => id === filterWh)?.[1] ?? filterWh)}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
                 {warehouses.map(([id, label]) => (
@@ -396,7 +396,7 @@ export default function EntradasPage() {
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Estado</Label>
             <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? 'all')}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs"><SelectValue>{{ all: 'Todos', draft: 'Borrador', posted: 'Registrado', cancelled: 'Cancelado' }[filterStatus] ?? filterStatus}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="draft">Borrador</SelectItem>

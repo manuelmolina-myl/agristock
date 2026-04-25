@@ -358,7 +358,7 @@ export default function NuevaEntradaPage() {
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
                     <SelectTrigger id="movement_type" className="h-9">
-                      <SelectValue placeholder="Selecciona tipo" />
+                      <SelectValue>{MOVEMENT_TYPE_LABELS[field.value]}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {ENTRY_TYPES.map((t) => (

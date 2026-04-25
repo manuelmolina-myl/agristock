@@ -17,7 +17,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useBasePath } from '@/hooks/use-base-path'
 import { useItems, useCropLots, useEquipment, useEmployees } from '@/hooks/use-supabase-query'
 import { supabase } from '@/lib/supabase'
-import { DESTINATION_TYPE_LABELS } from '@/lib/constants'
+import { DESTINATION_TYPE_LABELS, SOLICITUD_URGENCY_LABELS } from '@/lib/constants'
 import { cn, formatQuantity } from '@/lib/utils'
 type SolicitudDestinationType = 'crop_lot' | 'equipment' | 'employee' | 'maintenance' | 'other'
 
@@ -283,7 +283,7 @@ export function SupervisorNuevaSolicitudPage() {
                   onValueChange={(v) => form.setValue('destination_type', (v || null) as SolicitudDestinationType | null)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar tipo…" />
+                    <SelectValue>{values.destination_type ? DESTINATION_TYPE_LABELS[values.destination_type] : undefined}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {DESTINATION_TYPES.map((t) => (
@@ -440,7 +440,7 @@ export function SupervisorNuevaSolicitudPage() {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue>{SOLICITUD_URGENCY_LABELS[values.urgency] ?? values.urgency}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="baja">Baja</SelectItem>

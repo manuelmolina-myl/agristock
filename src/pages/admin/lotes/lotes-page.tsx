@@ -135,14 +135,16 @@ function LotCard({
         onClick={(e) => e.stopPropagation()}
       >
         <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            }
+          >
+            <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onEdit}>
@@ -379,7 +381,7 @@ export function LotesPage() {
                 onValueChange={(v) => v && form.setValue('status', v)}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{{ planning: 'Planeación', active: 'Activo', harvested: 'Cosechado', closed: 'Cerrado' }[form.watch('status')] ?? form.watch('status')}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="planning">Planeación</SelectItem>

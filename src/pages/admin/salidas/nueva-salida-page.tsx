@@ -222,7 +222,7 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar tipo" />
+                <SelectValue>{EXIT_MOVEMENT_TYPES.find((t) => t.value === field.value)?.label}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {EXIT_MOVEMENT_TYPES.map((t) => (
@@ -270,7 +270,7 @@ function Step1Destino({ defaultValues, onNext }: Step1Props) {
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar destino" />
+                <SelectValue>{DESTINATION_OPTIONS.find((d) => d.value === field.value)?.label}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {DESTINATION_OPTIONS.map((d) => (

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { useItems, useCategories, useSoftDelete, useItemStock } from '@/hooks/use-supabase-query'
 import { useBasePath } from '@/hooks/use-base-path'
+import { useAuth } from '@/hooks/use-auth'
 import type { Item } from '@/lib/database.types'
 import { formatQuantity } from '@/lib/utils'
 
@@ -76,6 +77,8 @@ function TableSkeleton() {
 export function ItemsPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
+  const { profile } = useAuth()
+  const isAlmacenista = profile?.role === 'almacenista'
 
   const { data: items = [], isLoading } = useItems()
   const { data: categories = [] } = useCategories()
@@ -129,10 +132,12 @@ export function ItemsPage() {
         title="Inventario"
         description="Catálogo de ítems y materiales"
         actions={
-          <Button size="sm" onClick={() => navigate(`${basePath}/inventario/nuevo`)}>
-            <Plus className="mr-1.5 size-3.5" />
-            Nuevo ítem
-          </Button>
+          !isAlmacenista && (
+            <Button size="sm" onClick={() => navigate(`${basePath}/inventario/nuevo`)}>
+              <Plus className="mr-1.5 size-3.5" />
+              Nuevo ítem
+            </Button>
+          )
         }
       />
 
@@ -150,7 +155,7 @@ export function ItemsPage() {
 
         <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v ?? 'all')}>
           <SelectTrigger className="h-8 w-44 text-sm">
-            <SelectValue placeholder="Categoría" />
+            <SelectValue>{categoryFilter === 'all' ? 'Todas las categorías' : (categories.find((c) => c.id === categoryFilter)?.name ?? categoryFilter)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas las categorías</SelectItem>
@@ -172,7 +177,7 @@ export function ItemsPage() {
 
         <Select value={currencyFilter} onValueChange={(v) => setCurrencyFilter(v ?? 'all')}>
           <SelectTrigger className="h-8 w-32 text-sm">
-            <SelectValue placeholder="Moneda" />
+            <SelectValue>{currencyFilter === 'all' ? 'Todas' : currencyFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas</SelectItem>
@@ -183,7 +188,7 @@ export function ItemsPage() {
 
         <Select value={activeFilter} onValueChange={(v) => setActiveFilter(v ?? 'all')}>
           <SelectTrigger className="h-8 w-32 text-sm">
-            <SelectValue placeholder="Estado" />
+            <SelectValue>{activeFilter === 'all' ? 'Todos' : activeFilter === 'active' ? 'Activos' : 'Inactivos'}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos</SelectItem>
@@ -276,7 +281,7 @@ export function ItemsPage() {
                         : 'Crea tu primer ítem para comenzar el catálogo de inventario.'
                     }
                     action={
-                      !search && categoryFilter === 'all' && currencyFilter === 'all'
+                      !isAlmacenista && !search && categoryFilter === 'all' && currencyFilter === 'all'
                         ? { label: '+ Nuevo ítem', onClick: () => navigate(`${basePath}/inventario/nuevo`) }
                         : undefined
                     }
@@ -343,29 +348,33 @@ export function ItemsPage() {
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
-                      <DropdownMenuTrigger>
-                        <Button variant="ghost" size="icon" className="size-7">
-                          <MoreHorizontal className="size-3.5" />
-                          <span className="sr-only">Acciones</span>
-                        </Button>
+                      <DropdownMenuTrigger
+                        render={<Button variant="ghost" size="icon" className="size-7" />}
+                      >
+                        <MoreHorizontal className="size-3.5" />
+                        <span className="sr-only">Acciones</span>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40">
                         <DropdownMenuItem onClick={() => navigate(`${basePath}/inventario/${item.id}`)}>
                           <Eye className="mr-2 size-3.5" />
                           Ver detalle
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => navigate(`${basePath}/inventario/${item.id}/editar`)}>
-                          <Pencil className="mr-2 size-3.5" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setDeleteTarget(item)}
-                        >
-                          <Trash2 className="mr-2 size-3.5" />
-                          Eliminar
-                        </DropdownMenuItem>
+                        {!isAlmacenista && (
+                          <>
+                            <DropdownMenuItem onClick={() => navigate(`${basePath}/inventario/${item.id}/editar`)}>
+                              <Pencil className="mr-2 size-3.5" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteTarget(item)}
+                            >
+                              <Trash2 className="mr-2 size-3.5" />
+                              Eliminar
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

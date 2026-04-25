@@ -395,7 +395,7 @@ export function ItemFormPage() {
                     render={({ field }) => (
                       <Select value={field.value} onValueChange={field.onChange}>
                         <SelectTrigger className="flex-1">
-                          <SelectValue />
+                          <SelectValue>{field.value === 'MXN' ? 'Peso mexicano (MXN)' : field.value === 'USD' ? 'Dólar estadounidense (USD)' : ''}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="MXN">Peso mexicano (MXN)</SelectItem>

@@ -15,7 +15,8 @@ import type { StockMovement } from '@/lib/database.types'
 
 import { PageHeader } from '@/components/custom/page-header'
 import { EmptyState } from '@/components/custom/empty-state'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper } from '@tanstack/react-table'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -170,7 +171,7 @@ export default function TraspasosPage() {
               <MoreHorizontal className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); alert(`Ver traspaso: ${row.id}`) }}>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`${basePath}/traspasos/${row.id}`) }}>
                 Ver detalle
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -211,7 +212,7 @@ export default function TraspasosPage() {
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Almacén origen</Label>
             <Select value={filterWh} onValueChange={(v) => setFilterWh(v ?? 'all')}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs"><SelectValue>{filterWh === 'all' ? 'Todos' : (warehouses.find(([id]) => id === filterWh)?.[1] ?? filterWh)}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
                 {warehouses.map(([id, label]) => (
@@ -223,7 +224,7 @@ export default function TraspasosPage() {
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Estado</Label>
             <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? 'all')}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs"><SelectValue>{{ all: 'Todos', draft: 'Borrador', posted: 'Registrado', cancelled: 'Cancelado' }[filterStatus] ?? filterStatus}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="draft">Borrador</SelectItem>
@@ -249,6 +250,7 @@ export default function TraspasosPage() {
           {movements.map((m) => (
             <div
               key={m.id}
+              onClick={() => navigate(`${basePath}/traspasos/${m.id}`)}
               className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
             >
               <div className="flex items-center justify-between gap-2">
@@ -285,6 +287,7 @@ export default function TraspasosPage() {
             data={movements}
             isLoading={isLoading}
             emptyMessage="Sin traspasos para los filtros seleccionados."
+            onRowClick={(row) => navigate(`${basePath}/traspasos/${row.id}`)}
           />
         </div>
       )}

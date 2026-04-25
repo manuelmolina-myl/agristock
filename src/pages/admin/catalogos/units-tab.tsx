@@ -5,8 +5,8 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { MoreHorizontal, Pencil, Trash2, Plus } from 'lucide-react'
 import { useUnits, useCreate, useUpdate, useSoftDelete } from '@/hooks/use-supabase-query'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { CrudDialog } from '@/components/shared/crud-dialog'
 import { DeleteDialog } from '@/components/shared/delete-dialog'
 import { Button } from '@/components/ui/button'
@@ -119,9 +119,10 @@ export function UnitsTab() {
 
   const columns = [
     helper.accessor('code', { header: 'Código', enableSorting: true }),
-    helper.accessor('name', { header: 'Nombre', enableSorting: true }),
+    helper.accessor('name', { header: 'Nombre', enableSorting: true, meta: { truncate: true } }),
     helper.accessor('type', {
       header: 'Tipo',
+      meta: { hiddenOnMobile: true },
       cell: (info) => (
         <Badge variant="secondary" className="text-xs font-normal">
           {TYPE_LABELS[info.getValue()] ?? info.getValue()}
@@ -135,10 +136,10 @@ export function UnitsTab() {
       cell: ({ row }) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => openEdit(row.original)}>
@@ -176,6 +177,7 @@ export function UnitsTab() {
         isLoading={isLoading}
         searchKey="name"
         searchPlaceholder="Buscar unidades..."
+        tableFixed
         emptyMessage="No hay unidades registradas."
       />
 
@@ -211,7 +213,7 @@ export function UnitsTab() {
               onValueChange={(v) => form.setValue('type', v as FormValues['type'])}
             >
               <SelectTrigger id="type" className="h-8 text-sm">
-                <SelectValue />
+                <SelectValue>{UNIT_TYPES.find((t) => t.value === form.watch('type'))?.label}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {UNIT_TYPES.map((t) => (

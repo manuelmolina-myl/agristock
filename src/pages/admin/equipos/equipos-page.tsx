@@ -139,14 +139,16 @@ function EquipoCard({
         onClick={(e) => e.stopPropagation()}
       >
         <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            }
+          >
+            <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onEdit}>
@@ -384,7 +386,7 @@ export function EquiposPage() {
                 onValueChange={(v) => v && form.setValue('type', v)}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{EQUIPMENT_TYPES.find((t) => t.value === form.watch('type'))?.label}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {EQUIPMENT_TYPES.map((t) => (

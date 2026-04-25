@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 import { MoreHorizontal, Pencil, Trash2, Plus } from 'lucide-react'
 import { useCropLots, useCreate, useUpdate, useSoftDelete } from '@/hooks/use-supabase-query'
 import { useAuth } from '@/hooks/use-auth'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { CrudDialog } from '@/components/shared/crud-dialog'
 import { DeleteDialog } from '@/components/shared/delete-dialog'
 import { Button } from '@/components/ui/button'
@@ -155,12 +155,13 @@ export function LotsTab() {
 
   const columns = [
     helper.accessor('code', { header: 'Código', enableSorting: true }),
-    helper.accessor('name', { header: 'Nombre', enableSorting: true }),
-    helper.accessor('crop_type', { header: 'Cultivo', enableSorting: true }),
+    helper.accessor('name', { header: 'Nombre', enableSorting: true, meta: { truncate: true } }),
+    helper.accessor('crop_type', { header: 'Cultivo', enableSorting: true, meta: { hiddenOnMobile: true } }),
     helper.accessor('hectares', {
       header: 'Hectáreas',
       cell: (info) => <span className="tabular-nums">{info.getValue()} ha</span>,
       enableSorting: true,
+      meta: { hiddenOnMobile: true },
     }),
     helper.accessor('status', {
       header: 'Estado',
@@ -180,10 +181,10 @@ export function LotsTab() {
       cell: ({ row }) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => openEdit(row.original)}>
@@ -220,6 +221,7 @@ export function LotsTab() {
         data={data as CropLot[]}
         isLoading={isLoading}
         searchKey="name"
+        tableFixed
         searchPlaceholder="Buscar lotes..."
         emptyMessage="No hay lotes registrados."
       />
@@ -267,7 +269,7 @@ export function LotsTab() {
                 onValueChange={(v) => v && form.setValue('status', v)}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{{ planning: 'Planeación', active: 'Activo', harvested: 'Cosechado', closed: 'Cerrado' }[form.watch('status')] ?? form.watch('status')}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="planning">Planeación</SelectItem>

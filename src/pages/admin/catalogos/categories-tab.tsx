@@ -242,7 +242,7 @@ export function CategoriesTab() {
               onValueChange={(v) => form.setValue('parent_id', v === '__none__' ? null : v)}
             >
               <SelectTrigger id="parent_id" className="h-8 text-sm">
-                <SelectValue placeholder="Sin categoría padre" />
+                <SelectValue>{form.watch('parent_id') ? (parentOptions.find((c) => c.id === form.watch('parent_id'))?.name ?? 'Sin categoría padre') : 'Sin categoría padre'}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Sin categoría padre</SelectItem>

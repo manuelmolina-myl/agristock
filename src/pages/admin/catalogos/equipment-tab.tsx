@@ -5,8 +5,8 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { MoreHorizontal, Pencil, Trash2, Plus } from 'lucide-react'
 import { useEquipment, useCreate, useUpdate, useSoftDelete } from '@/hooks/use-supabase-query'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { CrudDialog } from '@/components/shared/crud-dialog'
 import { DeleteDialog } from '@/components/shared/delete-dialog'
 import { Button } from '@/components/ui/button'
@@ -141,9 +141,10 @@ export function EquipmentTab() {
 
   const columns = [
     helper.accessor('code', { header: 'Código', enableSorting: true }),
-    helper.accessor('name', { header: 'Nombre', enableSorting: true }),
+    helper.accessor('name', { header: 'Nombre', enableSorting: true, meta: { truncate: true } }),
     helper.accessor('type', {
       header: 'Tipo',
+      meta: { hiddenOnMobile: true },
       cell: (info) => {
         const val = info.getValue()
         if (!val) return '—'
@@ -159,14 +160,17 @@ export function EquipmentTab() {
       header: 'Marca',
       cell: (info) => info.getValue() ?? '—',
       enableSorting: false,
+      meta: { hiddenOnMobile: true },
     }),
     helper.accessor('model', {
       header: 'Modelo',
       cell: (info) => info.getValue() ?? '—',
       enableSorting: false,
+      meta: { hiddenOnMobile: true },
     }),
     helper.accessor('current_hours', {
       header: 'Horas',
+      meta: { hiddenOnMobile: true },
       cell: (info) => {
         const val = info.getValue()
         return val != null ? val.toLocaleString('es-MX') : '—'
@@ -179,10 +183,10 @@ export function EquipmentTab() {
       cell: ({ row }) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => openEdit(row.original)}>
@@ -219,6 +223,7 @@ export function EquipmentTab() {
         data={data as Equipment[]}
         isLoading={isLoading}
         searchKey="name"
+        tableFixed
         searchPlaceholder="Buscar equipos..."
         emptyMessage="No hay equipos registrados."
       />
@@ -256,7 +261,7 @@ export function EquipmentTab() {
                 onValueChange={(v) => form.setValue('type', v === '__none__' ? null : v)}
               >
                 <SelectTrigger id="eq-type" className="h-8 text-sm">
-                  <SelectValue placeholder="Seleccionar" />
+                  <SelectValue>{!form.watch('type') || form.watch('type') === '__none__' ? 'Sin tipo' : EQUIPMENT_TYPES.find((t) => t.value === form.watch('type'))?.label}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Sin tipo</SelectItem>
