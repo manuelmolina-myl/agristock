@@ -280,7 +280,7 @@ export function SalidasPage() {
       header: 'Folio',
       cell: (info) => {
         const docNum = info.getValue()
-        const ref = (info.row.original as any).reference_external as string | null
+        const ref = (info.row.original as any).folio_fisico as string | null
         return (
           <div className="flex flex-col gap-0.5">
             <span className="font-mono text-xs text-foreground">

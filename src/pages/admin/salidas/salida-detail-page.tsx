@@ -244,6 +244,7 @@ export default function SalidaDetailPage() {
         </CardHeader>
         <CardContent className="pt-0">
           <InfoRow label="Almacén" value={mov.warehouse ? `${mov.warehouse.code} – ${mov.warehouse.name}` : undefined} />
+          <InfoRow label="Folio físico" value={(mov as any).folio_fisico} />
           <InfoRow label="Entrega" value={mov.delivered_by?.full_name} />
           <InfoRow label="Recibe" value={mov.received_by?.full_name} />
           {canSeePrices && (

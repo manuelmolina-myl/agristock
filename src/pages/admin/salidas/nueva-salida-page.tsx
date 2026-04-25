@@ -134,7 +134,7 @@ const step1Schema = z.object({
   ]),
   date: z.string().min(1, 'Selecciona una fecha'),
   notes: z.string().optional(),
-  reference_external: z.string().optional(),
+  folio_fisico: z.string().optional(),
   delivered_by_employee_id: z.string().optional(),
   received_by_employee_id: z.string().optional(),
 })
@@ -438,13 +438,13 @@ function Step2Detalles({ step1a, defaultValues, onNext, onBack }: Step2DetallesP
         )}
       </div>
 
-      {/* Folio externo */}
+      {/* Folio físico */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="reference_external">Folio del negocio / documento</Label>
+        <Label htmlFor="folio_fisico">Folio físico</Label>
         <Input
-          id="reference_external"
-          placeholder="# vale, remisión, orden de trabajo…"
-          {...register('reference_external')}
+          id="folio_fisico"
+          placeholder="Folio del documento físico de la empresa…"
+          {...register('folio_fisico')}
         />
         <p className="text-xs text-muted-foreground">El folio del sistema (SAL-XXXXX) se genera automáticamente al guardar.</p>
       </div>
@@ -940,10 +940,10 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
             <dt className="text-xs text-muted-foreground">Fecha</dt>
             <dd>{step1.date}</dd>
           </div>
-          {step1.reference_external && (
+          {step1.folio_fisico && (
             <div className="col-span-2">
-              <dt className="text-xs text-muted-foreground">Folio del negocio</dt>
-              <dd>{step1.reference_external}</dd>
+              <dt className="text-xs text-muted-foreground">Folio físico</dt>
+              <dd>{step1.folio_fisico}</dd>
             </div>
           )}
           <div>
@@ -1143,7 +1143,7 @@ export function NuevaSalidaPage() {
             movement_type: step1Data.movement_type,
             warehouse_id: step1Data.warehouse_id,
             document_number,
-            reference_external: step1Data.reference_external || null,
+            folio_fisico: step1Data.folio_fisico || null,
             fx_rate: latestFxRate,
             fx_source: 'manual',
             fx_date: step1Data.date,

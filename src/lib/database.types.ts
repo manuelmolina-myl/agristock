@@ -186,6 +186,7 @@ export interface StockMovement {
   warehouse_id: string
   counterpart_warehouse_id: string | null
   document_number: string | null
+  folio_fisico: string | null
   reference_external: string | null
   supplier_id: string | null
   fx_rate: number | null

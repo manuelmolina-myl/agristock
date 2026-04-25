@@ -221,7 +221,8 @@ export default function EntradaDetailPage() {
           <InfoRow label="Almacén" value={mov.warehouse ? `${mov.warehouse.code} – ${mov.warehouse.name}` : undefined} />
           <InfoRow label="Proveedor" value={mov.supplier?.name} />
           <InfoRow label="Recibió" value={mov.received_by?.full_name} />
-          <InfoRow label="Referencia externa" value={mov.reference_external} />
+          <InfoRow label="# Factura / Referencia" value={mov.reference_external} />
+          <InfoRow label="Folio físico" value={(mov as any).folio_fisico} />
           {canSeePrices && mov.fx_rate && (
             <InfoRow label="Tipo de cambio" value={<span className="font-mono">${mov.fx_rate.toFixed(4)}</span>} />
           )}

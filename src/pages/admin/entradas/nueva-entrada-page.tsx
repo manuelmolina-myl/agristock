@@ -93,6 +93,7 @@ const formSchema = z.object({
   warehouse_id:       z.string().min(1, 'Selecciona un almacén'),
   supplier_id:        z.string().optional(),
   reference_external: z.string().optional(),
+  folio_fisico:       z.string().optional(),
   movement_date:      z.string().min(1, 'Selecciona la fecha'),
   notes:              z.string().optional(),
   // Step 2 — Detalles
@@ -209,6 +210,7 @@ export default function NuevaEntradaPage() {
       warehouse_id:            '',
       supplier_id:             '',
       reference_external:      '',
+      folio_fisico:            '',
       movement_date:           new Date().toISOString().slice(0, 10),
       notes:                   '',
       received_by_employee_id: '',
@@ -280,6 +282,7 @@ export default function NuevaEntradaPage() {
           warehouse_id:             values.warehouse_id,
           supplier_id:              values.supplier_id || null,
           reference_external:       values.reference_external || null,
+          folio_fisico:             values.folio_fisico || null,
           document_number,
           fx_rate:                  latestFxRate,
           fx_source:                'manual',
@@ -446,14 +449,25 @@ export default function NuevaEntradaPage() {
               </div>
             )}
 
-            {/* Reference */}
+            {/* Invoice reference */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="reference_external">Folio del proveedor / documento</Label>
+              <Label htmlFor="reference_external"># Factura / Referencia</Label>
               <Input
                 id="reference_external"
                 placeholder="# factura, remisión, nota de entrega…"
                 className="h-9"
                 {...form.register('reference_external')}
+              />
+            </div>
+
+            {/* Physical folio */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="folio_fisico">Folio físico</Label>
+              <Input
+                id="folio_fisico"
+                placeholder="Folio del documento físico de la empresa…"
+                className="h-9"
+                {...form.register('folio_fisico')}
               />
               <p className="text-xs text-muted-foreground">El folio del sistema (ENT-XXXXX) se genera automáticamente al guardar.</p>
             </div>
