@@ -154,7 +154,7 @@ export function SalidasPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
   const canSeePrices = useCanSeePrices()
-  const { activeSeason, organization } = useAuth()
+  const { organization } = useAuth()
 
   // Filters
   const [filtersOpen,  setFiltersOpen]  = useState(false)
@@ -174,7 +174,6 @@ export function SalidasPage() {
     'stock_movements',
     {
       select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), received_by:employees!stock_movements_received_by_employee_id_fkey(full_name), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
-      filters: activeSeason?.id ? { season_id: activeSeason.id } : {},
     }
   )
 
