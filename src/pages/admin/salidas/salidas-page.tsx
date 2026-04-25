@@ -173,7 +173,7 @@ export function SalidasPage() {
   const { data: rawMovements = [], isLoading, refetch } = useList<ExitMovement>(
     'stock_movements',
     {
-      select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), received_by:employees!stock_movements_received_by_employee_id_fkey(full_name), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
+      select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), received_by:employees!stock_movements_received_by_employee_id_fkey(full_name), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees!stock_movement_lines_employee_id_fkey(full_name, employee_code))',
     }
   )
 

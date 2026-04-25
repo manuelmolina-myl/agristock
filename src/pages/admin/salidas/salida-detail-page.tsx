@@ -106,7 +106,7 @@ export default function SalidaDetailPage() {
     queryFn: async () => {
       const { data, error } = await db
         .from('stock_movements')
-        .select('*, warehouse:warehouses!stock_movements_warehouse_id_fkey(name, code), received_by:employees!stock_movements_received_by_employee_id_fkey(full_name), lines:stock_movement_lines(*, item:items(sku, name, unit:units(code)), crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name))')
+        .select('*, warehouse:warehouses!stock_movements_warehouse_id_fkey(name, code), received_by:employees!stock_movements_received_by_employee_id_fkey(full_name), lines:stock_movement_lines(*, item:items(sku, name, unit:units(code)), crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees!stock_movement_lines_employee_id_fkey(full_name))')
         .eq('id', id)
         .single()
       if (error) throw error
