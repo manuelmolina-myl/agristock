@@ -53,6 +53,21 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 
+// ─── Folio generator ──────────────────────────────────────────────────────────
+
+async function generateFolioSalida(orgId: string): Promise<string> {
+  const { data } = await (supabase as any)
+    .from('stock_movements')
+    .select('document_number')
+    .eq('organization_id', orgId)
+    .like('document_number', 'SAL-%')
+    .order('document_number', { ascending: false })
+    .limit(1)
+  const last = data?.[0]?.document_number as string | undefined
+  const num = last ? (parseInt(last.match(/\d+$/)?.[0] ?? '0', 10) + 1) : 1
+  return `SAL-${String(num).padStart(5, '0')}`
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const db = supabase as any
@@ -119,6 +134,7 @@ const step1Schema = z.object({
   ]),
   date: z.string().min(1, 'Selecciona una fecha'),
   notes: z.string().optional(),
+  reference_external: z.string().optional(),
   delivered_by_employee_id: z.string().optional(),
   received_by_employee_id: z.string().optional(),
 })
@@ -420,6 +436,17 @@ function Step2Detalles({ step1a, defaultValues, onNext, onBack }: Step2DetallesP
         {errors.date && (
           <p className="text-xs text-destructive">{errors.date.message}</p>
         )}
+      </div>
+
+      {/* Folio externo */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="reference_external">Folio del negocio / documento</Label>
+        <Input
+          id="reference_external"
+          placeholder="# vale, remisión, orden de trabajo…"
+          {...register('reference_external')}
+        />
+        <p className="text-xs text-muted-foreground">El folio del sistema (SAL-XXXXX) se genera automáticamente al guardar.</p>
       </div>
 
       {/* Entrega */}
@@ -913,6 +940,12 @@ function Step3Revision({ step1, step2, onBack, onSaveDraft, onRegister, isSubmit
             <dt className="text-xs text-muted-foreground">Fecha</dt>
             <dd>{step1.date}</dd>
           </div>
+          {step1.reference_external && (
+            <div className="col-span-2">
+              <dt className="text-xs text-muted-foreground">Folio del negocio</dt>
+              <dd>{step1.reference_external}</dd>
+            </div>
+          )}
           <div>
             <dt className="text-xs text-muted-foreground">Almacén origen</dt>
             <dd>{warehouse ? `${warehouse.code} — ${warehouse.name}` : '—'}</dd>
@@ -1098,7 +1131,10 @@ export function NuevaSalidaPage() {
           return sum + usd * qty
         }, 0)
 
-        // 2. Create movement
+        // 2. Generate system folio
+        const document_number = await generateFolioSalida(organization.id)
+
+        // 3. Create movement
         const { data: movement, error: movErr } = await db
           .from('stock_movements')
           .insert({
@@ -1106,6 +1142,8 @@ export function NuevaSalidaPage() {
             season_id: activeSeason.id,
             movement_type: step1Data.movement_type,
             warehouse_id: step1Data.warehouse_id,
+            document_number,
+            reference_external: step1Data.reference_external || null,
             fx_rate: latestFxRate,
             fx_source: 'manual',
             fx_date: step1Data.date,

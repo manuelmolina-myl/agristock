@@ -278,11 +278,18 @@ export function SalidasPage() {
   const columns = [
     colHelper.accessor('document_number', {
       header: 'Folio',
-      cell: (info) => (
-        <span className="font-mono text-xs text-foreground">
-          {info.getValue() ?? <span className="text-muted-foreground">—</span>}
-        </span>
-      ),
+      cell: (info) => {
+        const docNum = info.getValue()
+        const ref = (info.row.original as any).reference_external as string | null
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-mono text-xs text-foreground">
+              {docNum ?? <span className="text-muted-foreground">—</span>}
+            </span>
+            {ref && <span className="text-xs text-muted-foreground truncate max-w-[120px]">{ref}</span>}
+          </div>
+        )
+      },
     }),
     colHelper.accessor('movement_type', {
       header: 'Tipo',
