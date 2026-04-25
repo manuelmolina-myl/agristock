@@ -23,8 +23,7 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>
 
 const DEMO_USERS: { label: string; role: UserRole; email: string }[] = [
-  { label: 'Super Admin', role: 'super_admin', email: 'admin@agristock.mx' },
-  { label: 'Gerente', role: 'gerente', email: 'gerente@agristock.mx' },
+  { label: 'Admin', role: 'admin', email: 'admin@agristock.mx' },
   { label: 'Almacenista', role: 'almacenista', email: 'almacen@agristock.mx' },
   { label: 'Supervisor', role: 'supervisor', email: 'supervisor@agristock.mx' },
 ]

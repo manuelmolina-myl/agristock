@@ -39,9 +39,6 @@ const ReportesPage = lazy(() => import('@/pages/admin/reportes/reportes-page'))
 const ReportViewerPage = lazy(() => import('@/pages/admin/reportes/report-viewer-page'))
 const CierreTemporadaPage = lazy(() => import('@/pages/admin/cierre-temporada-page'))
 
-// Gerente
-const GerenteDashboard = lazy(() => import('@/pages/gerente/dashboard-page'))
-
 // Almacenista
 const AlmacenistaDashboard = lazy(() => import('@/pages/almacenista/dashboard-page'))
 
@@ -94,11 +91,11 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardRedirect />} />
 
-        {/* Admin routes (Super Admin) */}
+        {/* Admin routes */}
         <Route
           path="/admin"
           element={
-            <ProtectedRoute allowedRoles={['super_admin']}>
+            <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
               <AppLayout />
             </ProtectedRoute>
           }
@@ -130,44 +127,6 @@ export default function App() {
           <Route path="configuracion" element={<CatalogosPage />} />
           <Route path="tipo-cambio" element={<FxRatesPage />} />
           <Route path="cierre-temporada" element={<CierreTemporadaPage />} />
-          <Route path="solicitudes" element={<SolicitudesAdminPage />} />
-          <Route path="solicitudes/:id" element={<SolicitudReviewPage />} />
-        </Route>
-
-        {/* Gerente routes */}
-        <Route
-          path="/gerente"
-          element={
-            <ProtectedRoute allowedRoles={['gerente']}>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<GerenteDashboard />} />
-          <Route path="inventario" element={<ItemsPage />} />
-          <Route path="inventario/nuevo" element={<ItemFormPage />} />
-          <Route path="inventario/:id" element={<ItemDetailPage />} />
-          <Route path="inventario/:id/editar" element={<ItemFormPage />} />
-          <Route path="entradas" element={<EntradasPage />} />
-          <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
-          <Route path="entradas/:id" element={<EntradaDetailPage />} />
-          <Route path="salidas" element={<SalidasPage />} />
-          <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
-          <Route path="salidas/:id" element={<SalidaDetailPage />} />
-          <Route path="traspasos" element={<TraspasosPage />} />
-          <Route path="traspasos/nuevo" element={<NuevoTraspasoPage />} />
-          <Route path="traspasos/:id" element={<TraspasoDetailPage />} />
-          <Route path="diesel" element={<DieselPage />} />
-          <Route path="diesel/cargar" element={<CargaDieselPage />} />
-          <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
-          <Route path="lotes" element={<LotesPage />} />
-          <Route path="lotes/:id" element={<LoteDetailPage />} />
-          <Route path="equipos" element={<EquiposPage />} />
-          <Route path="equipos/:id" element={<EquipoDetailPage />} />
-          <Route path="reportes" element={<ReportesPage />} />
-          <Route path="reportes/:slug" element={<ReportViewerPage />} />
-          <Route path="auditoria" element={<AuditoriaPage />} />
-          <Route path="tipo-cambio" element={<FxRatesPage />} />
           <Route path="solicitudes" element={<SolicitudesAdminPage />} />
           <Route path="solicitudes/:id" element={<SolicitudReviewPage />} />
         </Route>

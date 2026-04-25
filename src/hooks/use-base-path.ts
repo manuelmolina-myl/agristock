@@ -4,7 +4,7 @@ import type { UserRole } from '@/lib/database.types'
 
 /**
  * Returns the base path for the current user's role.
- * e.g., '/admin', '/gerente', '/almacenista', '/supervisor'
+ * e.g., '/admin', '/almacenista', '/supervisor'
  */
 export function useBasePath(): string {
   const { profile } = useAuth()

@@ -39,7 +39,7 @@ function useMobileNavItems(): MobileNavItem[] {
           { label: 'Movimientos',  to: `${base}/entradas`,      icon: ArrowLeftRight },
           { label: 'Diésel',       to: `${base}/diesel`,        icon: Fuel },
         ]
-      default: // super_admin, gerente
+      default: // admin
         return [
           { label: 'Inicio',       to: base,                    icon: LayoutDashboard, exact: true },
           { label: 'Inventario',   to: `${base}/inventario`,    icon: Package },

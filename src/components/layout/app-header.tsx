@@ -39,7 +39,6 @@ const SEGMENT_LABELS: Record<string, string> = {
   solicitudes: 'Solicitudes',
   // role roots
   admin: 'Dashboard',
-  gerente: 'Dashboard',
   almacenista: 'Dashboard',
   supervisor: 'Dashboard',
 }

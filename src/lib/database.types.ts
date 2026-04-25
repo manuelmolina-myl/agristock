@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'gerente' | 'almacenista' | 'supervisor'
+export type UserRole = 'super_admin' | 'admin' | 'almacenista' | 'supervisor'
 
 export type SeasonStatus = 'planning' | 'active' | 'closing' | 'closed'
 
