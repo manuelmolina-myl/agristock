@@ -26,7 +26,8 @@ import type { StockMovement, MovementStatus } from '@/lib/database.types'
 import { PageHeader } from '@/components/custom/page-header'
 import { MoneyDisplay } from '@/components/custom/money-display'
 import { EmptyState } from '@/components/custom/empty-state'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper } from '@tanstack/react-table'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -116,7 +117,7 @@ const colHelper = createColumnHelper<EntryMovement>()
 export default function EntradasPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
-  const canSeePrices = useCanSeePrices()
+  const canSeePrices = useCanSeePrices('entry')
   const { activeSeason, organization } = useAuth()
 
   // Filters
@@ -138,7 +139,6 @@ export default function EntradasPage() {
     {
       select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), supplier:suppliers(id, name)',
       filters: activeSeason?.id ? { season_id: activeSeason.id } : {},
-      enabled: !!activeSeason?.id,
     }
   )
 
@@ -306,7 +306,7 @@ export default function EntradasPage() {
               <MoreHorizontal className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); alert(`Ver detalle: ${row.id}`) }}>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`${basePath}/entradas/${row.id}`) }}>
                 <Eye className="mr-2 h-3.5 w-3.5" />
                 Ver
               </DropdownMenuItem>
@@ -438,7 +438,7 @@ export default function EntradasPage() {
             : movements.map((m) => (
                 <div
                   key={m.id}
-                  onClick={() => alert(`Ver detalle: ${m.id}`)}
+                  onClick={() => navigate(`${basePath}/entradas/${m.id}`)}
                   className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -487,7 +487,7 @@ export default function EntradasPage() {
             data={movements}
             isLoading={isLoading}
             emptyMessage="Sin entradas para los filtros seleccionados."
-            onRowClick={(row) => alert(`Ver detalle: ${row.id}`)}
+            onRowClick={(row) => navigate(`${basePath}/entradas/${row.id}`)}
           />
         </div>
       )}

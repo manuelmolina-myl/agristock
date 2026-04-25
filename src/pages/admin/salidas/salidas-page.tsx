@@ -24,7 +24,8 @@ import type { StockMovement, MovementStatus } from '@/lib/database.types'
 import { PageHeader } from '@/components/custom/page-header'
 import { MoneyDisplay } from '@/components/custom/money-display'
 import { EmptyState } from '@/components/custom/empty-state'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper } from '@tanstack/react-table'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -174,7 +175,6 @@ export function SalidasPage() {
     {
       select: '*, warehouse:warehouses!stock_movements_warehouse_id_fkey(id, name, code), received_by:employees!stock_movements_received_by_employee_id_fkey(full_name), lines:stock_movement_lines(destination_type, crop_lot:crops_lots(name, code), equipment:equipment(name, code), employee:employees(full_name, employee_code))',
       filters: activeSeason?.id ? { season_id: activeSeason.id } : {},
-      enabled: !!activeSeason?.id,
     }
   )
 

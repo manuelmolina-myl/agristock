@@ -46,7 +46,7 @@ const itemSchema = z.object({
   name: z.string().min(1, 'Nombre requerido'),
   description: z.string().optional().nullable(),
   category_id: z.string().optional().nullable(),
-  unit_id: z.string().optional().nullable(),
+  unit_id: z.string().nullable().refine((v) => !!v, { message: 'Selecciona una unidad de medida' }),
   native_currency: z.enum(['MXN', 'USD']),
   barcode: z.string().optional().nullable(),
   min_stock: z.preprocess(
@@ -349,20 +349,21 @@ export function ItemFormPage() {
 
               {/* Unidad */}
               <div className="flex flex-col gap-1.5">
-                <Label className="text-sm">Unidad de medida</Label>
+                <Label className="text-sm">
+                  Unidad de medida <span className="text-destructive">*</span>
+                </Label>
                 <Controller
                   name="unit_id"
                   control={control}
                   render={({ field }) => (
                     <Select
-                      value={field.value ?? 'none'}
-                      onValueChange={(v) => field.onChange(v === 'none' ? null : v)}
+                      value={field.value ?? ''}
+                      onValueChange={(v) => field.onChange(v || null)}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Sin unidad" />
+                        <SelectValue placeholder="Selecciona unidad" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Sin unidad</SelectItem>
                         {units.map((unit) => (
                           <SelectItem key={unit.id} value={unit.id}>
                             {unit.name} ({unit.code})
@@ -372,6 +373,7 @@ export function ItemFormPage() {
                     </Select>
                   )}
                 />
+                <FieldError message={errors.unit_id?.message} />
               </div>
 
               {/* Moneda nativa */}

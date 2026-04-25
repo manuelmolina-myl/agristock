@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
-import { useForm, useFieldArray, Controller } from 'react-hook-form'
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
@@ -83,9 +83,17 @@ const formSchema = z.object({
   movement_date:      z.string().min(1, 'Selecciona la fecha'),
   notes:              z.string().optional(),
   // Step 2 — Detalles
-  received_by_employee_id: z.string().optional(),
+  received_by_employee_id: z.string().min(1, 'Selecciona quién recibe la mercancía'),
   // Step 3
   lines: z.array(lineSchema).min(1, 'Agrega al menos una partida'),
+}).superRefine((data, ctx) => {
+  if (data.movement_type === 'entry_purchase' && !data.supplier_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Selecciona el proveedor para compras',
+      path: ['supplier_id'],
+    })
+  }
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -184,20 +192,21 @@ export default function NuevaEntradaPage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema) as any,
     defaultValues: {
-      movement_type:      'entry_purchase',
-      warehouse_id:       '',
-      supplier_id:        '',
-      reference_external: '',
-      movement_date:      new Date().toISOString().slice(0, 10),
-      notes:              '',
-      lines:              [{ item_id: '', quantity: 1, unit_cost_native: 0 }],
+      movement_type:           'entry_purchase',
+      warehouse_id:            '',
+      supplier_id:             '',
+      reference_external:      '',
+      movement_date:           new Date().toISOString().slice(0, 10),
+      notes:                   '',
+      received_by_employee_id: '',
+      lines:                   [{ item_id: '', quantity: 1, unit_cost_native: 0 }],
     },
   })
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'lines' })
 
-  const watchedType  = form.watch('movement_type')
-  const watchedLines = form.watch('lines')
+  const watchedType  = useWatch({ control: form.control, name: 'movement_type' })
+  const watchedLines = useWatch({ control: form.control, name: 'lines' })
   const watchedFx    = latestFxRate
 
   // ─── Computed totals ────────────────────────────────────────────────────────
@@ -221,7 +230,11 @@ export default function NuevaEntradaPage() {
     if (step === 1) {
       valid = await form.trigger(['movement_type', 'warehouse_id'])
     } else if (step === 2) {
-      valid = await form.trigger(['movement_date'])
+      const toValidate: (keyof FormValues)[] = ['movement_date', 'received_by_employee_id']
+      if (form.getValues('movement_type') === 'entry_purchase') {
+        toValidate.push('supplier_id')
+      }
+      valid = await form.trigger(toValidate)
     } else if (step === 3) {
       valid = await form.trigger(['lines'])
     } else {
@@ -269,7 +282,7 @@ export default function NuevaEntradaPage() {
       if (movErr) throw movErr
 
       // 2. Create lines
-      const linePayloads = values.lines.map((line, i) => {
+      const linePayloads = values.lines.map((line) => {
         const item     = items.find((it) => it.id === line.item_id)
         const currency = item?.native_currency ?? 'MXN'
         const totalNative = line.quantity * line.unit_cost_native
@@ -284,7 +297,6 @@ export default function NuevaEntradaPage() {
           unit_cost_mxn:    unitMxn,
           line_total_native: totalNative,
           line_total_mxn:   totalMxn,
-          sort_order:       i,
         }
       })
 
@@ -299,7 +311,7 @@ export default function NuevaEntradaPage() {
           ? 'Entrada registrada correctamente'
           : 'Borrador guardado correctamente'
       )
-      navigate(`${basePath}/entradas`)
+      navigate(`${basePath}/entradas/${movement.id}`)
     } catch (err: any) {
       console.error(err)
       toast.error(err?.message ?? 'Error al guardar la entrada')
@@ -395,7 +407,7 @@ export default function NuevaEntradaPage() {
             {/* Supplier — only for purchases */}
             {watchedType === 'entry_purchase' && (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="supplier_id">Proveedor</Label>
+                <Label htmlFor="supplier_id">Proveedor <span className="text-destructive">*</span></Label>
                 <Controller
                   control={form.control}
                   name="supplier_id"
@@ -403,20 +415,18 @@ export default function NuevaEntradaPage() {
                     <SearchableSelect
                       value={field.value ?? ''}
                       onValueChange={field.onChange}
-                      options={[
-                        { value: '', label: 'Sin proveedor' },
-                        ...suppliers.map((s) => ({
-                          value: s.id,
-                          label: s.name,
-                          sublabel: (s as any).rfc ?? '',
-                        })),
-                      ]}
-                      placeholder="Sin proveedor"
+                      options={suppliers.map((s) => ({
+                        value: s.id,
+                        label: s.name,
+                        sublabel: (s as any).rfc ?? '',
+                      }))}
+                      placeholder="Selecciona proveedor…"
                       searchPlaceholder="Buscar proveedor…"
                       emptyMessage="Sin proveedores."
                     />
                   )}
                 />
+                <FieldError message={form.formState.errors.supplier_id?.message} />
               </div>
             )}
 
@@ -458,7 +468,7 @@ export default function NuevaEntradaPage() {
 
             {/* Recibe en almacén */}
             <div className="flex flex-col gap-1.5">
-              <Label>Recibe en almacén</Label>
+              <Label>Recibe en almacén <span className="text-destructive">*</span></Label>
               <Controller
                 control={form.control}
                 name="received_by_employee_id"
@@ -466,20 +476,18 @@ export default function NuevaEntradaPage() {
                   <SearchableSelect
                     value={field.value ?? ''}
                     onValueChange={field.onChange}
-                    options={[
-                      { value: '', label: 'Sin especificar' },
-                      ...(employees as any[]).map((emp: any) => ({
-                        value: emp.id,
-                        label: emp.full_name,
-                        sublabel: emp.employee_code,
-                      })),
-                    ]}
-                    placeholder="Empleado que recibe la mercancía"
+                    options={(employees as any[]).map((emp: any) => ({
+                      value: emp.id,
+                      label: emp.full_name,
+                      sublabel: emp.employee_code,
+                    }))}
+                    placeholder="Selecciona empleado que recibe…"
                     searchPlaceholder="Buscar empleado…"
                     emptyMessage="Sin empleados."
                   />
                 )}
               />
+              <FieldError message={form.formState.errors.received_by_employee_id?.message} />
             </div>
           </CardContent>
         </Card>

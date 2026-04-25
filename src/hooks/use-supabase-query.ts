@@ -231,12 +231,14 @@ export function useEmployees() {
 
 export function useItemStock(filters?: Record<string, unknown>) {
   const { activeSeason } = useAuth()
+  const extraFilters = filters ?? {}
+  const hasExtraFilter = Object.values(extraFilters).some((v) => v !== undefined && v !== null && v !== '')
   return useList<ItemStock & { item?: Item & { category?: Category; unit?: Unit }; warehouse?: { name: string; code: string } }>('item_stock', {
     select: '*, item:items(*, category:categories(*), unit:units(*)), warehouse:warehouses(*)',
     orderBy: 'quantity',
     ascending: false,
-    filters: { season_id: activeSeason?.id, ...filters },
-    enabled: !!activeSeason?.id,
+    filters: { season_id: activeSeason?.id, ...extraFilters },
+    enabled: !!(activeSeason?.id || hasExtraFilter),
   })
 }
 

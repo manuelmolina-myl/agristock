@@ -23,6 +23,7 @@ import {
   useEquipment,
   useEmployees,
   useItems,
+  useItemStock,
   useList,
   useFxRates,
 } from '@/hooks/use-supabase-query'
@@ -513,17 +514,18 @@ interface Step2Props {
 function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxRate, canSeePrices }: Step2Props) {
   const { data: items = [] } = useItems()
   const { data: employees = [] } = useEmployees()
+
   const { activeSeason } = useAuth()
 
-  const { data: stockRows = [] } = useList<ItemStock & { item?: any; warehouse?: any }>(
+  const { data: stockRows = [] } = useList<ItemStock & { item?: any }>(
     'item_stock',
     {
       select: '*, item:items(*, unit:units(*))',
       filters: {
         warehouse_id: step1.warehouse_id,
-        season_id: activeSeason?.id,
+        ...(activeSeason?.id ? { season_id: activeSeason.id } : {}),
       },
-      enabled: !!step1.warehouse_id && !!activeSeason?.id,
+      enabled: !!step1.warehouse_id,
     }
   )
 
@@ -1194,7 +1196,7 @@ export function NuevaSalidaPage() {
         setIsSubmitting(false)
       }
     },
-    [step1Data, step2Data, organization, activeSeason, profile, navigate, latestFxRate, allEmployees, canSeePrices]
+    [step1Data, step2Data, organization, activeSeason, profile, navigate, latestFxRate, allEmployees, canSeePrices, basePath]
   )
 
   return (
