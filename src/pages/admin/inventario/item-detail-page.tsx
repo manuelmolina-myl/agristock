@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner'
 
 import { useItem, useItemStock, useSoftDelete } from '@/hooks/use-supabase-query'
+import { useRegisterPageTitle } from '@/contexts/page-title-context'
 import { formatMoney, formatQuantity } from '@/lib/utils'
 
 import { CurrencyBadge } from '@/components/custom/currency-badge'
@@ -146,6 +147,7 @@ export function ItemDetailPage() {
   const canSeePrices = useCanSeePrices()
 
   const { data: item, isLoading } = useItem(id)
+  useRegisterPageTitle(item?.name)
   const softDelete = useSoftDelete('items')
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)

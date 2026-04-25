@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { useBasePath, useCanSeePrices } from '@/hooks/use-base-path'
 import { useAuth } from '@/hooks/use-auth'
+import { useRegisterPageTitle } from '@/contexts/page-title-context'
 import { supabase } from '@/lib/supabase'
 import { MOVEMENT_TYPE_LABELS } from '@/lib/constants'
 import { formatMoney, formatQuantity, formatFechaCorta, formatHora } from '@/lib/utils'
@@ -94,6 +95,7 @@ export default function EntradaDetailPage() {
     },
     enabled: !!id,
   })
+  useRegisterPageTitle(mov?.document_number ?? undefined)
 
   async function handlePost() {
     setPosting(true)

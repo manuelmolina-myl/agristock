@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import { useLocation, NavLink, useNavigate } from 'react-router-dom'
+import { usePageTitle } from '@/contexts/page-title-context'
 import { Sun, Moon, Search, LogOut, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { useTheme } from '@/hooks/use-theme'
@@ -52,13 +53,15 @@ interface BreadcrumbEntry {
   to: string
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function useBreadcrumbs(): BreadcrumbEntry[] {
   const { profile } = useAuth()
+  const { titles } = usePageTitle()
   const location = useLocation()
   const basePath = profile?.role ? ROLE_ROUTES[profile.role] : ''
   const baseLabel = 'AgriStock'
 
-  // Strip the base path to get relative segments
   const relative = location.pathname.replace(basePath, '').replace(/^\//, '')
   const segments = relative ? relative.split('/').filter(Boolean) : []
 
@@ -66,7 +69,8 @@ function useBreadcrumbs(): BreadcrumbEntry[] {
 
   segments.forEach((seg, i) => {
     const to = `${basePath}/${segments.slice(0, i + 1).join('/')}`
-    crumbs.push({ label: segmentLabel(seg), to })
+    const label = UUID_RE.test(seg) ? (titles[location.pathname] ?? '…') : segmentLabel(seg)
+    crumbs.push({ label, to })
   })
 
   return crumbs

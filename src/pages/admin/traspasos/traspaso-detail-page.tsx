@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { useBasePath } from '@/hooks/use-base-path'
 import { useAuth } from '@/hooks/use-auth'
+import { useRegisterPageTitle } from '@/contexts/page-title-context'
 import { supabase } from '@/lib/supabase'
 import { formatQuantity, formatFechaCorta, formatHora } from '@/lib/utils'
 import { generateTraspasoPDF } from '@/lib/generate-traspaso-pdf'
@@ -85,6 +86,7 @@ export default function TraspasoDetailPage() {
     },
     enabled: !!id,
   })
+  useRegisterPageTitle(mov?.document_number ?? undefined)
 
   async function handlePost() {
     setPosting(true)
