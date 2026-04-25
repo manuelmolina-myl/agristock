@@ -86,6 +86,7 @@ export interface Category {
   parent_id: string | null
   icon: string | null
   color: string | null
+  prefix: string | null
 }
 
 export interface Unit {

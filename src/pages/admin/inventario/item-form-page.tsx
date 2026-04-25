@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
 import { useForm, Controller } from 'react-hook-form'
@@ -14,6 +14,7 @@ import {
   useCreate,
   useUpdate,
 } from '@/hooks/use-supabase-query'
+import { supabase } from '@/lib/supabase'
 import type { Item } from '@/lib/database.types'
 
 import { CurrencyBadge } from '@/components/custom/currency-badge'
@@ -110,6 +111,7 @@ export function ItemFormPage() {
     control,
     watch,
     reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<ItemFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,7 +152,27 @@ export function ItemFormPage() {
     }
   }, [isEditing, item, reset])
 
-  const watchedCurrency = watch('native_currency')
+  const watchedCurrency  = watch('native_currency')
+  const watchedCategoryId = watch('category_id')
+
+  const generateSku = useCallback(async (categoryId: string) => {
+    const cat = categories.find((c) => c.id === categoryId)
+    if (!cat?.prefix) return
+    const { count } = await (supabase as any)
+      .from('items')
+      .select('id', { count: 'exact', head: true })
+      .eq('category_id', categoryId)
+      .is('deleted_at', null)
+    const next = (count ?? 0) + 1
+    const sku = `${cat.prefix}-${String(next).padStart(4, '0')}`
+    setValue('sku', sku, { shouldValidate: false, shouldDirty: true })
+  }, [categories, setValue])
+
+  useEffect(() => {
+    if (!isEditing && watchedCategoryId) {
+      generateSku(watchedCategoryId)
+    }
+  }, [watchedCategoryId, isEditing, generateSku])
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   async function onSubmit(values: ItemFormValues) {

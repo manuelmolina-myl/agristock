@@ -5,8 +5,8 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { MoreHorizontal, Pencil, Trash2, Plus } from 'lucide-react'
 import { useCategories, useCreate, useUpdate, useSoftDelete } from '@/hooks/use-supabase-query'
-import { DataTable, createColumnHelper } from '@/components/shared/data-table'
-import type { ColumnDef } from '@tanstack/react-table'
+import { DataTable } from '@/components/shared/data-table'
+import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { CrudDialog } from '@/components/shared/crud-dialog'
 import { DeleteDialog } from '@/components/shared/delete-dialog'
 import { Button } from '@/components/ui/button'
@@ -32,11 +32,13 @@ interface Category {
   parent_id?: string | null
   icon?: string | null
   color?: string | null
+  prefix?: string | null
   parent?: { name: string } | null
 }
 
 const schema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(100),
+  prefix: z.string().max(10).nullable().optional().transform((v) => v?.toUpperCase() || null),
   parent_id: z.string().nullable().optional(),
   icon: z.string().max(50).nullable().optional(),
   color: z.string().max(20).nullable().optional(),
@@ -59,11 +61,11 @@ export function CategoriesTab() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: '', parent_id: null, icon: null, color: null },
+    defaultValues: { name: '', prefix: null, parent_id: null, icon: null, color: null },
   })
 
   const openCreate = () => {
-    form.reset({ name: '', parent_id: null, icon: null, color: null })
+    form.reset({ name: '', prefix: null, parent_id: null, icon: null, color: null })
     setEditing(null)
     setDialogOpen(true)
   }
@@ -71,6 +73,7 @@ export function CategoriesTab() {
   const openEdit = (row: Category) => {
     form.reset({
       name: row.name,
+      prefix: row.prefix ?? null,
       parent_id: row.parent_id ?? null,
       icon: row.icon ?? null,
       color: row.color ?? null,
@@ -111,16 +114,26 @@ export function CategoriesTab() {
   }
 
   const columns = [
-    helper.accessor('name', { header: 'Nombre', enableSorting: true }),
+    helper.accessor('name', { header: 'Nombre', enableSorting: true, meta: { truncate: true } }),
+    helper.accessor('prefix', {
+      header: 'Prefijo',
+      cell: (info) => info.getValue() ? (
+        <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{info.getValue()}</span>
+      ) : '—',
+      enableSorting: false,
+      meta: { hiddenOnMobile: true },
+    }),
     helper.accessor((row) => row.parent?.name ?? '—', {
       id: 'parent',
       header: 'Categoría padre',
       enableSorting: false,
+      meta: { hiddenOnMobile: true },
     }),
     helper.accessor('icon', {
       header: 'Ícono',
       cell: (info) => info.getValue() ?? '—',
       enableSorting: false,
+      meta: { hiddenOnMobile: true },
     }),
     helper.accessor('color', {
       header: 'Color',
@@ -145,10 +158,10 @@ export function CategoriesTab() {
       cell: ({ row }) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" className="h-7 w-7" />}
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => openEdit(row.original)}>
@@ -188,6 +201,7 @@ export function CategoriesTab() {
         searchKey="name"
         searchPlaceholder="Buscar categorías..."
         emptyMessage="No hay categorías registradas."
+        tableFixed
       />
 
       <CrudDialog
@@ -198,12 +212,27 @@ export function CategoriesTab() {
         onSubmit={handleSubmit}
       >
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name">Nombre *</Label>
-            <Input id="name" {...form.register('name')} placeholder="Ej. Fertilizantes" />
-            {form.formState.errors.name && (
-              <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
-            )}
+          <div className="flex gap-3">
+            <div className="flex flex-col gap-1.5 flex-1">
+              <Label htmlFor="name">Nombre *</Label>
+              <Input id="name" {...form.register('name')} placeholder="Ej. Fertilizantes" />
+              {form.formState.errors.name && (
+                <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5 w-28">
+              <Label htmlFor="prefix">Prefijo SKU</Label>
+              <Input
+                id="prefix"
+                {...form.register('prefix')}
+                placeholder="Ej. AQ"
+                className="font-mono uppercase"
+                onChange={(e) => {
+                  e.target.value = e.target.value.toUpperCase()
+                  form.register('prefix').onChange(e)
+                }}
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-1.5">

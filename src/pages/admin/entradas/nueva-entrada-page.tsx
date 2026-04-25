@@ -206,7 +206,7 @@ export default function NuevaEntradaPage() {
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'lines' })
 
   const watchedType  = useWatch({ control: form.control, name: 'movement_type' })
-  const watchedLines = useWatch({ control: form.control, name: 'lines' })
+  const watchedLines = useWatch({ control: form.control, name: 'lines' }) ?? []
   const watchedFx    = latestFxRate
 
   // ─── Computed totals ────────────────────────────────────────────────────────
@@ -803,7 +803,7 @@ export default function NuevaEntradaPage() {
                       const currency = item?.native_currency ?? 'MXN'
                       const total = lineTotals[idx]
                       // Warn if cost seems abnormal (placeholder: cost = 0 warns)
-                      const costWarning = line.unit_cost_native === 0
+                      const costWarning = Number(line.unit_cost_native) === 0
 
                       return (
                         <TableRow key={idx} className={cn('border-b border-border/50 last:border-0', costWarning && 'bg-amber-50/40 dark:bg-amber-950/20')}>
@@ -814,12 +814,12 @@ export default function NuevaEntradaPage() {
                             </div>
                           </TableCell>
                           <TableCell className="px-4 py-2 text-right font-mono text-xs">
-                            {formatQuantity(line.quantity, 3)}
+                            {formatQuantity(Number(line.quantity), 3)}
                             {item?.unit && <span className="text-muted-foreground ml-1">{item.unit.code}</span>}
                           </TableCell>
                           <TableCell className="px-4 py-2 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <span className="font-mono text-xs">{CURRENCY_SYMBOLS[currency]}{line.unit_cost_native.toFixed(4)}</span>
+                              <span className="font-mono text-xs">{CURRENCY_SYMBOLS[currency]}{Number(line.unit_cost_native).toFixed(4)}</span>
                               <CurrencyBadge currency={currency} size="sm" />
                             </div>
                           </TableCell>
@@ -865,7 +865,7 @@ export default function NuevaEntradaPage() {
           </Card>
 
           {/* Warning placeholder */}
-          {form.getValues('lines').some((l) => l.unit_cost_native === 0) && (
+          {form.getValues('lines').some((l) => Number(l.unit_cost_native) === 0) && (
             <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
               <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
               <div className="flex flex-col gap-0.5">

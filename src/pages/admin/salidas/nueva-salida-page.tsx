@@ -520,6 +520,7 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
     'item_stock',
     {
       select: '*, item:items(*, unit:units(*))',
+      orderBy: 'item_id',
       filters: {
         warehouse_id: step1.warehouse_id,
         ...(activeSeason?.id ? { season_id: activeSeason.id } : {}),
