@@ -92,8 +92,8 @@ export function SearchableSelect({
                   key={option.value}
                   value={option.value}
                   data-checked={value === option.value}
-                  onSelect={(currentValue) => {
-                    onValueChange(currentValue)
+                  onSelect={() => {
+                    onValueChange(option.value)
                     setOpen(false)
                   }}
                 >
