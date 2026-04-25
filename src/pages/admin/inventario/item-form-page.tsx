@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase'
 import type { Item } from '@/lib/database.types'
 
 import { CurrencyBadge } from '@/components/custom/currency-badge'
+import { SearchableSelect } from '@/components/shared/searchable-select'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -341,30 +342,17 @@ export function ItemFormPage() {
                   name="category_id"
                   control={control}
                   render={({ field }) => (
-                    <Select
-                      value={field.value ?? 'none'}
-                      onValueChange={(v) => field.onChange(v === 'none' ? null : v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sin categoría" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Sin categoría</SelectItem>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            <span className="flex items-center gap-1.5">
-                              {cat.color && (
-                                <span
-                                  className="inline-block size-2 rounded-full shrink-0"
-                                  style={{ backgroundColor: cat.color }}
-                                />
-                              )}
-                              {cat.name}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      value={field.value ?? ''}
+                      onValueChange={(v) => field.onChange(v || null)}
+                      options={categories.map((cat) => ({
+                        value: cat.id,
+                        label: cat.name,
+                      }))}
+                      placeholder="Sin categoría"
+                      searchPlaceholder="Buscar categoría…"
+                      emptyMessage="Sin categorías."
+                    />
                   )}
                 />
               </div>
@@ -378,21 +366,18 @@ export function ItemFormPage() {
                   name="unit_id"
                   control={control}
                   render={({ field }) => (
-                    <Select
+                    <SearchableSelect
                       value={field.value ?? ''}
                       onValueChange={(v) => field.onChange(v || null)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona unidad" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {units.map((unit) => (
-                          <SelectItem key={unit.id} value={unit.id}>
-                            {unit.name} ({unit.code})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      options={units.map((unit) => ({
+                        value: unit.id,
+                        label: unit.name,
+                        sublabel: unit.code,
+                      }))}
+                      placeholder="Selecciona unidad"
+                      searchPlaceholder="Buscar unidad…"
+                      emptyMessage="Sin unidades."
+                    />
                   )}
                 />
                 <FieldError message={errors.unit_id?.message} />
