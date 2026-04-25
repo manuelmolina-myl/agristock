@@ -4,15 +4,16 @@
 -- super_admin is reserved for future platform-wide admin
 -- ============================================================================
 
--- 1. Migrate existing data first (must happen before constraint change)
+-- 1. Drop old constraint first
+ALTER TABLE profiles
+  DROP CONSTRAINT IF EXISTS profiles_role_check;
+
+-- 2. Migrate existing data
 UPDATE profiles
   SET role = 'admin'
   WHERE role IN ('super_admin', 'gerente');
 
--- 2. Update check constraint on profiles.role
-ALTER TABLE profiles
-  DROP CONSTRAINT IF EXISTS profiles_role_check;
-
+-- 3. Add new constraint
 ALTER TABLE profiles
   ADD CONSTRAINT profiles_role_check
   CHECK (role IN ('super_admin', 'admin', 'almacenista', 'supervisor'));
