@@ -94,6 +94,20 @@ export function ItemsPage() {
     return map
   }, [stockData])
 
+  // Per-warehouse breakdown: item_id → [{code, name, quantity}] (only where qty > 0)
+  const warehouseStockMap = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; quantity: number }[]>()
+    for (const s of stockData ?? []) {
+      if ((s.quantity ?? 0) <= 0) continue
+      const wh = (s as any).warehouse as { name: string; code: string } | null
+      if (!wh) continue
+      const arr = map.get(s.item_id) ?? []
+      arr.push({ code: wh.code, name: wh.name, quantity: s.quantity })
+      map.set(s.item_id, arr)
+    }
+    return map
+  }, [stockData])
+
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [currencyFilter, setCurrencyFilter] = useState<string>('all')
@@ -234,16 +248,31 @@ export function ItemsPage() {
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span className="font-mono">{item.sku}</span>
-                <span>
-                  Stock:{' '}
-                  <strong className={(() => {
-                    const qty = stockMap.get(item.id) ?? 0
-                    const belowReorder = item.reorder_point != null && qty < item.reorder_point
-                    return belowReorder ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'
-                  })()}>
-                    {formatQuantity(stockMap.get(item.id) ?? 0)}
-                  </strong>
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span>
+                    Stock:{' '}
+                    <strong className={(() => {
+                      const qty = stockMap.get(item.id) ?? 0
+                      const belowReorder = item.reorder_point != null && qty < item.reorder_point
+                      return belowReorder ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'
+                    })()}>
+                      {formatQuantity(stockMap.get(item.id) ?? 0)}
+                    </strong>
+                  </span>
+                  {(warehouseStockMap.get(item.id) ?? []).length > 0 && (
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {(warehouseStockMap.get(item.id) ?? []).map((wh) => (
+                        <span
+                          key={wh.code}
+                          title={wh.name}
+                          className="inline-flex items-center rounded border border-border px-1 py-0 text-[10px] font-mono leading-4"
+                        >
+                          {wh.code}: {formatQuantity(wh.quantity)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -328,10 +357,26 @@ export function ItemsPage() {
                     {(() => {
                       const qty = stockMap.get(item.id) ?? 0
                       const belowReorder = item.reorder_point != null && qty < item.reorder_point
+                      const whs = warehouseStockMap.get(item.id) ?? []
                       return (
-                        <span className={belowReorder ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
-                          {formatQuantity(qty)}
-                        </span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={belowReorder ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                            {formatQuantity(qty)}
+                          </span>
+                          {whs.length > 0 && (
+                            <div className="flex flex-wrap justify-end gap-1">
+                              {whs.map((wh) => (
+                                <span
+                                  key={wh.code}
+                                  title={wh.name}
+                                  className="inline-flex items-center gap-0.5 rounded border border-border px-1 py-0 text-[10px] text-muted-foreground font-mono leading-4"
+                                >
+                                  {wh.code}: {formatQuantity(wh.quantity)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       )
                     })()}
                   </TableCell>
