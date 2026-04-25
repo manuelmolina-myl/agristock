@@ -60,7 +60,7 @@ export function CategoriesTab() {
   const [deleting, setDeleting] = useState<Category | null>(null)
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     defaultValues: { name: '', prefix: null, parent_id: null, icon: null, color: null },
   })
 
