@@ -1,11 +1,12 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Loader2, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 import {
   useItem,
@@ -26,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -44,7 +46,7 @@ import { Separator } from '@/components/ui/separator'
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 const itemSchema = z.object({
-  sku: z.string().min(1, 'SKU requerido').transform((v) => v.toUpperCase()),
+  sku: z.string().optional().transform((v) => v?.trim() ? v.trim().toUpperCase() : undefined),
   name: z.string().min(1, 'Nombre requerido'),
   description: z.string().optional().nullable(),
   category_id: z.string().optional().nullable(),
@@ -69,24 +71,65 @@ const itemSchema = z.object({
 
 type ItemFormValues = z.infer<typeof itemSchema>
 
-// ─── Field error helper ───────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null
   return <p className="text-xs text-destructive mt-1">{message}</p>
 }
 
-// ─── Form skeleton ────────────────────────────────────────────────────────────
-
 function FormSkeleton() {
   return (
     <div className="flex flex-col gap-4">
-      {Array.from({ length: 6 }).map((_, i) => (
+      {Array.from({ length: 5 }).map((_, i) => (
         <div key={i} className="flex flex-col gap-1.5">
           <Skeleton className="h-3.5 w-24" />
           <Skeleton className="h-9 w-full" />
         </div>
       ))}
+    </div>
+  )
+}
+
+// ─── Step indicator ───────────────────────────────────────────────────────────
+
+const WIZARD_STEPS = ['Categoría', 'Identificación', 'Configuración'] as const
+
+function StepIndicator({ current }: { current: number }) {
+  return (
+    <div className="flex items-center gap-0">
+      {WIZARD_STEPS.map((label, i) => {
+        const done = i < current
+        const active = i === current
+        return (
+          <div key={i} className="flex items-center">
+            <div className="flex items-center gap-1.5">
+              <div className={cn(
+                'flex size-6 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+                done
+                  ? 'bg-primary text-primary-foreground'
+                  : active
+                  ? 'bg-primary/15 text-primary ring-2 ring-primary/30'
+                  : 'bg-muted text-muted-foreground'
+              )}>
+                {done ? <Check className="size-3" /> : i + 1}
+              </div>
+              <span className={cn(
+                'hidden sm:block text-xs',
+                active ? 'font-medium text-foreground' : 'text-muted-foreground'
+              )}>
+                {label}
+              </span>
+            </div>
+            {i < WIZARD_STEPS.length - 1 && (
+              <div className={cn(
+                'mx-2 h-px w-8',
+                i < current ? 'bg-primary' : 'bg-border'
+              )} />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -106,6 +149,8 @@ export function ItemFormPage() {
   const createItem = useCreate<Item>('items')
   const updateItem = useUpdate<Item>('items')
 
+  const [step, setStep] = useState(0)
+
   const {
     register,
     handleSubmit,
@@ -113,6 +158,7 @@ export function ItemFormPage() {
     watch,
     reset,
     setValue,
+    trigger,
     formState: { errors, isSubmitting },
   } = useForm<ItemFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,7 +179,6 @@ export function ItemFormPage() {
     },
   })
 
-  // Pre-fill when editing
   useEffect(() => {
     if (isEditing && item) {
       reset({
@@ -153,33 +198,82 @@ export function ItemFormPage() {
     }
   }, [isEditing, item, reset])
 
-  const watchedCurrency  = watch('native_currency')
+  const watchedCurrency = watch('native_currency')
   const watchedCategoryId = watch('category_id')
+  const watchedSku = watch('sku')
 
-  const generateSku = useCallback(async (categoryId: string) => {
+  // ── SKU generation ─────────────────────────────────────────────────────────
+
+  const generateSkuForCategory = useCallback(async (categoryId: string) => {
     const cat = categories.find((c) => c.id === categoryId)
-    if (!cat?.prefix) return
+    if (!cat?.prefix) return null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count } = await (supabase as any)
       .from('items')
       .select('id', { count: 'exact', head: true })
       .eq('category_id', categoryId)
       .is('deleted_at', null)
     const next = (count ?? 0) + 1
-    const sku = `${cat.prefix}-${String(next).padStart(4, '0')}`
-    setValue('sku', sku, { shouldValidate: false, shouldDirty: true })
-  }, [categories, setValue])
+    return `${cat.prefix}-${String(next).padStart(4, '0')}`
+  }, [categories])
 
+  const generateGenericSku = useCallback(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count } = await (supabase as any)
+      .from('items')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
+    const next = (count ?? 0) + 1
+    return `ITEM-${String(next).padStart(4, '0')}`
+  }, [])
+
+  // Auto-generate SKU when category changes (create mode only)
   useEffect(() => {
-    if (!isEditing && watchedCategoryId) {
-      generateSku(watchedCategoryId)
+    if (isEditing) return
+    if (watchedCategoryId) {
+      generateSkuForCategory(watchedCategoryId).then((sku) => {
+        if (sku) setValue('sku', sku, { shouldValidate: false, shouldDirty: true })
+      })
+    } else {
+      setValue('sku', '', { shouldValidate: false })
     }
-  }, [watchedCategoryId, isEditing, generateSku])
+  }, [watchedCategoryId, isEditing, generateSkuForCategory, setValue])
+
+  // ── Wizard navigation ──────────────────────────────────────────────────────
+
+  const STEP_REQUIRED: (keyof ItemFormValues)[][] = [
+    [],         // step 0: category (optional)
+    ['name'],   // step 1: name required
+    ['unit_id'],// step 2: unit required
+  ]
+
+  async function handleNext() {
+    const required = STEP_REQUIRED[step]
+    if (required.length > 0) {
+      const ok = await trigger(required)
+      if (!ok) return
+    }
+    setStep((s) => Math.min(s + 1, WIZARD_STEPS.length - 1))
+  }
+
+  function handleBack() {
+    setStep((s) => Math.max(s - 1, 0))
+  }
 
   // ── Submit ─────────────────────────────────────────────────────────────────
+
   async function onSubmit(values: ItemFormValues) {
-    // Normalize empty strings to null
+    let sku = values.sku
+    if (!sku) {
+      if (values.category_id) {
+        sku = (await generateSkuForCategory(values.category_id)) ?? undefined
+      }
+      if (!sku) sku = await generateGenericSku()
+    }
+
     const payload = {
       ...values,
+      sku,
       description: values.description || null,
       category_id: values.category_id || null,
       unit_id: values.unit_id || null,
@@ -204,6 +298,7 @@ export function ItemFormPage() {
   }
 
   // ── Loading ────────────────────────────────────────────────────────────────
+
   if (isEditing && itemLoading) {
     return (
       <div className="flex flex-col gap-6 p-6 max-w-4xl mx-auto">
@@ -216,105 +311,384 @@ export function ItemFormPage() {
     )
   }
 
+  // ── Edit mode: single-page form ────────────────────────────────────────────
+
+  if (isEditing) {
+    return (
+      <div className="flex flex-col gap-0 min-h-full">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b bg-background/95 px-6 py-3 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={() => navigate(`${basePath}/inventario/${id}`)}
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+            <h1 className="text-base font-semibold">Editar ítem</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate(`${basePath}/inventario/${id}`)}>
+              Cancelar
+            </Button>
+            <Button size="sm" disabled={isSubmitting} onClick={handleSubmit(onSubmit)}>
+              {isSubmitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+              Guardar
+            </Button>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6 p-6 max-w-4xl mx-auto w-full">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Identidad</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="sku" className="text-sm">SKU</Label>
+                  <Input
+                    id="sku"
+                    placeholder="PROD-001"
+                    className="font-mono uppercase"
+                    {...register('sku')}
+                    onChange={(e) => {
+                      e.target.value = e.target.value.toUpperCase()
+                      register('sku').onChange(e)
+                    }}
+                  />
+                  <FieldError message={errors.sku?.message} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="name" className="text-sm">
+                    Nombre <span className="text-destructive">*</span>
+                  </Label>
+                  <Input id="name" placeholder="Fertilizante NPK 20-20-20" {...register('name')} />
+                  <FieldError message={errors.name?.message} />
+                </div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label htmlFor="description" className="text-sm">Descripción</Label>
+                  <Textarea id="description" placeholder="Descripción opcional…" rows={2} {...register('description')} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="barcode" className="text-sm">Código de barras</Label>
+                  <Input id="barcode" placeholder="7501234567890" className="font-mono" {...register('barcode')} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Clasificación</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-sm">Categoría</Label>
+                  <Controller
+                    name="category_id"
+                    control={control}
+                    render={({ field }) => (
+                      <SearchableSelect
+                        value={field.value ?? ''}
+                        onValueChange={(v) => field.onChange(v || null)}
+                        options={categories.map((cat) => ({ value: cat.id, label: cat.name }))}
+                        placeholder="Sin categoría"
+                        searchPlaceholder="Buscar categoría…"
+                        emptyMessage="Sin categorías."
+                      />
+                    )}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-sm">
+                    Unidad de medida <span className="text-destructive">*</span>
+                  </Label>
+                  <Controller
+                    name="unit_id"
+                    control={control}
+                    render={({ field }) => (
+                      <SearchableSelect
+                        value={field.value ?? ''}
+                        onValueChange={(v) => field.onChange(v || null)}
+                        options={units.map((u) => ({ value: u.id, label: u.name, sublabel: u.code }))}
+                        placeholder="Selecciona unidad"
+                        searchPlaceholder="Buscar unidad…"
+                        emptyMessage="Sin unidades."
+                      />
+                    )}
+                  />
+                  <FieldError message={errors.unit_id?.message} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-sm">
+                    Moneda nativa <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Controller
+                      name="native_currency"
+                      control={control}
+                      render={({ field }) => (
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue>
+                              {field.value === 'MXN' ? 'Peso mexicano (MXN)' : 'Dólar estadounidense (USD)'}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="MXN">Peso mexicano (MXN)</SelectItem>
+                            <SelectItem value="USD">Dólar estadounidense (USD)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    <CurrencyBadge currency={watchedCurrency} />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Parámetros de stock</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="min_stock" className="text-sm">Stock mínimo</Label>
+                  <Input id="min_stock" type="number" min={0} placeholder="0" className="tabular-nums" {...register('min_stock')} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="max_stock" className="text-sm">Stock máximo</Label>
+                  <Input id="max_stock" type="number" min={0} placeholder="0" className="tabular-nums" {...register('max_stock')} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="reorder_point" className="text-sm">Punto de reorden</Label>
+                  <Input id="reorder_point" type="number" min={0} placeholder="0" className="tabular-nums" {...register('reorder_point')} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Configuración adicional</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <Controller
+                  name="is_diesel"
+                  control={control}
+                  render={({ field }) => (
+                    <Checkbox id="is_diesel" checked={field.value} onCheckedChange={field.onChange} />
+                  )}
+                />
+                <div className="flex flex-col gap-0.5">
+                  <Label htmlFor="is_diesel" className="text-sm cursor-pointer">Es diésel</Label>
+                  <p className="text-xs text-muted-foreground">Marca este ítem como combustible diésel para reportes.</p>
+                </div>
+              </div>
+              <Separator />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="notes" className="text-sm">Notas</Label>
+                <Textarea id="notes" placeholder="Notas internas…" rows={3} {...register('notes')} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="h-4" />
+        </form>
+      </div>
+    )
+  }
+
+  // ── Create mode: wizard ────────────────────────────────────────────────────
+
+  const selectedCategory = categories.find((c) => c.id === watchedCategoryId)
+
   return (
     <div className="flex flex-col gap-0 min-h-full">
-      {/* ── Sticky header ──────────────────────────────────────────────────── */}
+      {/* Sticky header */}
       <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b bg-background/95 px-6 py-3 backdrop-blur">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
             className="size-8"
-            onClick={() =>
-              navigate(isEditing ? `${basePath}/inventario/${id}` : `${basePath}/inventario`)
-            }
+            onClick={() => step === 0 ? navigate(`${basePath}/inventario`) : handleBack()}
           >
             <ArrowLeft className="size-4" />
           </Button>
-          <h1 className="text-base font-semibold">
-            {isEditing ? 'Editar ítem' : 'Nuevo ítem'}
-          </h1>
+          <h1 className="text-base font-semibold">Nuevo ítem</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              navigate(isEditing ? `${basePath}/inventario/${id}` : `${basePath}/inventario`)
-            }
-          >
-            Cancelar
-          </Button>
-          <Button
-            size="sm"
-            disabled={isSubmitting}
-            onClick={handleSubmit(onSubmit)}
-          >
-            {isSubmitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-            Guardar
-          </Button>
-        </div>
+        <StepIndicator current={step} />
+        <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => navigate(`${basePath}/inventario`)}>
+          Cancelar
+        </Button>
       </div>
 
-      {/* ── Form body ──────────────────────────────────────────────────────── */}
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="flex flex-col gap-6 p-6 max-w-4xl mx-auto w-full"
-      >
-        {/* Section: Identidad */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Identidad
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* SKU */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="sku" className="text-sm">
-                  SKU <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="sku"
-                  placeholder="PROD-001"
-                  className="font-mono uppercase"
-                  {...register('sku')}
-                  onChange={(e) => {
-                    e.target.value = e.target.value.toUpperCase()
-                    register('sku').onChange(e)
-                  }}
-                />
-                <FieldError message={errors.sku?.message} />
-              </div>
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6 p-6 max-w-2xl mx-auto w-full">
 
-              {/* Nombre */}
+        {/* ── Step 0: Categoría ─────────────────────────────────────────────── */}
+        {step === 0 && (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">¿De qué categoría es este producto?</h2>
+              <p className="text-sm text-muted-foreground">
+                La categoría determina el identificador automático del producto. Puedes omitirla.
+              </p>
+            </div>
+
+            {categories.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay categorías dadas de alta. Puedes continuar sin categoría.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {/* No category option */}
+                <button
+                  type="button"
+                  onClick={() => setValue('category_id', null, { shouldDirty: true })}
+                  className={cn(
+                    'flex flex-col gap-1.5 rounded-lg border-2 p-4 text-left transition-all hover:border-primary/40 hover:bg-muted/50',
+                    !watchedCategoryId ? 'border-primary bg-primary/5' : 'border-border bg-card'
+                  )}
+                >
+                  <span className="text-sm font-medium text-muted-foreground">Sin categoría</span>
+                  <Badge variant="outline" className="w-fit font-mono text-[10px] px-1.5 py-0">
+                    ITEM-XXXX
+                  </Badge>
+                </button>
+
+                {categories.map((cat) => {
+                  const isSelected = watchedCategoryId === cat.id
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setValue('category_id', cat.id, { shouldDirty: true })}
+                      className={cn(
+                        'flex flex-col gap-1.5 rounded-lg border-2 p-4 text-left transition-all hover:border-primary/40 hover:bg-primary/5',
+                        isSelected ? 'border-primary bg-primary/5' : 'border-border bg-card'
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {(cat as any).color && (
+                          <span
+                            className="size-2.5 rounded-full shrink-0"
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            style={{ backgroundColor: (cat as any).color }}
+                          />
+                        )}
+                        <span className="text-sm font-medium leading-tight">{cat.name}</span>
+                      </div>
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {(cat as any).prefix ? (
+                        <Badge variant="outline" className="w-fit font-mono text-[10px] px-1.5 py-0">
+                          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                          {(cat as any).prefix}-XXXX
+                        </Badge>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">Sin prefijo</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {watchedCategoryId && watchedSku && (
+              <div className="flex items-center gap-2 rounded-lg bg-muted/60 px-4 py-3">
+                <Check className="size-4 text-primary shrink-0" />
+                <span className="text-sm text-muted-foreground">
+                  Identificador generado: <span className="font-mono font-semibold text-foreground">{watchedSku}</span>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 1: Identificación ────────────────────────────────────────── */}
+        {step === 1 && (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">Identificación del producto</h2>
+              <p className="text-sm text-muted-foreground">
+                El nombre es obligatorio. El SKU fue generado automáticamente — puedes editarlo si lo necesitas.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              {/* Name */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="name" className="text-sm">
-                  Nombre <span className="text-destructive">*</span>
+                  Nombre del producto <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="name"
-                  placeholder="Fertilizante NPK 20-20-20"
+                  placeholder="Ej. Fertilizante NPK 20-20-20"
+                  autoFocus
                   {...register('name')}
                 />
                 <FieldError message={errors.name?.message} />
               </div>
 
-              {/* Descripción (full width) */}
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <Label htmlFor="description" className="text-sm">Descripción</Label>
+              {/* SKU */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="sku" className="text-sm">
+                    SKU / Identificador
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">(opcional)</span>
+                  </Label>
+                  {selectedCategory && (
+                    <span className="text-xs text-muted-foreground">
+                      Categoría: <strong>{selectedCategory.name}</strong>
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <Input
+                    id="sku"
+                    placeholder={watchedCategoryId ? 'Generado automáticamente' : 'Ej. PROD-0001'}
+                    className="font-mono uppercase pr-8"
+                    {...register('sku')}
+                    onChange={(e) => {
+                      e.target.value = e.target.value.toUpperCase()
+                      register('sku').onChange(e)
+                    }}
+                  />
+                  {watchedSku && (
+                    <Pencil className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Si lo dejas vacío, se asignará uno automáticamente al guardar.
+                </p>
+                <FieldError message={errors.sku?.message} />
+              </div>
+
+              {/* Description */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="description" className="text-sm">
+                  Descripción
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">(opcional)</span>
+                </Label>
                 <Textarea
                   id="description"
-                  placeholder="Descripción opcional del ítem…"
+                  placeholder="Descripción adicional del producto…"
                   rows={2}
                   {...register('description')}
                 />
               </div>
 
-              {/* Código de barras */}
+              {/* Barcode */}
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="barcode" className="text-sm">Código de barras</Label>
+                <Label htmlFor="barcode" className="text-sm">
+                  Código de barras
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">(opcional)</span>
+                </Label>
                 <Input
                   id="barcode"
                   placeholder="7501234567890"
@@ -323,197 +697,144 @@ export function ItemFormPage() {
                 />
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        )}
 
-        {/* Section: Clasificación */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Clasificación
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* Categoría */}
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-sm">Categoría</Label>
-                <Controller
-                  name="category_id"
-                  control={control}
-                  render={({ field }) => (
-                    <SearchableSelect
-                      value={field.value ?? ''}
-                      onValueChange={(v) => field.onChange(v || null)}
-                      options={categories.map((cat) => ({
-                        value: cat.id,
-                        label: cat.name,
-                      }))}
-                      placeholder="Sin categoría"
-                      searchPlaceholder="Buscar categoría…"
-                      emptyMessage="Sin categorías."
-                    />
-                  )}
-                />
-              </div>
+        {/* ── Step 2: Configuración ─────────────────────────────────────────── */}
+        {step === 2 && (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold">Configuración</h2>
+              <p className="text-sm text-muted-foreground">
+                Unidad y moneda son necesarias para registrar movimientos. Los parámetros de stock son opcionales.
+              </p>
+            </div>
 
-              {/* Unidad */}
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-sm">
-                  Unidad de medida <span className="text-destructive">*</span>
-                </Label>
-                <Controller
-                  name="unit_id"
-                  control={control}
-                  render={({ field }) => (
-                    <SearchableSelect
-                      value={field.value ?? ''}
-                      onValueChange={(v) => field.onChange(v || null)}
-                      options={units.map((unit) => ({
-                        value: unit.id,
-                        label: unit.name,
-                        sublabel: unit.code,
-                      }))}
-                      placeholder="Selecciona unidad"
-                      searchPlaceholder="Buscar unidad…"
-                      emptyMessage="Sin unidades."
-                    />
-                  )}
-                />
-                <FieldError message={errors.unit_id?.message} />
-              </div>
-
-              {/* Moneda nativa */}
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-sm">
-                  Moneda nativa <span className="text-destructive">*</span>
-                </Label>
-                <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-5">
+              {/* Unit + Currency */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-sm">
+                    Unidad de medida <span className="text-destructive">*</span>
+                  </Label>
                   <Controller
-                    name="native_currency"
+                    name="unit_id"
                     control={control}
                     render={({ field }) => (
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger className="flex-1">
-                          <SelectValue>{field.value === 'MXN' ? 'Peso mexicano (MXN)' : field.value === 'USD' ? 'Dólar estadounidense (USD)' : ''}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="MXN">Peso mexicano (MXN)</SelectItem>
-                          <SelectItem value="USD">Dólar estadounidense (USD)</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <SearchableSelect
+                        value={field.value ?? ''}
+                        onValueChange={(v) => field.onChange(v || null)}
+                        options={units.map((u) => ({ value: u.id, label: u.name, sublabel: u.code }))}
+                        placeholder="Selecciona unidad"
+                        searchPlaceholder="Buscar unidad…"
+                        emptyMessage="Sin unidades."
+                      />
                     )}
                   />
-                  <CurrencyBadge currency={watchedCurrency} />
+                  <FieldError message={errors.unit_id?.message} />
                 </div>
-                <FieldError message={errors.native_currency?.message} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Section: Parámetros de stock */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Parámetros de stock
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {/* Stock mínimo */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="min_stock" className="text-sm">Stock mínimo</Label>
-                <Input
-                  id="min_stock"
-                  type="number"
-                  min={0}
-                  placeholder="0"
-                  className="tabular-nums"
-                  {...register('min_stock')}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-sm">Moneda nativa</Label>
+                  <div className="flex items-center gap-2">
+                    <Controller
+                      name="native_currency"
+                      control={control}
+                      render={({ field }) => (
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue>
+                              {field.value === 'MXN' ? 'Peso mexicano (MXN)' : 'Dólar (USD)'}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="MXN">Peso mexicano (MXN)</SelectItem>
+                            <SelectItem value="USD">Dólar estadounidense (USD)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    <CurrencyBadge currency={watchedCurrency} />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Stock params */}
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-medium">Parámetros de stock <span className="text-xs font-normal text-muted-foreground">(opcionales)</span></p>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="min_stock" className="text-sm">Stock mínimo</Label>
+                    <Input id="min_stock" type="number" min={0} placeholder="0" className="tabular-nums" {...register('min_stock')} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="max_stock" className="text-sm">Stock máximo</Label>
+                    <Input id="max_stock" type="number" min={0} placeholder="0" className="tabular-nums" {...register('max_stock')} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="reorder_point" className="text-sm">Punto de reorden</Label>
+                    <Input id="reorder_point" type="number" min={0} placeholder="0" className="tabular-nums" {...register('reorder_point')} />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Is diesel */}
+              <div className="flex items-center gap-3">
+                <Controller
+                  name="is_diesel"
+                  control={control}
+                  render={({ field }) => (
+                    <Checkbox id="is_diesel" checked={field.value} onCheckedChange={field.onChange} />
+                  )}
                 />
-                <FieldError message={errors.min_stock?.message} />
+                <div className="flex flex-col gap-0.5">
+                  <Label htmlFor="is_diesel" className="text-sm cursor-pointer">Es diésel</Label>
+                  <p className="text-xs text-muted-foreground">Marca este ítem como combustible diésel para reportes de consumo.</p>
+                </div>
               </div>
 
-              {/* Stock máximo */}
+              {/* Notes */}
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="max_stock" className="text-sm">Stock máximo</Label>
-                <Input
-                  id="max_stock"
-                  type="number"
-                  min={0}
-                  placeholder="0"
-                  className="tabular-nums"
-                  {...register('max_stock')}
-                />
-                <FieldError message={errors.max_stock?.message} />
-              </div>
-
-              {/* Punto de reorden */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="reorder_point" className="text-sm">Punto de reorden</Label>
-                <Input
-                  id="reorder_point"
-                  type="number"
-                  min={0}
-                  placeholder="0"
-                  className="tabular-nums"
-                  {...register('reorder_point')}
-                />
-                <FieldError message={errors.reorder_point?.message} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Section: Configuración adicional */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Configuración adicional
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {/* Is diesel */}
-            <div className="flex items-center gap-3">
-              <Controller
-                name="is_diesel"
-                control={control}
-                render={({ field }) => (
-                  <Checkbox
-                    id="is_diesel"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                )}
-              />
-              <div className="flex flex-col gap-0.5">
-                <Label htmlFor="is_diesel" className="text-sm cursor-pointer">
-                  Es diésel
+                <Label htmlFor="notes" className="text-sm">
+                  Notas
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">(opcionales)</span>
                 </Label>
-                <p className="text-xs text-muted-foreground">
-                  Marca este ítem como combustible diésel para reportes de consumo.
-                </p>
+                <Textarea id="notes" placeholder="Notas internas sobre este producto…" rows={3} {...register('notes')} />
               </div>
             </div>
+          </div>
+        )}
 
-            <Separator />
+        {/* ── Navigation buttons ────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between pt-2">
+          {step > 0 ? (
+            <Button type="button" variant="outline" size="sm" onClick={handleBack}>
+              <ArrowLeft className="mr-1.5 size-3.5" /> Anterior
+            </Button>
+          ) : (
+            <div />
+          )}
 
-            {/* Notas */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="notes" className="text-sm">Notas</Label>
-              <Textarea
-                id="notes"
-                placeholder="Notas internas sobre este ítem…"
-                rows={3}
-                {...register('notes')}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Footer spacer for mobile (sticky header handles desktop) */}
-        <div className="h-4" />
+          {step < WIZARD_STEPS.length - 1 ? (
+            <Button type="button" size="sm" onClick={handleNext}>
+              Siguiente <ArrowRight className="ml-1.5 size-3.5" />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSubmitting}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {isSubmitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+              Guardar ítem
+            </Button>
+          )}
+        </div>
       </form>
     </div>
   )

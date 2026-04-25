@@ -45,6 +45,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Card,
   CardContent,
@@ -81,10 +82,13 @@ const ENTRY_TYPES = [
 
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
 
+const IVA_RATE = 0.16
+
 const lineSchema = z.object({
   item_id:          z.string().min(1, 'Selecciona un artículo'),
   quantity:         z.coerce.number().positive('Debe ser mayor a 0'),
   unit_cost_native: z.coerce.number().nonnegative('No puede ser negativo'),
+  applies_iva:      z.boolean().default(false),
 })
 
 const formSchema = z.object({
@@ -214,7 +218,7 @@ export default function NuevaEntradaPage() {
       movement_date:           new Date().toISOString().slice(0, 10),
       notes:                   '',
       received_by_employee_id: '',
-      lines:                   [{ item_id: '', quantity: 1, unit_cost_native: 0 }],
+      lines:                   [{ item_id: '', quantity: 1, unit_cost_native: 0, applies_iva: false }],
     },
   })
 
@@ -230,13 +234,23 @@ export default function NuevaEntradaPage() {
     return watchedLines.map((line) => {
       const item = items.find((it) => it.id === line.item_id)
       const currency = item?.native_currency ?? 'MXN'
-      const totalNative = (line.quantity ?? 0) * (line.unit_cost_native ?? 0)
-      const totalMxn    = currency === 'MXN' ? totalNative : totalNative * watchedFx
-      return { totalNative, totalMxn, currency }
+      const subtotalNative = (line.quantity ?? 0) * (line.unit_cost_native ?? 0)
+      const ivaRate        = (line as any).applies_iva ? IVA_RATE : 0
+      const ivaAmount      = subtotalNative * ivaRate
+      const totalNative    = subtotalNative + ivaAmount
+      const totalMxn       = currency === 'MXN' ? totalNative : totalNative * watchedFx
+      return { subtotalNative, ivaAmount, ivaRate, totalNative, totalMxn, currency }
     })
   }, [watchedLines, items, watchedFx])
 
   const grandTotalMxn = lineTotals.reduce((s, l) => s + l.totalMxn, 0)
+
+  // Grand totals grouped by currency (for display)
+  const grandTotalsByCurrency = useMemo(() => {
+    const mxn = lineTotals.filter((l) => l.currency === 'MXN').reduce((s, l) => s + l.totalNative, 0)
+    const usd = lineTotals.filter((l) => l.currency === 'USD').reduce((s, l) => s + l.totalNative, 0)
+    return { mxn, usd }
+  }, [lineTotals])
 
   // ─── Step navigation ────────────────────────────────────────────────────────
 
@@ -302,20 +316,23 @@ export default function NuevaEntradaPage() {
 
       // 3. Create lines
       const linePayloads = values.lines.map((line) => {
-        const item     = items.find((it) => it.id === line.item_id)
-        const currency = item?.native_currency ?? 'MXN'
-        const totalNative = line.quantity * line.unit_cost_native
+        const item        = items.find((it) => it.id === line.item_id)
+        const currency    = item?.native_currency ?? 'MXN'
+        const ivaRate     = (line as any).applies_iva ? IVA_RATE : 0
+        const subtotal    = line.quantity * line.unit_cost_native
+        const totalNative = subtotal * (1 + ivaRate)
         const unitMxn     = currency === 'MXN' ? line.unit_cost_native : line.unit_cost_native * (latestFxRate ?? 1)
         const totalMxn    = currency === 'MXN' ? totalNative : totalNative * (latestFxRate ?? 1)
         return {
-          movement_id:      movement.id,
-          item_id:          line.item_id,
-          quantity:         line.quantity,
-          unit_cost_native: line.unit_cost_native,
-          native_currency:  currency,
-          unit_cost_mxn:    unitMxn,
+          movement_id:       movement.id,
+          item_id:           line.item_id,
+          quantity:          line.quantity,
+          unit_cost_native:  line.unit_cost_native,
+          native_currency:   currency,
+          unit_cost_mxn:     unitMxn,
           line_total_native: totalNative,
-          line_total_mxn:   totalMxn,
+          line_total_mxn:    totalMxn,
+          iva_rate:          ivaRate,
         }
       })
 
@@ -602,16 +619,41 @@ export default function NuevaEntradaPage() {
                       </div>
                     </div>
 
+                    {/* IVA toggle */}
+                    <div className="flex items-center gap-2">
+                      <Controller
+                        control={form.control}
+                        name={`lines.${idx}.applies_iva`}
+                        render={({ field: f }) => (
+                          <Checkbox
+                            id={`iva-mob-${idx}`}
+                            checked={!!f.value}
+                            onCheckedChange={f.onChange}
+                          />
+                        )}
+                      />
+                      <Label htmlFor={`iva-mob-${idx}`} className="text-xs cursor-pointer">
+                        Aplica IVA (16%)
+                      </Label>
+                    </div>
+
                     {/* Total + botón eliminar */}
                     <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs text-muted-foreground">Total: </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs text-muted-foreground">
+                          {total?.ivaRate ? `Subtotal + IVA` : 'Total'}
+                        </span>
                         <span className="font-mono text-sm font-medium">
                           {CURRENCY_SYMBOLS[currency]}{formatQuantity(total?.totalNative ?? 0, 2)}
                         </span>
+                        {total?.ivaRate ? (
+                          <span className="text-[10px] text-muted-foreground">
+                            IVA: {CURRENCY_SYMBOLS[currency]}{formatQuantity(total.ivaAmount, 2)}
+                          </span>
+                        ) : null}
                         {currency !== 'MXN' && (
-                          <span className="font-mono text-xs text-muted-foreground ml-1">
-                            ({formatMoney(total?.totalMxn ?? 0, 'MXN')})
+                          <span className="font-mono text-xs text-muted-foreground">
+                            ≈ {formatMoney(total?.totalMxn ?? 0, 'MXN')}
                           </span>
                         )}
                       </div>
@@ -636,11 +678,12 @@ export default function NuevaEntradaPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground w-[40%]">Artículo</TableHead>
-                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground w-[16%]">Cantidad</TableHead>
-                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground w-[22%]">Costo unitario</TableHead>
-                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground text-right w-[16%]">Total</TableHead>
-                    <TableHead className="h-8 px-3 w-[6%]" />
+                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground w-[36%]">Artículo</TableHead>
+                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground w-[14%]">Cantidad</TableHead>
+                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground w-[20%]">Costo unitario</TableHead>
+                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground text-center w-[12%]">IVA 16%</TableHead>
+                    <TableHead className="h-8 px-3 text-xs font-medium text-muted-foreground text-right w-[14%]">Total</TableHead>
+                    <TableHead className="h-8 px-3 w-[4%]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -698,15 +741,34 @@ export default function NuevaEntradaPage() {
                           <FieldError message={form.formState.errors.lines?.[idx]?.unit_cost_native?.message} />
                         </TableCell>
 
+                        {/* IVA toggle */}
+                        <TableCell className="px-3 py-2 text-center">
+                          <Controller
+                            control={form.control}
+                            name={`lines.${idx}.applies_iva`}
+                            render={({ field: f }) => (
+                              <Checkbox
+                                checked={!!f.value}
+                                onCheckedChange={f.onChange}
+                              />
+                            )}
+                          />
+                        </TableCell>
+
                         {/* Total */}
                         <TableCell className="px-3 py-2 text-right">
                           <div className="flex flex-col items-end gap-0.5">
                             <span className="font-mono text-xs font-medium">
                               {CURRENCY_SYMBOLS[currency]}{formatQuantity(total?.totalNative ?? 0, 2)}
                             </span>
+                            {total?.ivaRate ? (
+                              <span className="font-mono text-[10px] text-muted-foreground">
+                                IVA: {CURRENCY_SYMBOLS[currency]}{formatQuantity(total.ivaAmount, 2)}
+                              </span>
+                            ) : null}
                             {currency !== 'MXN' && (
                               <span className="font-mono text-[10px] text-muted-foreground">
-                                {formatMoney(total?.totalMxn ?? 0, 'MXN')}
+                                ≈ {formatMoney(total?.totalMxn ?? 0, 'MXN')}
                               </span>
                             )}
                           </div>
@@ -738,7 +800,7 @@ export default function NuevaEntradaPage() {
               variant="outline"
               size="sm"
               className="self-start"
-              onClick={() => append({ item_id: '', quantity: 1, unit_cost_native: 0 })}
+              onClick={() => append({ item_id: '', quantity: 1, unit_cost_native: 0, applies_iva: false })}
             >
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Agregar partida
@@ -755,7 +817,17 @@ export default function NuevaEntradaPage() {
             <Separator />
             <div className="flex items-center justify-end gap-6">
               <span className="text-sm text-muted-foreground">Total estimado</span>
-              <MoneyDisplay amount={grandTotalMxn} currency="MXN" />
+              <div className="flex flex-col items-end gap-0.5">
+                {grandTotalsByCurrency.usd > 0 && (
+                  <MoneyDisplay amount={grandTotalsByCurrency.usd} currency="USD" />
+                )}
+                {grandTotalsByCurrency.mxn > 0 && (
+                  <MoneyDisplay amount={grandTotalsByCurrency.mxn} currency="MXN" />
+                )}
+                {grandTotalsByCurrency.usd > 0 && grandTotalsByCurrency.mxn === 0 && (
+                  <span className="text-[10px] text-muted-foreground">≈ {formatMoney(grandTotalMxn, 'MXN')}</span>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -834,7 +906,8 @@ export default function NuevaEntradaPage() {
                       <TableHead className="h-8 px-4 text-xs font-medium text-muted-foreground">Artículo</TableHead>
                       <TableHead className="h-8 px-4 text-xs font-medium text-muted-foreground text-right">Cantidad</TableHead>
                       <TableHead className="h-8 px-4 text-xs font-medium text-muted-foreground text-right">Costo unit.</TableHead>
-                      <TableHead className="h-8 px-4 text-xs font-medium text-muted-foreground text-right">Total MXN</TableHead>
+                      <TableHead className="h-8 px-4 text-xs font-medium text-muted-foreground text-center">IVA</TableHead>
+                      <TableHead className="h-8 px-4 text-xs font-medium text-muted-foreground text-right">Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -863,9 +936,28 @@ export default function NuevaEntradaPage() {
                               <CurrencyBadge currency={currency} size="sm" />
                             </div>
                           </TableCell>
+                          <TableCell className="px-4 py-2 text-center">
+                            {(line as any).applies_iva ? (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-emerald-700 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">16%</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                           <TableCell className="px-4 py-2 text-right">
                             <div className="flex flex-col items-end gap-0.5">
-                              <MoneyDisplay amount={total?.totalMxn ?? 0} currency="MXN" />
+                              <span className="font-mono text-xs font-medium">
+                                {CURRENCY_SYMBOLS[currency]}{formatQuantity(total?.totalNative ?? 0, 2)}
+                              </span>
+                              {total?.ivaRate ? (
+                                <span className="text-[10px] text-muted-foreground">
+                                  IVA: {CURRENCY_SYMBOLS[currency]}{formatQuantity(total.ivaAmount, 2)}
+                                </span>
+                              ) : null}
+                              {currency !== 'MXN' && (
+                                <span className="font-mono text-[10px] text-muted-foreground">
+                                  ≈ {formatMoney(total?.totalMxn ?? 0, 'MXN')}
+                                </span>
+                              )}
                               {costWarning && (
                                 <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
                                   <AlertTriangle className="h-3 w-3" />
@@ -894,11 +986,17 @@ export default function NuevaEntradaPage() {
                   </span>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <MoneyDisplay amount={grandTotalMxn} currency="MXN" />
-                  <MoneyDisplay
-                    amount={grandTotalMxn / (latestFxRate ?? 1)}
-                    currency="USD"
-                  />
+                  {grandTotalsByCurrency.usd > 0 && (
+                    <MoneyDisplay amount={grandTotalsByCurrency.usd} currency="USD" />
+                  )}
+                  {grandTotalsByCurrency.mxn > 0 && (
+                    <MoneyDisplay amount={grandTotalsByCurrency.mxn} currency="MXN" />
+                  )}
+                  {grandTotalsByCurrency.usd > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      ≈ {formatMoney(grandTotalMxn, 'MXN')} total en MXN
+                    </span>
+                  )}
                 </div>
               </div>
             </CardContent>

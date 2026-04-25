@@ -225,6 +225,7 @@ export interface StockMovementLine {
   unit_cost_mxn: number
   line_total_native: number
   line_total_mxn: number
+  iva_rate: number
   destination_type: DestinationType | null
   crop_lot_id: string | null
   equipment_id: string | null

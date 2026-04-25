@@ -30,6 +30,7 @@ const TraspasoDetailPage = lazy(() => import('@/pages/admin/traspasos/traspaso-d
 const DieselPage = lazy(() => import('@/pages/admin/diesel/diesel-page'))
 const CargaDieselPage = lazy(() => import('@/pages/admin/diesel/carga-diesel-page'))
 const DieselTractorPage = lazy(() => import('@/pages/admin/diesel/diesel-tractor-page'))
+const DieselDetailPage = lazy(() => import('@/pages/admin/diesel/diesel-detail-page'))
 const LotesPage = lazy(() => import('@/pages/admin/lotes/lotes-page'))
 const LoteDetailPage = lazy(() => import('@/pages/admin/lotes/lote-detail-page'))
 const EquiposPage = lazy(() => import('@/pages/admin/equipos/equipos-page'))
@@ -117,6 +118,7 @@ export default function App() {
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
           <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
+          <Route path="diesel/:id" element={<DieselDetailPage />} />
           <Route path="lotes" element={<LotesPage />} />
           <Route path="lotes/:id" element={<LoteDetailPage />} />
           <Route path="equipos" element={<EquiposPage />} />
@@ -155,6 +157,7 @@ export default function App() {
           <Route path="diesel" element={<DieselPage />} />
           <Route path="diesel/cargar" element={<CargaDieselPage />} />
           <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
+          <Route path="diesel/:id" element={<DieselDetailPage />} />
         </Route>
 
         {/* Supervisor routes */}
