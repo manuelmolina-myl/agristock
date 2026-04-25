@@ -272,7 +272,7 @@ export default function NuevaEntradaPage() {
       // 1. Generate system folio
       const document_number = await generateFolioEntrada(organization!.id)
 
-      // 2. Create movement
+      // 2. Create movement as draft (lines inserted below; trigger fires on status update)
       const { data: movement, error: movErr } = await (supabase as any)
         .from('stock_movements')
         .insert({
@@ -290,7 +290,7 @@ export default function NuevaEntradaPage() {
           total_mxn:                grandTotalMxn,
           total_usd:                grandTotalMxn / (latestFxRate ?? 1),
           total_native:             grandTotalMxn,
-          status:                   targetStatus,
+          status:                   'draft',
           notes:                    values.notes || null,
           received_by_employee_id:  values.received_by_employee_id || null,
           created_by:               profile?.id ?? null,
@@ -324,6 +324,15 @@ export default function NuevaEntradaPage() {
         .insert(linePayloads)
 
       if (linesErr) throw linesErr
+
+      // 4. If posting, update status now (trigger recalculates stock with lines already present)
+      if (targetStatus === 'posted') {
+        const { error: postErr } = await (supabase as any)
+          .from('stock_movements')
+          .update({ status: 'posted', posted_at: new Date().toISOString(), posted_by: profile?.id ?? null })
+          .eq('id', movement.id)
+        if (postErr) throw postErr
+      }
 
       toast.success(
         targetStatus === 'posted'

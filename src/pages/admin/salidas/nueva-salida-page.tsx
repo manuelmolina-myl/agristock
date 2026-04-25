@@ -1134,7 +1134,7 @@ export function NuevaSalidaPage() {
         // 2. Generate system folio
         const document_number = await generateFolioSalida(organization.id)
 
-        // 3. Create movement
+        // 3. Create movement as draft (lines inserted below; trigger fires on status update)
         const { data: movement, error: movErr } = await db
           .from('stock_movements')
           .insert({
@@ -1149,21 +1149,18 @@ export function NuevaSalidaPage() {
             fx_date: step1Data.date,
             total_mxn: totalMxn,
             total_usd: totalUsd,
-            status,
+            status: 'draft',
             notes: step1Data.notes || null,
             delivered_by_employee_id: step1Data.delivered_by_employee_id || null,
             received_by_employee_id: step1Data.received_by_employee_id || null,
             created_by: profile?.id ?? null,
-            ...(status === 'posted'
-              ? { posted_at: new Date().toISOString(), posted_by: profile?.id ?? null }
-              : {}),
           })
           .select('*, warehouse:warehouses!stock_movements_warehouse_id_fkey(*)')
           .single()
 
         if (movErr) throw movErr
 
-        // 3. Create lines
+        // 4. Create lines
         const lines = step2Data.lines.map((line) => {
           const lineTotalNative = (line.unit_cost_native ?? 0) * line.quantity
           const lineTotalMxn =
@@ -1204,7 +1201,16 @@ export function NuevaSalidaPage() {
 
         if (linesErr) throw linesErr
 
-        // 4. Generate PDF if posting
+        // 5. If posting, update status now (trigger recalculates stock with lines already present)
+        if (status === 'posted') {
+          const { error: postErr } = await db
+            .from('stock_movements')
+            .update({ status: 'posted', posted_at: new Date().toISOString(), posted_by: profile?.id ?? null })
+            .eq('id', movement.id)
+          if (postErr) throw postErr
+        }
+
+        // 6. Generate PDF if posting
         if (status === 'posted' && organization) {
           const movWithLines: StockMovement & { lines: StockMovementLine[] } = {
             ...(movement as StockMovement),
