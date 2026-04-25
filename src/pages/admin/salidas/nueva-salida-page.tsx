@@ -23,7 +23,6 @@ import {
   useEquipment,
   useEmployees,
   useItems,
-  useItemStock,
   useList,
   useFxRates,
 } from '@/hooks/use-supabase-query'

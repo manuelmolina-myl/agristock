@@ -50,9 +50,11 @@ const DEST_LABELS: Record<DestinationType, string> = {
   other: 'Otro',
 }
 
-function destinationText(line: MovementDetail['lines'][0]) {
+type SalidaLine = NonNullable<MovementDetail['lines']>[number]
+
+function destinationText(line: SalidaLine) {
   if (!line) return '—'
-  const t = line.destination_type
+  const t = line.destination_type as DestinationType | null
   if (t === 'crop_lot' && line.crop_lot) return `${line.crop_lot.name} (${line.crop_lot.code})`
   if (t === 'equipment' && line.equipment) return line.equipment.name
   if (t === 'employee' && line.employee) return line.employee.full_name
