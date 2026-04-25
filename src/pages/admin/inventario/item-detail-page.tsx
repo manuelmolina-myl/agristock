@@ -7,7 +7,6 @@ import {
   Trash2,
   Package,
   Fuel,
-  ArrowLeftRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -27,7 +26,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -254,128 +252,12 @@ export function ItemDetailPage() {
         </div>
       </div>
 
-      {/* ── Tabs ───────────────────────────────────────────────────────────── */}
-      <Tabs defaultValue="general">
-        <TabsList className="h-8">
-          <TabsTrigger value="general" className="text-xs">General</TabsTrigger>
-          <TabsTrigger value="stock" className="text-xs">Stock por almacén</TabsTrigger>
-          <TabsTrigger value="movimientos" className="text-xs">Movimientos</TabsTrigger>
-        </TabsList>
-
-        {/* ── General tab ─────────────────────────────────────────────────── */}
-        <TabsContent value="general" className="mt-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            {/* Info básica */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Información básica
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="divide-y">
-                  <InfoRow label="SKU" value={<span className="font-mono">{item.sku}</span>} />
-                  <InfoRow label="Nombre" value={item.name} />
-                  <InfoRow
-                    label="Descripción"
-                    value={item.description ?? undefined}
-                  />
-                  <InfoRow
-                    label="Categoría"
-                    value={
-                      item.category ? (
-                        <span className="flex items-center gap-1.5">
-                          {item.category.color && (
-                            <span
-                              className="inline-block size-2 rounded-full shrink-0"
-                              style={{ backgroundColor: item.category.color }}
-                            />
-                          )}
-                          {item.category.name}
-                        </span>
-                      ) : undefined
-                    }
-                  />
-                  <InfoRow
-                    label="Unidad"
-                    value={
-                      item.unit
-                        ? `${item.unit.name} (${item.unit.code})`
-                        : undefined
-                    }
-                  />
-                  <InfoRow
-                    label="Moneda nativa"
-                    value={<CurrencyBadge currency={item.native_currency} size="sm" />}
-                  />
-                  <InfoRow
-                    label="Código de barras"
-                    value={
-                      item.barcode
-                        ? <span className="font-mono text-xs">{item.barcode}</span>
-                        : undefined
-                    }
-                  />
-                  <InfoRow
-                    label="Es diésel"
-                    value={
-                      item.is_diesel ? (
-                        <Badge variant="secondary" className="gap-1 text-[10px]">
-                          <Fuel className="size-3" /> Sí
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground font-normal text-sm">No</span>
-                      )
-                    }
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Stock limits */}
-            <div className="flex flex-col gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Parámetros de stock
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="divide-y">
-                    <InfoRow
-                      label="Stock mínimo"
-                      value={item.min_stock != null ? formatQuantity(item.min_stock) : undefined}
-                    />
-                    <InfoRow
-                      label="Stock máximo"
-                      value={item.max_stock != null ? formatQuantity(item.max_stock) : undefined}
-                    />
-                    <InfoRow
-                      label="Punto de reorden"
-                      value={item.reorder_point != null ? formatQuantity(item.reorder_point) : undefined}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              {item.notes && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Notas
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <p className="text-sm whitespace-pre-wrap">{item.notes}</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* ── Stock tab ───────────────────────────────────────────────────── */}
-        <TabsContent value="stock" className="mt-4">
+      {/* ── Stock por almacén (siempre visible) ────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Stock por almacén</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
           <StockTab
             itemId={item.id}
             minStock={item.min_stock}
@@ -383,17 +265,105 @@ export function ItemDetailPage() {
             reorderPoint={item.reorder_point}
             canSeePrices={canSeePrices}
           />
-        </TabsContent>
+        </CardContent>
+      </Card>
 
-        {/* ── Movimientos tab ─────────────────────────────────────────────── */}
-        <TabsContent value="movimientos" className="mt-4">
-          <EmptyState
-            icon={<ArrowLeftRight className="size-5" />}
-            title="Sin movimientos"
-            description="Los movimientos aparecerán cuando registres entradas y salidas."
-          />
-        </TabsContent>
-      </Tabs>
+      {/* ── Info general ───────────────────────────────────────────────────── */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Info básica */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Información básica
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="divide-y">
+              <InfoRow label="SKU" value={<span className="font-mono">{item.sku}</span>} />
+              <InfoRow label="Nombre" value={item.name} />
+              <InfoRow label="Descripción" value={item.description ?? undefined} />
+              <InfoRow
+                label="Categoría"
+                value={
+                  item.category ? (
+                    <span className="flex items-center gap-1.5">
+                      {item.category.color && (
+                        <span
+                          className="inline-block size-2 rounded-full shrink-0"
+                          style={{ backgroundColor: item.category.color }}
+                        />
+                      )}
+                      {item.category.name}
+                    </span>
+                  ) : undefined
+                }
+              />
+              <InfoRow
+                label="Unidad"
+                value={item.unit ? `${item.unit.name} (${item.unit.code})` : undefined}
+              />
+              <InfoRow
+                label="Moneda nativa"
+                value={<CurrencyBadge currency={item.native_currency} size="sm" />}
+              />
+              <InfoRow
+                label="Código de barras"
+                value={item.barcode ? <span className="font-mono text-xs">{item.barcode}</span> : undefined}
+              />
+              <InfoRow
+                label="Es diésel"
+                value={
+                  item.is_diesel ? (
+                    <Badge variant="secondary" className="gap-1 text-[10px]">
+                      <Fuel className="size-3" /> Sí
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground font-normal text-sm">No</span>
+                  )
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Stock limits + notas */}
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Parámetros de stock
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="divide-y">
+                <InfoRow
+                  label="Stock mínimo"
+                  value={item.min_stock != null ? formatQuantity(item.min_stock) : undefined}
+                />
+                <InfoRow
+                  label="Stock máximo"
+                  value={item.max_stock != null ? formatQuantity(item.max_stock) : undefined}
+                />
+                <InfoRow
+                  label="Punto de reorden"
+                  value={item.reorder_point != null ? formatQuantity(item.reorder_point) : undefined}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {item.notes && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Notas</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <p className="text-sm whitespace-pre-wrap">{item.notes}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
 
       {/* ── Delete dialog ──────────────────────────────────────────────────── */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
