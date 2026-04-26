@@ -566,47 +566,6 @@ export function DieselPage() {
         }
       />
 
-      {/* ── Stock disponible ─────────────────────────────────────────────────── */}
-      {dieselStockRows.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-              <Fuel className="size-3.5 text-muted-foreground" />
-              Stock disponible
-              <span className="text-xs font-normal text-muted-foreground">— {dieselStockRows[0]?.itemName}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            <div className="flex flex-wrap gap-6">
-              {dieselStockRows.map((row, i) => (
-                <div key={i} className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">{row.warehouseName}</span>
-                  <span className="text-2xl font-semibold tabular-nums font-mono">
-                    {formatQuantity(row.quantity, 1)} <span className="text-base font-normal text-muted-foreground">L</span>
-                  </span>
-                  {canSeePrices && (
-                    <span className="text-xs text-muted-foreground font-mono">
-                      Costo prom.: {formatMoney(row.avgCostMxn, 'MXN')}/L
-                    </span>
-                  )}
-                </div>
-              ))}
-              {dieselStockRows.length > 1 && (
-                <>
-                  <div className="w-px bg-border self-stretch" />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">Total</span>
-                    <span className="text-2xl font-semibold tabular-nums font-mono">
-                      {formatQuantity(dieselStockRows.reduce((s, r) => s + r.quantity, 0), 1)} <span className="text-base font-normal text-muted-foreground">L</span>
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* ── Filters ──────────────────────────────────────────────────────────── */}
       <div>
         {/* Mobile toggle */}
@@ -674,7 +633,22 @@ export function DieselPage() {
       </div>
 
       {/* ── KPI Row ──────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className={cn(
+        'grid grid-cols-2 gap-3',
+        canSeePrices ? 'sm:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-4'
+      )}>
+        {dieselStockRows.length > 0 && (
+          <KpiCard
+            icon={<Fuel className="size-4" />}
+            label="Stock disponible"
+            value={`${formatQuantity(dieselStockRows.reduce((s, r) => s + r.quantity, 0), 1)} L`}
+            sub={
+              dieselStockRows.length === 1
+                ? dieselStockRows[0].warehouseName
+                : `${dieselStockRows.length} almacenes`
+            }
+          />
+        )}
         <KpiCard
           icon={<Fuel className="size-4" />}
           label="Litros consumidos"
