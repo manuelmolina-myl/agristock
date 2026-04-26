@@ -27,7 +27,7 @@ import { toast } from 'sonner'
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
-import { useEquipment, useEmployees, useItemStock } from '@/hooks/use-supabase-query'
+import { useEquipment, useEmployees } from '@/hooks/use-supabase-query'
 import { formatFechaCorta, formatHora, formatMoney, formatQuantity, cn } from '@/lib/utils'
 import type { StockMovementLine, Equipment, Employee, Item, StockMovement } from '@/lib/database.types'
 
@@ -393,26 +393,25 @@ export function DieselPage() {
   const [cancelTarget, setCancelTarget] = useState<DieselLine | null>(null)
   const [cancelling, setCancelling] = useState(false)
 
-  // ── Fetch diesel item & stock ─────────────────────────────────────────────────
-  const { data: dieselItem } = useQuery<Item | null>({
-    queryKey: ['diesel-item', orgId],
+  // ── Fetch diesel stock directly (no single() to avoid errors) ────────────────
+  const { data: dieselStockRows = [] } = useQuery<{ itemName: string; warehouseName: string; quantity: number; avgCostMxn: number }[]>({
+    queryKey: ['diesel-stock', orgId],
     queryFn: async () => {
-      const { data } = await db
-        .from('items')
-        .select('*')
-        .eq('organization_id', orgId)
-        .eq('is_diesel', true)
-        .is('deleted_at', null)
-        .limit(1)
-        .single()
-      return data ?? null
+      const { data, error } = await db
+        .from('item_stock')
+        .select('quantity, avg_cost_mxn, item:items!inner(name, is_diesel, organization_id), warehouse:warehouses(name)')
+        .eq('item.is_diesel', true)
+        .eq('item.organization_id', orgId)
+      if (error) throw error
+      return (data ?? []).map((r: any) => ({
+        itemName: r.item?.name ?? 'Diésel',
+        warehouseName: r.warehouse?.name ?? '—',
+        quantity: r.quantity ?? 0,
+        avgCostMxn: r.avg_cost_mxn ?? 0,
+      }))
     },
     enabled: !!orgId,
   })
-
-  const { data: stockRows = [] } = useItemStock(
-    dieselItem ? { item_id: dieselItem.id } : undefined
-  )
 
   // ── Fetch diesel lines ────────────────────────────────────────────────────────
   const { data: lines = [], isLoading, error } = useQuery<DieselLine[]>({
@@ -568,46 +567,42 @@ export function DieselPage() {
       />
 
       {/* ── Stock disponible ─────────────────────────────────────────────────── */}
-      {dieselItem && (
+      {dieselStockRows.length > 0 && (
         <Card>
           <CardHeader className="pb-2 pt-4 px-5">
             <CardTitle className="text-sm font-medium flex items-center gap-1.5">
               <Fuel className="size-3.5 text-muted-foreground" />
               Stock disponible
-              <span className="text-xs font-normal text-muted-foreground">— {dieselItem.name}</span>
+              <span className="text-xs font-normal text-muted-foreground">— {dieselStockRows[0]?.itemName}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="px-5 pb-4">
-            {stockRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin stock registrado. Realiza una entrada de diésel para ver el inventario disponible.</p>
-            ) : (
-              <div className="flex flex-wrap gap-6">
-                {stockRows.map((row) => (
-                  <div key={`${row.item_id}-${row.warehouse_id}`} className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">{row.warehouse?.name ?? row.warehouse_id}</span>
-                    <span className="text-2xl font-semibold tabular-nums font-mono">
-                      {formatQuantity(row.quantity, 1)} <span className="text-base font-normal text-muted-foreground">L</span>
+            <div className="flex flex-wrap gap-6">
+              {dieselStockRows.map((row, i) => (
+                <div key={i} className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">{row.warehouseName}</span>
+                  <span className="text-2xl font-semibold tabular-nums font-mono">
+                    {formatQuantity(row.quantity, 1)} <span className="text-base font-normal text-muted-foreground">L</span>
+                  </span>
+                  {canSeePrices && (
+                    <span className="text-xs text-muted-foreground font-mono">
+                      Costo prom.: {formatMoney(row.avgCostMxn, 'MXN')}/L
                     </span>
-                    {canSeePrices && (
-                      <span className="text-xs text-muted-foreground font-mono">
-                        Costo prom.: {formatMoney(row.avg_cost_mxn, 'MXN')}/L
-                      </span>
-                    )}
+                  )}
+                </div>
+              ))}
+              {dieselStockRows.length > 1 && (
+                <>
+                  <div className="w-px bg-border self-stretch" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs text-muted-foreground">Total</span>
+                    <span className="text-2xl font-semibold tabular-nums font-mono">
+                      {formatQuantity(dieselStockRows.reduce((s, r) => s + r.quantity, 0), 1)} <span className="text-base font-normal text-muted-foreground">L</span>
+                    </span>
                   </div>
-                ))}
-                {stockRows.length > 1 && (
-                  <>
-                    <div className="w-px bg-border self-stretch" />
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-xs text-muted-foreground">Total</span>
-                      <span className="text-2xl font-semibold tabular-nums font-mono">
-                        {formatQuantity(stockRows.reduce((s, r) => s + r.quantity, 0), 1)} <span className="text-base font-normal text-muted-foreground">L</span>
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
