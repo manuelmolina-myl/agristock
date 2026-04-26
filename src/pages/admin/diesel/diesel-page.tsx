@@ -393,24 +393,39 @@ export function DieselPage() {
   const [cancelTarget, setCancelTarget] = useState<DieselLine | null>(null)
   const [cancelling, setCancelling] = useState(false)
 
-  // ── Fetch diesel stock directly (no single() to avoid errors) ────────────────
-  const { data: dieselStockRows = [] } = useQuery<{ itemName: string; warehouseName: string; quantity: number; avgCostMxn: number }[]>({
-    queryKey: ['diesel-stock', orgId],
+  // ── Fetch diesel item IDs (direct filter, no join) ────────────────────────────
+  const { data: dieselItems = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['diesel-items', orgId],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('items')
+        .select('id, name')
+        .eq('is_diesel', true)
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!orgId,
+  })
+
+  const dieselItemIds = dieselItems.map((i: { id: string }) => i.id)
+
+  // ── Fetch stock for diesel items by item_id (reliable direct filter) ──────────
+  const { data: dieselStockRows = [] } = useQuery<{ warehouseName: string; quantity: number }[]>({
+    queryKey: ['diesel-stock', orgId, dieselItemIds],
     queryFn: async () => {
       const { data, error } = await db
         .from('item_stock')
-        .select('quantity, avg_cost_mxn, item:items!inner(name, is_diesel, organization_id), warehouse:warehouses(name)')
-        .eq('item.is_diesel', true)
-        .eq('item.organization_id', orgId)
+        .select('item_id, quantity, warehouse:warehouses(name)')
+        .in('item_id', dieselItemIds)
       if (error) throw error
       return (data ?? []).map((r: any) => ({
-        itemName: r.item?.name ?? 'Diésel',
         warehouseName: r.warehouse?.name ?? '—',
         quantity: r.quantity ?? 0,
-        avgCostMxn: r.avg_cost_mxn ?? 0,
       }))
     },
-    enabled: !!orgId,
+    enabled: dieselItemIds.length > 0,
   })
 
   // ── Fetch diesel lines ────────────────────────────────────────────────────────
@@ -637,7 +652,7 @@ export function DieselPage() {
         'grid grid-cols-2 gap-3',
         canSeePrices ? 'sm:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-4'
       )}>
-        {dieselStockRows.length > 0 && (
+        {dieselItems.length > 0 && (
           <KpiCard
             icon={<Fuel className="size-4" />}
             label="Stock disponible"
@@ -645,7 +660,9 @@ export function DieselPage() {
             sub={
               dieselStockRows.length === 1
                 ? dieselStockRows[0].warehouseName
-                : `${dieselStockRows.length} almacenes`
+                : dieselStockRows.length > 1
+                ? `${dieselStockRows.length} almacenes`
+                : undefined
             }
           />
         )}
