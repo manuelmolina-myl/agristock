@@ -144,6 +144,7 @@ export default function App() {
         >
           <Route index element={<AlmacenistaDashboard />} />
           <Route path="inventario" element={<ItemsPage />} />
+          <Route path="inventario/nuevo" element={<ItemFormPage />} />
           <Route path="inventario/:id" element={<ItemDetailPage />} />
           <Route path="entradas" element={<EntradasPage />} />
           <Route path="entradas/nueva" element={<NuevaEntradaPage />} />

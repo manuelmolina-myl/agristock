@@ -146,12 +146,10 @@ export function ItemsPage() {
         title="Inventario"
         description="Catálogo de ítems y materiales"
         actions={
-          !isAlmacenista && (
-            <Button size="sm" onClick={() => navigate(`${basePath}/inventario/nuevo`)}>
-              <Plus className="mr-1.5 size-3.5" />
-              Nuevo ítem
-            </Button>
-          )
+          <Button size="sm" onClick={() => navigate(`${basePath}/inventario/nuevo`)}>
+            <Plus className="mr-1.5 size-3.5" />
+            Nuevo ítem
+          </Button>
         }
       />
 
@@ -310,7 +308,7 @@ export function ItemsPage() {
                         : 'Crea tu primer ítem para comenzar el catálogo de inventario.'
                     }
                     action={
-                      !isAlmacenista && !search && categoryFilter === 'all' && currencyFilter === 'all'
+                      !search && categoryFilter === 'all' && currencyFilter === 'all'
                         ? { label: '+ Nuevo ítem', onClick: () => navigate(`${basePath}/inventario/nuevo`) }
                         : undefined
                     }
