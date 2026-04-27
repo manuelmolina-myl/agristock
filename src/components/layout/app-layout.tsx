@@ -10,11 +10,11 @@ export default function AppLayout() {
     <PageTitleProvider>
       <SidebarProvider defaultOpen={true}>
         <AppSidebar />
-        <SidebarInset className="flex flex-col min-h-screen">
+        <SidebarInset className="flex flex-col min-h-screen overflow-x-hidden">
           <AppHeader />
-          <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
+          <div className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
             <Outlet />
-          </main>
+          </div>
           <MobileNav />
         </SidebarInset>
       </SidebarProvider>
