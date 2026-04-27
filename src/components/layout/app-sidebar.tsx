@@ -207,7 +207,7 @@ function UserFooter() {
 
 function NavMenuItem({ item, baseRoute }: { item: NavItem; baseRoute: string }) {
   const location = useLocation()
-  const { state } = useSidebar()
+  const { state, isMobile, setOpenMobile } = useSidebar()
   const collapsed = state === 'collapsed'
   const fullTo = `${baseRoute}${item.to}`
 
@@ -219,7 +219,7 @@ function NavMenuItem({ item, baseRoute }: { item: NavItem; baseRoute: string }) 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        render={<NavLink to={fullTo} end={item.to === ''} />}
+        render={<NavLink to={fullTo} end={item.to === ''} onClick={() => { if (isMobile) setOpenMobile(false) }} />}
         isActive={isActive}
         tooltip={collapsed ? item.label : undefined}
       >
