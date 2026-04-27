@@ -40,6 +40,21 @@ interface FormState {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 
+// ─── Folio generation ─────────────────────────────────────────────────────────
+
+async function generateFolioDiesel(orgId: string): Promise<string> {
+  const { data } = await db
+    .from('stock_movements')
+    .select('document_number')
+    .eq('organization_id', orgId)
+    .like('document_number', 'DSL-%')
+    .order('document_number', { ascending: false })
+    .limit(1)
+  const last = data?.[0]?.document_number as string | undefined
+  const num = last ? parseInt(last.replace('DSL-', ''), 10) + 1 : 1
+  return `DSL-${String(num).padStart(5, '0')}`
+}
+
 // ─── Fetch diesel item ────────────────────────────────────────────────────────
 
 async function fetchDieselItem(orgId: string): Promise<Item | null> {
@@ -215,6 +230,7 @@ export function CargaDieselPage() {
   const [submitted, setSubmitted] = useState(false)
   const [submittedAt, setSubmittedAt] = useState<Date | null>(null)
   const [summary, setSummary] = useState<{
+    folio: string
     litros: number
     tractorName: string
     tractorCode: string
@@ -321,6 +337,8 @@ export function CargaDieselPage() {
         return
       }
 
+      const document_number = await generateFolioDiesel(orgId)
+
       const { data: movement, error: movErr } = await db
         .from('stock_movements')
         .insert({
@@ -328,6 +346,7 @@ export function CargaDieselPage() {
           season_id:               activeSeason.id,
           movement_type:           'exit_consumption',
           warehouse_id:            defaultWarehouse.id,
+          document_number,
           status:                  'posted',
           posted_at:               now.toISOString(),
           posted_by:               profile?.id ?? null,
@@ -391,6 +410,7 @@ export function CargaDieselPage() {
       const receiverName = selectedReceiver?.full_name ?? '—'
 
       setSummary({
+        folio: document_number,
         litros,
         tractorName,
         tractorCode,
@@ -445,6 +465,7 @@ export function CargaDieselPage() {
             </div>
 
             <div className="flex flex-col items-center gap-1">
+              <p className="font-mono text-sm font-medium text-muted-foreground">{summary.folio}</p>
               <div className="flex items-center gap-2">
                 <p className="text-lg font-semibold">{summary.tractorName}</p>
                 <Badge variant="secondary" className="font-mono text-xs">
