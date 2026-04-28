@@ -1,10 +1,10 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, ArrowRight, Check, Loader2, Pencil } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Loader2, Pencil, ImagePlus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +15,7 @@ import {
   useCreate,
   useUpdate,
 } from '@/hooks/use-supabase-query'
+import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase'
 import type { Item } from '@/lib/database.types'
 
@@ -67,6 +68,7 @@ const itemSchema = z.object({
   ),
   is_diesel: z.boolean().default(false),
   notes: z.string().optional().nullable(),
+  image_url: z.string().optional().nullable(),
 })
 
 type ItemFormValues = z.infer<typeof itemSchema>
@@ -76,6 +78,84 @@ type ItemFormValues = z.infer<typeof itemSchema>
 function FieldError({ message }: { message?: string }) {
   if (!message) return null
   return <p className="text-xs text-destructive mt-1">{message}</p>
+}
+
+// ─── Image upload component ───────────────────────────────────────────────────
+
+interface ImageUploadProps {
+  value: string | null | undefined
+  onChange: (url: string | null) => void
+  orgId: string
+}
+
+function ImageUpload({ value, onChange, orgId }: ImageUploadProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La imagen no puede superar 5 MB')
+      return
+    }
+    setUploading(true)
+    try {
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const path = `${orgId}/${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('item-images').upload(path, file, { upsert: true })
+      if (error) throw error
+      const { data: urlData } = supabase.storage.from('item-images').getPublicUrl(path)
+      onChange(urlData.publicUrl)
+    } catch {
+      toast.error('Error al subir la imagen')
+    } finally {
+      setUploading(false)
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      {value ? (
+        <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-border group">
+          <img src={value} alt="Foto del artículo" className="w-full h-full object-cover" />
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className={cn(
+            'flex w-32 h-32 flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border',
+            'text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors',
+            uploading && 'opacity-50 pointer-events-none'
+          )}
+        >
+          {uploading ? <Loader2 className="size-5 animate-spin" /> : <ImagePlus className="size-5" />}
+          <span className="text-xs">{uploading ? 'Subiendo…' : 'Agregar foto'}</span>
+        </button>
+      )}
+      {value && (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="text-xs text-muted-foreground hover:text-primary transition-colors w-fit"
+        >
+          {uploading ? 'Subiendo…' : 'Cambiar foto'}
+        </button>
+      )}
+    </div>
+  )
 }
 
 function FormSkeleton() {
@@ -140,7 +220,9 @@ export function ItemFormPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const basePath = useBasePath()
+  const { organization } = useAuth()
   const isEditing = !!id
+  const orgId = organization?.id ?? ''
 
   const { data: item, isLoading: itemLoading } = useItem(id)
   const { data: categories = [] } = useCategories()
@@ -279,6 +361,7 @@ export function ItemFormPage() {
       unit_id: values.unit_id || null,
       barcode: values.barcode || null,
       notes: values.notes || null,
+      image_url: values.image_url || null,
     }
 
     try {
@@ -374,6 +457,16 @@ export function ItemFormPage() {
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="barcode" className="text-sm">Código de barras</Label>
                   <Input id="barcode" placeholder="7501234567890" className="font-mono" {...register('barcode')} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-sm">Foto del producto</Label>
+                  <Controller
+                    name="image_url"
+                    control={control}
+                    render={({ field }) => (
+                      <ImageUpload value={field.value} onChange={field.onChange} orgId={orgId} />
+                    )}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -694,6 +787,21 @@ export function ItemFormPage() {
                   placeholder="7501234567890"
                   className="font-mono"
                   {...register('barcode')}
+                />
+              </div>
+
+              {/* Image */}
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm">
+                  Foto del producto
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">(opcional)</span>
+                </Label>
+                <Controller
+                  name="image_url"
+                  control={control}
+                  render={({ field }) => (
+                    <ImageUpload value={field.value} onChange={field.onChange} orgId={orgId} />
+                  )}
                 />
               </div>
             </div>
