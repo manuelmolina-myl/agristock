@@ -7,12 +7,27 @@ import {
   Trash2,
   Package,
   Fuel,
+  TrendingUp,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useQuery } from '@tanstack/react-query'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts'
 
 import { useItem, useItemStock, useSoftDelete } from '@/hooks/use-supabase-query'
 import { useRegisterPageTitle } from '@/contexts/page-title-context'
-import { formatMoney, formatQuantity } from '@/lib/utils'
+import { formatMoney, formatQuantity, formatFechaCorta } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any
 
 import { CurrencyBadge } from '@/components/custom/currency-badge'
 import { StockIndicator } from '@/components/custom/stock-indicator'
@@ -45,6 +60,113 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+
+// ─── Price history ────────────────────────────────────────────────────────────
+
+interface PricePoint { date: string; cost: number; costMxn: number }
+
+function usePriceHistory(itemId: string | undefined) {
+  return useQuery<PricePoint[]>({
+    queryKey: ['price-history', itemId],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('stock_movement_lines')
+        .select('unit_cost_native, unit_cost_mxn, movement:stock_movements!inner(movement_type, status, posted_at)')
+        .eq('item_id', itemId)
+        .eq('movement.status', 'posted')
+        .like('movement.movement_type', 'entry_%')
+        .order('movement(posted_at)', { ascending: true })
+        .limit(60)
+      if (error) throw error
+      const rows = data as Array<{
+        unit_cost_native: number
+        unit_cost_mxn: number
+        movement: { posted_at: string }
+      }>
+      return rows.map((r) => ({
+        date: r.movement.posted_at.slice(0, 10),
+        cost: r.unit_cost_native,
+        costMxn: r.unit_cost_mxn,
+      }))
+    },
+    enabled: !!itemId,
+  })
+}
+
+function PriceHistoryTooltip({
+  active, payload, label, currency,
+}: {
+  active?: boolean
+  payload?: Array<{ value: number; dataKey: string }>
+  label?: string
+  currency: string
+}) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
+      <p className="text-muted-foreground mb-1">{label}</p>
+      <p className="font-semibold">{formatMoney(payload[0].value, currency)}</p>
+      {currency !== 'MXN' && payload[1] && (
+        <p className="text-muted-foreground">{formatMoney(payload[1].value, 'MXN')} MXN</p>
+      )}
+    </div>
+  )
+}
+
+function PriceHistorySection({ itemId, currency }: { itemId: string; currency: string }) {
+  const { data: points = [], isLoading } = usePriceHistory(itemId)
+
+  if (isLoading) return <Skeleton className="h-36 w-full" />
+  if (points.length < 2) {
+    return (
+      <div className="flex h-32 items-center justify-center">
+        <p className="text-sm text-muted-foreground">Sin historial de precios suficiente</p>
+      </div>
+    )
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={140}>
+      <LineChart data={points} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+        <XAxis
+          dataKey="date"
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+          tickFormatter={(v: string) => formatFechaCorta(v)}
+          tickLine={false}
+          axisLine={false}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+          tickFormatter={(v: number) => v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`}
+          tickLine={false}
+          axisLine={false}
+          width={46}
+        />
+        <Tooltip content={<PriceHistoryTooltip currency={currency} />} />
+        <Line
+          type="monotone"
+          dataKey="cost"
+          stroke="hsl(var(--primary))"
+          strokeWidth={2}
+          dot={points.length < 20}
+          activeDot={{ r: 4 }}
+        />
+        {currency !== 'MXN' && (
+          <Line
+            type="monotone"
+            dataKey="costMxn"
+            stroke="hsl(var(--muted-foreground))"
+            strokeWidth={1.5}
+            strokeDasharray="4 2"
+            dot={false}
+          />
+        )}
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
 
 // ─── Info row helper ──────────────────────────────────────────────────────────
 
@@ -278,6 +400,21 @@ export function ItemDetailPage() {
           />
         </CardContent>
       </Card>
+
+      {/* ── Historial de precio ────────────────────────────────────────────── */}
+      {canSeePrices && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <TrendingUp className="size-4" />
+              Historial de precio unitario
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PriceHistorySection itemId={item.id} currency={item.native_currency} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Info general ───────────────────────────────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-2">

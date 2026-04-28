@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   DollarSign,
@@ -7,6 +8,8 @@ import {
   Fuel,
   TrendingDown,
   Activity,
+  ClipboardList,
+  TrendingUp,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -18,6 +21,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+import { useBasePath } from '@/hooks/use-base-path'
 import { PageHeader } from '@/components/custom/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -44,6 +48,8 @@ interface KpiCardProps {
   description?: string
   iconClassName?: string
   isLoading?: boolean
+  onClick?: () => void
+  trend?: { value: number; label: string }
 }
 
 function KpiCard({
@@ -53,9 +59,14 @@ function KpiCard({
   description,
   iconClassName,
   isLoading,
+  onClick,
+  trend,
 }: KpiCardProps) {
   return (
-    <Card>
+    <Card
+      className={onClick ? 'cursor-pointer hover:border-primary/40 transition-colors' : ''}
+      onClick={onClick}
+    >
       <CardHeader className="pb-0">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -86,6 +97,19 @@ function KpiCard({
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {description}
               </p>
+            )}
+            {trend && (
+              <div className={cn(
+                'mt-1 flex items-center gap-1 text-xs font-medium',
+                trend.value > 0 ? 'text-emerald-600 dark:text-emerald-400' : trend.value < 0 ? 'text-red-500 dark:text-red-400' : 'text-muted-foreground',
+              )}>
+                {trend.value > 0
+                  ? <TrendingUp className="size-3" />
+                  : trend.value < 0
+                  ? <TrendingDown className="size-3" />
+                  : null}
+                {trend.value > 0 ? '+' : ''}{trend.value.toFixed(0)}% {trend.label}
+              </div>
             )}
           </>
         )}
@@ -280,6 +304,23 @@ function useActividadReciente(orgId: string | undefined) {
   })
 }
 
+function useSolicitudesPendientes(orgId: string | undefined) {
+  return useQuery<number>({
+    queryKey: ['kpi-solicitudes-pendientes', orgId],
+    queryFn: async () => {
+      const { count, error } = await db
+        .from('solicitudes')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', orgId)
+        .eq('status', 'pendiente')
+      if (error) throw error
+      return count ?? 0
+    },
+    enabled: !!orgId,
+    refetchInterval: 30_000,
+  })
+}
+
 // ─── Action label ─────────────────────────────────────────────────────────────
 
 function actionLabel(action: string) {
@@ -347,6 +388,8 @@ function ChartTooltip({
 
 export function AdminDashboardPage() {
   const { organization, activeSeason } = useAuth()
+  const navigate = useNavigate()
+  const basePath = useBasePath()
   const orgId = organization?.id
   const seasonId = activeSeason?.id
 
@@ -357,6 +400,29 @@ export function AdminDashboardPage() {
   const gastoQ = useGastoDiario(orgId)
   const topQ = useTopConsumo(orgId, seasonId)
   const actividadQ = useActividadReciente(orgId)
+  const solicitudesQ = useSolicitudesPendientes(orgId)
+
+  const gastoTrend = useMemo(() => {
+    if (!gastoQ.data?.length) return null
+    const today = new Date()
+    const dow = today.getDay()
+    const thisWeekStart = new Date(today)
+    thisWeekStart.setDate(today.getDate() - dow)
+    thisWeekStart.setHours(0, 0, 0, 0)
+    const lastWeekStart = new Date(thisWeekStart)
+    lastWeekStart.setDate(thisWeekStart.getDate() - 7)
+
+    let thisWeek = 0
+    let lastWeek = 0
+    for (const { date, total } of gastoQ.data) {
+      const d = new Date(date + 'T00:00:00')
+      if (d >= thisWeekStart) thisWeek += total
+      else if (d >= lastWeekStart) lastWeek += total
+    }
+    if (lastWeek === 0) return null
+    const pct = ((thisWeek - lastWeek) / lastWeek) * 100
+    return { thisWeek, lastWeek, pct }
+  }, [gastoQ.data])
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6 p-4 sm:p-6">
@@ -366,7 +432,7 @@ export function AdminDashboardPage() {
       />
 
       {/* ── KPI Row ── */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
         <KpiCard
           label="Valor de inventario"
           value={formatMoney(valorQ.data ?? 0)}
@@ -392,6 +458,7 @@ export function AdminDashboardPage() {
           }
           description="Requieren atención"
           isLoading={bajoReordenQ.isLoading}
+          onClick={() => navigate(`${basePath}/inventario`)}
         />
         <KpiCard
           label="Diésel mes actual"
@@ -399,6 +466,20 @@ export function AdminDashboardPage() {
           icon={<Fuel className="size-4" />}
           description="Consumo acumulado"
           isLoading={dieselQ.isLoading}
+          onClick={() => navigate(`${basePath}/diesel`)}
+        />
+        <KpiCard
+          label="Solicitudes pendientes"
+          value={String(solicitudesQ.data ?? 0)}
+          icon={<ClipboardList className="size-4" />}
+          iconClassName={
+            (solicitudesQ.data ?? 0) > 0
+              ? 'bg-orange-500/15 text-orange-600 dark:text-orange-400'
+              : undefined
+          }
+          description="Requieren revisión"
+          isLoading={solicitudesQ.isLoading}
+          onClick={() => navigate(`${basePath}/solicitudes`)}
         />
       </div>
 
@@ -407,9 +488,20 @@ export function AdminDashboardPage() {
         {/* Gasto diario chart */}
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Gasto diario — últimos 30 días
-            </CardTitle>
+            <div className="flex items-start justify-between gap-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Gasto diario — últimos 30 días
+              </CardTitle>
+              {gastoTrend && (
+                <div className={cn(
+                  'flex items-center gap-1 text-xs font-medium shrink-0',
+                  gastoTrend.pct > 0 ? 'text-red-500 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
+                )}>
+                  {gastoTrend.pct > 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                  {gastoTrend.pct > 0 ? '+' : ''}{gastoTrend.pct.toFixed(0)}% vs sem. ant.
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {gastoQ.isLoading ? (

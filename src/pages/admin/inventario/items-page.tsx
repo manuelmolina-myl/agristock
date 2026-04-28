@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, MoreHorizontal, Eye, Pencil, Trash2, Package, AlertTriangle } from 'lucide-react'
+import { Plus, Upload, Search, MoreHorizontal, Eye, Pencil, Trash2, Package, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useItems, useCategories, useSoftDelete, useItemStock } from '@/hooks/use-supabase-query'
@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/use-auth'
 import type { Item } from '@/lib/database.types'
 import { formatQuantity } from '@/lib/utils'
 
+import { ItemsCsvImport } from './items-csv-import'
 import { PageHeader } from '@/components/custom/page-header'
 import { CurrencyBadge } from '@/components/custom/currency-badge'
 import { EmptyState } from '@/components/custom/empty-state'
@@ -141,6 +142,7 @@ export function ItemsPage() {
   const [activeFilter, setActiveFilter] = useState<string>('all')
   const [alertFilter, setAlertFilter] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null)
+  const [csvOpen, setCsvOpen] = useState(false)
 
   // ── Alert counts ───────────────────────────────────────────────────────────
   const alertCounts = useMemo(() => {
@@ -191,10 +193,18 @@ export function ItemsPage() {
         title="Inventario"
         description="Catálogo de ítems y materiales"
         actions={
-          <Button size="sm" onClick={() => navigate(`${basePath}/inventario/nuevo`)}>
-            <Plus className="mr-1.5 size-3.5" />
-            Nuevo ítem
-          </Button>
+          <div className="flex items-center gap-2">
+            {!isAlmacenista && (
+              <Button variant="outline" size="sm" onClick={() => setCsvOpen(true)}>
+                <Upload className="mr-1.5 size-3.5" />
+                Importar CSV
+              </Button>
+            )}
+            <Button size="sm" onClick={() => navigate(`${basePath}/inventario/nuevo`)}>
+              <Plus className="mr-1.5 size-3.5" />
+              Nuevo ítem
+            </Button>
+          </div>
         }
       />
 
@@ -501,6 +511,9 @@ export function ItemsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* ── CSV import dialog ────────────────────────────────────────────── */}
+      <ItemsCsvImport open={csvOpen} onOpenChange={setCsvOpen} />
 
       {/* ── Delete confirmation ───────────────────────────────────────────── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
