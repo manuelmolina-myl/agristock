@@ -288,7 +288,19 @@ export function ItemFormPage() {
 
   const generateSkuForCategory = useCallback(async (categoryId: string) => {
     const cat = categories.find((c) => c.id === categoryId)
-    if (!cat?.prefix) return null
+    if (!cat) return null
+    // Use explicit prefix or derive one from the first letters of the category name
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const explicitPrefix = (cat as any).prefix as string | undefined
+    const prefix = explicitPrefix?.trim() ||
+      cat.name
+        .split(/\s+/)
+        .map((w: string) => w.replace(/[^a-zA-Z]/g, '').slice(0, 3))
+        .filter(Boolean)
+        .join('')
+        .toUpperCase()
+        .slice(0, 4)
+    if (!prefix) return null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count } = await (supabase as any)
       .from('items')
@@ -296,7 +308,7 @@ export function ItemFormPage() {
       .eq('category_id', categoryId)
       .is('deleted_at', null)
     const next = (count ?? 0) + 1
-    return `${cat.prefix}-${String(next).padStart(4, '0')}`
+    return `${prefix}-${String(next).padStart(4, '0')}`
   }, [categories])
 
   const generateGenericSku = useCallback(async () => {
@@ -677,15 +689,17 @@ export function ItemFormPage() {
                         )}
                         <span className="text-sm font-medium leading-tight">{cat.name}</span>
                       </div>
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {(cat as any).prefix ? (
-                        <Badge variant="outline" className="w-fit font-mono text-[10px] px-1.5 py-0">
-                          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                          {(cat as any).prefix}-XXXX
-                        </Badge>
-                      ) : (
-                        <span className="text-[10px] text-muted-foreground">Sin prefijo</span>
-                      )}
+                      {(() => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const explicitPrefix = (cat as any).prefix as string | undefined
+                        const prefix = explicitPrefix?.trim() ||
+                          cat.name.split(/\s+/).map((w: string) => w.replace(/[^a-zA-Z]/g, '').slice(0, 3)).filter(Boolean).join('').toUpperCase().slice(0, 4)
+                        return (
+                          <Badge variant="outline" className="w-fit font-mono text-[10px] px-1.5 py-0">
+                            {prefix}-XXXX
+                          </Badge>
+                        )
+                      })()}
                     </button>
                   )
                 })}
