@@ -4,6 +4,7 @@ import { AppSidebar } from './app-sidebar'
 import { AppHeader } from './app-header'
 import { MobileNav } from './mobile-nav'
 import { PageTitleProvider } from '@/contexts/page-title-context'
+import { CommandSearch } from '@/components/search/command-search'
 
 export default function AppLayout() {
   return (
@@ -17,6 +18,8 @@ export default function AppLayout() {
           </div>
           <MobileNav />
         </SidebarInset>
+        {/* Global Cmd+K search */}
+        <CommandSearch />
       </SidebarProvider>
     </PageTitleProvider>
   )

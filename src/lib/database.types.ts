@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'admin' | 'almacenista' | 'supervisor'
+export type UserRole = 'super_admin' | 'admin' | 'gerente' | 'almacenista' | 'supervisor'
 
 export type SeasonStatus = 'planning' | 'active' | 'closing' | 'closed'
 
@@ -54,6 +54,7 @@ export interface Organization {
   logo_url: string | null
   base_currency: Currency
   timezone: string
+  onboarding_completed: boolean
   created_at: string
 }
 

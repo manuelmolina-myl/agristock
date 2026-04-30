@@ -15,8 +15,10 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   signIn: (email: string, password: string) => Promise<{ role: UserRole }>
+  signUp: (email: string, password: string, fullName: string, orgName: string) => Promise<void>
   signOut: () => Promise<void>
   setActiveSeason: (season: Season) => void
+  refreshOrganization: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -137,6 +139,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const signUp = useCallback(async (email: string, password: string, fullName: string, orgName: string) => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: fullName, org_name: orgName },
+      },
+    })
+    if (error) throw error
+    // The DB trigger (migration 010) creates the org + profile automatically
+  }, [])
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
   }, [])
@@ -145,8 +159,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState(prev => ({ ...prev, activeSeason: season }))
   }, [])
 
+  const refreshOrganization = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const userData = await fetchUserData(user.id)
+    if (userData) {
+      setState(prev => ({
+        ...prev,
+        organization: userData.organization,
+        activeSeason: userData.season,
+        profile: userData.profile,
+      }))
+    }
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ ...state, signIn, signOut, setActiveSeason }}>
+    <AuthContext.Provider value={{ ...state, signIn, signUp, signOut, setActiveSeason, refreshOrganization }}>
       {children}
     </AuthContext.Provider>
   )

@@ -130,7 +130,8 @@ function SearchTrigger() {
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
       )}
       onClick={() => {
-        // TODO: open command palette / search dialog
+        // Trigger the CommandSearch dialog via keyboard event
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))
       }}
     >
       <Search className="size-3.5 shrink-0" />

@@ -815,6 +815,435 @@ function SalidasLoteReport({ orgName }: { orgName: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Report 5: Consumo Diésel
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DieselLine {
+  id: string
+  quantity: number
+  diesel_liters: number | null
+  unit_cost_native: number
+  currency: string
+  movement: {
+    id: string
+    document_number: string | null
+    created_at: string
+    equipment?: { name: string; code: string } | null
+    operator_employee?: { name: string } | null
+  }
+}
+
+function ConsumoDieselReport({ orgName }: { orgName: string }) {
+  const { activeSeason, organization } = useAuth()
+  const today = new Date().toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo]     = useState<string>(today)
+
+  const { data: lines = [], isLoading } = useQuery<DieselLine[]>({
+    queryKey: ['consumo-diesel-report', activeSeason?.id, dateFrom, dateTo],
+    queryFn: async () => {
+      // Step 1: get diesel item IDs for this org
+      const { data: dieselItems } = await db
+        .from('items')
+        .select('id')
+        .eq('organization_id', organization?.id)
+        .eq('is_diesel', true)
+      if (!dieselItems?.length) return []
+
+      const dieselIds = dieselItems.map((d: { id: string }) => d.id)
+
+      // Step 2: query lines for those items
+      let q = db
+        .from('stock_movement_lines')
+        .select(`
+          id, quantity, diesel_liters, unit_cost_native, currency,
+          movement:stock_movements(
+            id, document_number, created_at,
+            equipment:equipment(name, code),
+            operator_employee:employees(name)
+          )
+        `)
+        .in('item_id', dieselIds)
+        .order('created_at', { ascending: false })
+
+      if (dateFrom) q = q.gte('created_at', `${dateFrom}T00:00:00`)
+      if (dateTo)   q = q.lte('created_at', `${dateTo}T23:59:59`)
+
+      const { data, error } = await q
+      if (error) throw error
+      return data as DieselLine[]
+    },
+    enabled: !!activeSeason?.id && !!organization?.id,
+  })
+
+  const totals = useMemo(() => ({
+    liters: lines.reduce((s, l) => s + (l.diesel_liters ?? l.quantity), 0),
+    cost:   lines.reduce((s, l) => s + l.unit_cost_native * (l.diesel_liters ?? l.quantity), 0),
+  }), [lines])
+
+  const HEAD = ['Fecha', 'Folio', 'Equipo', 'Operador', 'Litros', 'Costo/Litro', 'Total']
+
+  function buildRows() {
+    return lines.map((l) => {
+      const liters = l.diesel_liters ?? l.quantity
+      return [
+        formatFechaCorta(l.movement.created_at),
+        l.movement.document_number ?? '—',
+        l.movement.equipment?.name ?? '—',
+        l.movement.operator_employee?.name ?? '—',
+        formatQuantity(liters),
+        formatMoney(l.unit_cost_native, l.currency as 'MXN' | 'USD'),
+        formatMoney(l.unit_cost_native * liters, l.currency as 'MXN' | 'USD'),
+      ]
+    })
+  }
+
+  const filtersLabel = `${dateFrom || 'inicio'} – ${dateTo}`
+  const footRow = ['TOTAL', '', '', '', formatQuantity(totals.liters), '', formatMoney(totals.cost, 'MXN')]
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Desde</Label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Hasta</Label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+        </div>
+      </div>
+
+      {lines.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Consumo Diésel', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow)}>
+            <Download className="mr-1.5 size-3.5" />Exportar PDF
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Consumo Diésel', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />Exportar Excel
+          </Button>
+        </div>
+      )}
+      <Separator />
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : lines.length === 0 ? (
+        <EmptyState title="Sin cargas de diésel" description="No hay registros de diésel en el período seleccionado." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lines.map((l) => {
+                const liters = l.diesel_liters ?? l.quantity
+                return (
+                  <TableRow key={l.id}>
+                    <TableCell className="text-xs">{formatFechaCorta(l.movement.created_at)}</TableCell>
+                    <TableCell className="font-mono text-xs">{l.movement.document_number ?? '—'}</TableCell>
+                    <TableCell className="text-xs">{l.movement.equipment?.name ?? '—'}</TableCell>
+                    <TableCell className="text-xs">{l.movement.operator_employee?.name ?? '—'}</TableCell>
+                    <TableCell className="text-right text-xs">{formatQuantity(liters)}</TableCell>
+                    <TableCell className="text-right text-xs"><MoneyDisplay amount={l.unit_cost_native} currency={l.currency as 'MXN' | 'USD'} /></TableCell>
+                    <TableCell className="text-right text-xs"><MoneyDisplay amount={l.unit_cost_native * liters} currency={l.currency as 'MXN' | 'USD'} /></TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={4} className="text-xs font-semibold">TOTAL</TableCell>
+                <TableCell className="text-right text-xs font-semibold">{formatQuantity(totals.liters)} L</TableCell>
+                <TableCell />
+                <TableCell className="text-right text-xs font-semibold"><MoneyDisplay amount={totals.cost} currency="MXN" /></TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report 6: Ítems sin Movimiento
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ItemStockRow {
+  item_id: string
+  quantity: number
+  item: { id: string; name: string; sku: string; category?: { name: string } | null }
+}
+
+interface MovedItemId { item_id: string }
+
+function SinMovimientoReport({ orgName }: { orgName: string }) {
+  const { activeSeason, organization } = useAuth()
+  const today = new Date().toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo]     = useState<string>(today)
+
+  const { data: allStock = [], isLoading: loadingStock } = useQuery<ItemStockRow[]>({
+    queryKey: ['stock-all', activeSeason?.id],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('item_stock')
+        .select('item_id, quantity, item:items!inner(id, name, sku, category:categories(name))')
+        .eq('season_id', activeSeason?.id)
+      if (error) throw error
+      return data as ItemStockRow[]
+    },
+    enabled: !!activeSeason?.id,
+  })
+
+  const { data: movedIds = [], isLoading: loadingMoved } = useQuery<MovedItemId[]>({
+    queryKey: ['moved-items', activeSeason?.id, dateFrom, dateTo, organization?.id],
+    queryFn: async () => {
+      let q = db
+        .from('stock_movement_lines')
+        .select('item_id')
+        .eq('season_id', activeSeason?.id)
+      if (dateFrom) q = q.gte('created_at', `${dateFrom}T00:00:00`)
+      if (dateTo)   q = q.lte('created_at', `${dateTo}T23:59:59`)
+      const { data, error } = await q
+      if (error) throw error
+      return data as MovedItemId[]
+    },
+    enabled: !!activeSeason?.id,
+  })
+
+  const movedSet = useMemo(() => new Set(movedIds.map((m) => m.item_id)), [movedIds])
+
+  const sinMovimiento = useMemo(
+    () => allStock.filter((s) => !movedSet.has(s.item_id)),
+    [allStock, movedSet]
+  )
+
+  const isLoading = loadingStock || loadingMoved
+
+  const HEAD = ['SKU', 'Artículo', 'Categoría', 'Existencia actual']
+
+  function buildRows() {
+    return sinMovimiento.map((s) => [
+      s.item.sku,
+      s.item.name,
+      s.item.category?.name ?? '—',
+      formatQuantity(s.quantity),
+    ])
+  }
+
+  const filtersLabel = `${dateFrom || 'inicio'} – ${dateTo}`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Desde</Label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Hasta</Label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+        </div>
+      </div>
+
+      {sinMovimiento.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Ítems sin Movimiento', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />Exportar PDF
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Ítems sin Movimiento', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />Exportar Excel
+          </Button>
+        </div>
+      )}
+      <Separator />
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : sinMovimiento.length === 0 ? (
+        <EmptyState title="Todos los artículos tienen movimiento" description="Todos los ítems del inventario tienen al menos un movimiento en el período seleccionado." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sinMovimiento.map((s) => (
+                <TableRow key={s.item_id}>
+                  <TableCell className="font-mono text-xs">{s.item.sku}</TableCell>
+                  <TableCell className="text-xs font-medium">{s.item.name}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{s.item.category?.name ?? '—'}</TableCell>
+                  <TableCell className="text-right text-xs">{formatQuantity(s.quantity)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground text-right">
+        {sinMovimiento.length} artículo{sinMovimiento.length !== 1 ? 's' : ''} sin movimiento
+      </p>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report 7: Variación de Precios
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PriceVariationLine {
+  id: string
+  unit_cost_native: number
+  unit_cost_mxn: number | null
+  currency: string
+  movement: {
+    created_at: string
+    document_number: string | null
+    supplier?: { name: string } | null
+  }
+}
+
+function VariacionPreciosReport({ orgName }: { orgName: string }) {
+  const { activeSeason } = useAuth()
+  const { data: items = [] } = useItems()
+  const today = new Date().toISOString().slice(0, 10)
+  const [itemId, setItemId]     = useState<string>('all')
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo]     = useState<string>(today)
+
+  const { data: lines = [], isLoading } = useQuery<PriceVariationLine[]>({
+    queryKey: ['variacion-precios', itemId, dateFrom, dateTo, activeSeason?.id],
+    queryFn: async () => {
+      if (itemId === 'all') return []
+      let q = db
+        .from('stock_movement_lines')
+        .select(`
+          id, unit_cost_native, unit_cost_mxn, currency,
+          movement:stock_movements(
+            created_at, document_number, supplier:suppliers(name)
+          )
+        `)
+        .eq('item_id', itemId)
+        .like('movement.movement_type', 'entry_%')
+        .order('created_at', { ascending: true })
+
+      if (dateFrom) q = q.gte('created_at', `${dateFrom}T00:00:00`)
+      if (dateTo)   q = q.lte('created_at', `${dateTo}T23:59:59`)
+
+      const { data, error } = await q
+      if (error) throw error
+      // Filter to entry movements only
+      return (data as PriceVariationLine[]).filter((l) => l.movement)
+    },
+    enabled: itemId !== 'all' && !!activeSeason?.id,
+  })
+
+  const selectedItem = items.find((i) => i.id === itemId)
+  const currency = lines[0]?.currency ?? 'MXN'
+
+  const HEAD = ['Fecha', 'Folio', 'Proveedor', `Precio (${currency})`, 'Precio MXN', 'Variación']
+
+  function buildRows() {
+    return lines.map((l, idx) => {
+      const prev = idx > 0 ? lines[idx - 1].unit_cost_native : null
+      const variation = prev ? ((l.unit_cost_native - prev) / prev) * 100 : 0
+      return [
+        formatFechaCorta(l.movement.created_at),
+        l.movement.document_number ?? '—',
+        l.movement.supplier?.name ?? '—',
+        formatMoney(l.unit_cost_native, l.currency as 'MXN' | 'USD'),
+        formatMoney(l.unit_cost_mxn ?? l.unit_cost_native, 'MXN'),
+        idx === 0 ? '—' : `${variation >= 0 ? '+' : ''}${variation.toFixed(1)}%`,
+      ]
+    })
+  }
+
+  const filtersLabel = `Ítem: ${selectedItem?.name ?? '—'} | ${dateFrom || 'inicio'} – ${dateTo}`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="col-span-2 sm:col-span-1 flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Ítem</Label>
+          <Select value={itemId} onValueChange={(v) => setItemId(v ?? '')}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Seleccionar ítem…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">— Seleccionar —</SelectItem>
+              {items.map((i) => (
+                <SelectItem key={i.id} value={i.id}>{i.sku} – {i.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Desde</Label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Hasta</Label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+        </div>
+      </div>
+
+      {lines.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Variación de Precios', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />Exportar PDF
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Variación de Precios', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />Exportar Excel
+          </Button>
+        </div>
+      )}
+      <Separator />
+      {itemId === 'all' ? (
+        <EmptyState title="Selecciona un ítem" description="Elige un artículo para ver su historial de precios de compra." />
+      ) : isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : lines.length === 0 ? (
+        <EmptyState title="Sin entradas" description="No se encontraron entradas para el ítem y período seleccionados." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lines.map((l, idx) => {
+                const prev = idx > 0 ? lines[idx - 1].unit_cost_native : null
+                const variation = prev ? ((l.unit_cost_native - prev) / prev) * 100 : 0
+                return (
+                  <TableRow key={l.id}>
+                    <TableCell className="text-xs">{formatFechaCorta(l.movement.created_at)}</TableCell>
+                    <TableCell className="font-mono text-xs">{l.movement.document_number ?? '—'}</TableCell>
+                    <TableCell className="text-xs">{l.movement.supplier?.name ?? '—'}</TableCell>
+                    <TableCell className="text-right text-xs"><MoneyDisplay amount={l.unit_cost_native} currency={l.currency as 'MXN' | 'USD'} /></TableCell>
+                    <TableCell className="text-right text-xs"><MoneyDisplay amount={l.unit_cost_mxn ?? l.unit_cost_native} currency="MXN" /></TableCell>
+                    <TableCell className={`text-right text-xs font-medium ${idx === 0 ? 'text-muted-foreground' : variation >= 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                      {idx === 0 ? '—' : `${variation >= 0 ? '+' : ''}${variation.toFixed(1)}%`}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main page component
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -864,8 +1293,11 @@ export default function ReportViewerPage() {
           {slug === 'existencias' && <ExistenciasReport orgName={orgName} />}
           {slug === 'entradas-proveedor' && <EntradasProveedorReport orgName={orgName} />}
           {slug === 'salidas-lote' && <SalidasLoteReport orgName={orgName} />}
+          {slug === 'consumo-diesel' && <ConsumoDieselReport orgName={orgName} />}
+          {slug === 'sin-movimiento' && <SinMovimientoReport orgName={orgName} />}
+          {slug === 'variacion-precios' && <VariacionPreciosReport orgName={orgName} />}
 
-          {!['kardex', 'existencias', 'entradas-proveedor', 'salidas-lote'].includes(slug) && (
+          {!['kardex', 'existencias', 'entradas-proveedor', 'salidas-lote', 'consumo-diesel', 'sin-movimiento', 'variacion-precios'].includes(slug) && (
             <ComingSoon title={meta.title} />
           )}
         </CardContent>

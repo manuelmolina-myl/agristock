@@ -108,12 +108,32 @@ const SUPERVISOR_NAV: NavSection[] = [
   },
 ]
 
+const GERENTE_NAV: NavSection[] = [
+  {
+    heading: 'Operación',
+    items: [
+      { label: 'Dashboard',    to: '',              icon: LayoutDashboard },
+      { label: 'Inventario',   to: '/inventario',   icon: Package },
+      { label: 'Entradas',     to: '/entradas',     icon: ArrowDownToLine },
+      { label: 'Salidas',      to: '/salidas',      icon: ArrowUpFromLine },
+      { label: 'Solicitudes',  to: '/solicitudes',  icon: ClipboardList },
+    ],
+  },
+  {
+    heading: 'Análisis',
+    items: [
+      { label: 'Reportes',     to: '/reportes',     icon: BarChart3 },
+    ],
+  },
+]
+
 function navSectionsForRole(role: UserRole | undefined): NavSection[] {
   if (!role) return []
   if (role === 'super_admin' || role === 'admin') return ADMIN_NAV
   if (role === 'almacenista') return ALMACENISTA_NAV
   if (role === 'supervisor') return SUPERVISOR_NAV
-  return []
+  if (role === 'gerente') return GERENTE_NAV
+  return ADMIN_NAV // fallback
 }
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────

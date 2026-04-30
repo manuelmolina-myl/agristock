@@ -10,6 +10,11 @@ const AppLayout = lazy(() => import('@/components/layout/app-layout'))
 // Public
 const LandingPage = lazy(() => import('@/pages/landing-page'))
 const LoginPage = lazy(() => import('@/pages/auth/login-page'))
+const SignupPage = lazy(() => import('@/pages/auth/signup-page'))
+const VerifyEmailPage = lazy(() => import('@/pages/auth/verify-email-page'))
+
+// Onboarding
+const OnboardingPage = lazy(() => import('@/pages/onboarding/onboarding-page'))
 
 // Admin (Super Admin)
 const AdminDashboard = lazy(() => import('@/pages/admin/dashboard-page'))
@@ -53,6 +58,9 @@ const SupervisorSolicitudDetail = lazy(() => import('@/pages/supervisor/solicitu
 const SolicitudesAdminPage = lazy(() => import('@/pages/admin/solicitudes/solicitudes-admin-page'))
 const SolicitudReviewPage = lazy(() => import('@/pages/admin/solicitudes/solicitud-review-page'))
 
+// Gerente (same layout as admin)
+const GerenteDashboard = lazy(() => import('@/pages/gerente/dashboard-page'))
+
 function LoadingFallback() {
   return (
     <div className="flex h-screen w-full items-center justify-center">
@@ -73,12 +81,18 @@ function DashboardRedirect() {
 }
 
 function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRole[]; children: React.ReactNode }) {
-  const { user, profile, isLoading } = useAuth()
+  const { user, profile, organization, isLoading } = useAuth()
   if (isLoading) return <LoadingFallback />
   if (!user || !profile) return <Navigate to="/login" replace />
   if (!allowedRoles.includes(profile.role as UserRole)) {
     const route = ROLE_ROUTES[profile.role as UserRole]
     return <Navigate to={route} replace />
+  }
+  // Onboarding guard: redirect new users who haven't finished setup
+  // onboarding_completed is false only for new signups (migration 010)
+  // undefined/null means migration not run yet → skip guard
+  if (organization && (organization as { onboarding_completed?: boolean }).onboarding_completed === false) {
+    return <Navigate to="/onboarding" replace />
   }
   return <>{children}</>
 }
@@ -90,7 +104,12 @@ export default function App() {
         {/* Public */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/dashboard" element={<DashboardRedirect />} />
+
+        {/* Onboarding (requires auth, but before org setup) */}
+        <Route path="/onboarding" element={<OnboardingPage />} />
 
         {/* Admin routes */}
         <Route
@@ -174,6 +193,28 @@ export default function App() {
           <Route path="solicitudes" element={<SupervisorSolicitudes />} />
           <Route path="solicitudes/nueva" element={<SupervisorNuevaSolicitud />} />
           <Route path="solicitudes/:id" element={<SupervisorSolicitudDetail />} />
+        </Route>
+
+        {/* Gerente routes (subset of admin features for gerente/manager role) */}
+        <Route
+          path="/gerente"
+          element={
+            <ProtectedRoute allowedRoles={['gerente']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<GerenteDashboard />} />
+          <Route path="inventario" element={<ItemsPage />} />
+          <Route path="inventario/:id" element={<ItemDetailPage />} />
+          <Route path="entradas" element={<EntradasPage />} />
+          <Route path="entradas/:id" element={<EntradaDetailPage />} />
+          <Route path="salidas" element={<SalidasPage />} />
+          <Route path="salidas/:id" element={<SalidaDetailPage />} />
+          <Route path="reportes" element={<ReportesPage />} />
+          <Route path="reportes/:slug" element={<ReportViewerPage />} />
+          <Route path="solicitudes" element={<SolicitudesAdminPage />} />
+          <Route path="solicitudes/:id" element={<SolicitudReviewPage />} />
         </Route>
 
         {/* Catch-all */}

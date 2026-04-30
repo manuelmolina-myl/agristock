@@ -43,7 +43,14 @@ function useMobileNavItems(): MobileNavItem[] {
         { label: 'Movimientos', to: `${base}/entradas`,     icon: ArrowLeftRight, isMovimientos: true },
         { label: 'Diésel',      to: `${base}/diesel`,       icon: Fuel },
       ]
-    default: // admin / gerente / super_admin
+    case 'gerente':
+      return [
+        { label: 'Inicio',      to: base,                   icon: LayoutDashboard, exact: true },
+        { label: 'Inventario',  to: `${base}/inventario`,   icon: Package },
+        { label: 'Reportes',    to: `${base}/reportes`,     icon: BarChart3 },
+        { label: 'Solicitudes', to: `${base}/solicitudes`,  icon: ClipboardList },
+      ]
+    default: // admin / super_admin
       return [
         { label: 'Inicio',      to: base,                   icon: LayoutDashboard, exact: true },
         { label: 'Inventario',  to: `${base}/inventario`,   icon: Package },

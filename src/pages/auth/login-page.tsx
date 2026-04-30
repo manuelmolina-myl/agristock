@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Warehouse, Moon, Sun, Eye, EyeOff } from 'lucide-react'
 import { useState } from 'react'
@@ -23,9 +23,10 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>
 
 const DEMO_USERS: { label: string; role: UserRole; email: string }[] = [
-  { label: 'Admin', role: 'admin', email: 'admin@agristock.mx' },
+  { label: 'Admin',       role: 'admin',       email: 'admin@agristock.mx' },
+  { label: 'Gerente',     role: 'gerente',     email: 'gerente@agristock.mx' },
   { label: 'Almacenista', role: 'almacenista', email: 'almacen@agristock.mx' },
-  { label: 'Supervisor', role: 'supervisor', email: 'supervisor@agristock.mx' },
+  { label: 'Supervisor',  role: 'supervisor',  email: 'supervisor@agristock.mx' },
 ]
 
 export function LoginPage() {
@@ -158,7 +159,7 @@ export function LoginPage() {
             <p className="text-center text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
               Acceso rápido demo
             </p>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
               {DEMO_USERS.map((user) => (
                 <button
                   key={user.email}
@@ -177,13 +178,13 @@ export function LoginPage() {
 
           {/* Footer link */}
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            ¿Primera vez?{' '}
-            <a
-              href="mailto:soporte@agristock.mx"
+            ¿Nuevo en AgriStock?{' '}
+            <Link
+              to="/signup"
               className="font-medium text-foreground underline-offset-4 hover:underline"
             >
-              Solicita tu acceso.
-            </a>
+              Crear cuenta gratis
+            </Link>
           </p>
         </div>
 

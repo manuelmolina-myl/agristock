@@ -2,7 +2,8 @@ import type { UserRole } from './database.types'
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   super_admin: 'Super Admin',
-  admin: 'Admin',
+  admin: 'Administrador',
+  gerente: 'Gerente',
   almacenista: 'Almacenista',
   supervisor: 'Supervisor de Campo',
 }
@@ -10,6 +11,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 export const ROLE_ROUTES: Record<UserRole, string> = {
   super_admin: '/admin',
   admin: '/admin',
+  gerente: '/gerente',
   almacenista: '/almacenista',
   supervisor: '/supervisor',
 }
