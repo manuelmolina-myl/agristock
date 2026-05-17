@@ -291,6 +291,9 @@ export interface WorkOrder {
   photos_after: unknown[]
   approved_by: string | null
   approved_at: string | null
+  signature_url: string | null
+  signed_off_by: string | null
+  signed_off_at: string | null
   created_at: string
   updated_at: string | null
   deleted_at: string | null

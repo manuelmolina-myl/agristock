@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -7,7 +7,7 @@ import { useRecordRecent } from '@/features/recents/store'
 import {
   ArrowLeft, CheckCircle2, AlertCircle, Loader2,
   Tractor, User as UserIcon, Calendar, Package, Plus, Trash2, CheckCheck,
-  FileDown, MessageSquare, Send,
+  FileDown, MessageSquare, Send, PenLine, RotateCcw, ShoppingCart,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -28,10 +28,11 @@ import {
 
 import { supabase } from '@/lib/supabase'
 import { formatSupabaseError } from '@/lib/errors'
-import { useWorkOrder, useAssignWO, useConsumePartInWO, useCloseWO } from '@/features/mantenimiento/hooks'
+import { useWorkOrder, useAssignWO, useConsumePartInWO, useCloseWO, cmmsKeys } from '@/features/mantenimiento/hooks'
 import { usePermissions } from '@/hooks/use-permissions'
 import type { WOStatus, WOPriority, WOType } from '@/lib/database.types'
 import { WoLifecycle } from '@/components/custom/wo-lifecycle'
+import { SignaturePad, type SignaturePadHandle } from '@/components/custom/signature-pad'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -141,6 +142,75 @@ export default function WoDetailPage() {
   const [assignOpen, setAssignOpen] = useState(false)
   const [partOpen, setPartOpen] = useState(false)
   const [closeOpen, setCloseOpen] = useState(false)
+  const [signOpen, setSignOpen] = useState(false)
+  const [revertSignOpen, setRevertSignOpen] = useState(false)
+  const [reorderOpen, setReorderOpen] = useState(false)
+  const signaturePadRef = useRef<SignaturePadHandle>(null)
+
+  // ── Sign-off / revert / auto-requisition mutations ───────────────────────
+  function invalidateWo() {
+    if (!id) return
+    qc.invalidateQueries({ queryKey: cmmsKeys.workOrder(id) })
+    qc.invalidateQueries({ queryKey: ['work-order', id] })
+    qc.invalidateQueries({ queryKey: cmmsKeys.all })
+  }
+
+  const signWo = useMutation({
+    mutationFn: async (signatureDataUrl: string) => {
+      if (!wo || !organization) throw new Error('Sin contexto de OT')
+      // 1) Upload PNG to private bucket: cotizaciones/<org>/wo-signatures/<wo>.png
+      const blob = await (await fetch(signatureDataUrl)).blob()
+      const path = `${organization.id}/wo-signatures/${wo.id}.png`
+      const { error: upErr } = await supabase.storage
+        .from('cotizaciones')
+        .upload(path, blob, { upsert: true, contentType: 'image/png' })
+      if (upErr) throw upErr
+      // 2) Stamp the WO with signature path + signer metadata.
+      const { error } = await db.rpc('sign_off_wo', { p_wo_id: id, p_signature_url: path })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('OT cerrada con firma', { description: 'La firma quedó grabada en el reporte.' })
+      setSignOpen(false)
+      invalidateWo()
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo firmar la OT')
+      toast.error(title, { description })
+    },
+  })
+
+  const revertSignWo = useMutation({
+    mutationFn: async () => {
+      const { error } = await db.rpc('revert_wo_signoff', { p_wo_id: id })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Cierre revertido', { description: 'La OT volvió a estado completada.' })
+      setRevertSignOpen(false)
+      invalidateWo()
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo revertir el cierre')
+      toast.error(title, { description })
+    },
+  })
+
+  // Resolve the signer's full_name from profiles when the WO is signed.
+  // Done as a one-off query so we don't have to extend useWorkOrder.
+  const { data: signerName } = useQuery<string | null>({
+    queryKey: ['wo-signer-name', wo?.signed_off_by],
+    enabled: !!wo?.signed_off_by,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('profiles')
+        .select('full_name')
+        .eq('id', wo!.signed_off_by)
+        .maybeSingle()
+      if (error) throw error
+      return (data?.full_name as string | null) ?? null
+    },
+  })
 
   // ── Comments thread ──────────────────────────────────────────────────────
   // FK `wo_comments.user_id` apunta a auth.users — usamos un segundo
@@ -235,7 +305,7 @@ export default function WoDetailPage() {
     try {
       const { generateWoPDF } = await import('@/lib/generate-wo-pdf')
       await generateWoPDF({
-        wo: { ...wo, parts, labor },
+        wo: { ...wo, parts, labor, signed_off_by_name: signerName ?? null },
         organization,
       })
     } catch (err) {
@@ -257,6 +327,9 @@ export default function WoDetailPage() {
       total_cost_mxn: wo.total_cost_mxn,
       completed_at: wo.completed_at,
       solution: wo.solution_applied,
+      signature_url: wo.signature_url,
+      signed_off_at: wo.signed_off_at,
+      signer: signerName ?? null,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       parts: (parts as any[]).map((p) => [p.id, p.delivered_quantity, p.total_cost_mxn]),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -264,7 +337,7 @@ export default function WoDetailPage() {
       logo: organization?.logo_url,
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wo, parts, labor, organization?.logo_url, showPdfPreview])
+  }, [wo, parts, labor, organization?.logo_url, showPdfPreview, signerName])
 
   useEffect(() => {
     if (!wo || !organization || !showPdfPreview) {
@@ -283,7 +356,7 @@ export default function WoDetailPage() {
       try {
         const { previewWoPDF } = await import('@/lib/generate-wo-pdf')
         const url = await previewWoPDF({
-          wo: { ...wo, parts, labor },
+          wo: { ...wo, parts, labor, signed_off_by_name: signerName ?? null },
           organization,
         })
         if (cancelled) {
@@ -340,6 +413,16 @@ export default function WoDetailPage() {
   }
 
   const canEdit = can('work_order.assign')
+  // Sign-off + revert: admin / mantenimiento can sign; only admin can revert.
+  const { hasRole } = usePermissions()
+  const canSignOff = hasRole('admin') || hasRole('mantenimiento')
+  const isAdmin = hasRole('admin')
+  // Auto-requisition: requires purchase.create + at least one consumed part.
+  const canReorder = can('purchase.create')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const consumedParts = (parts as any[]).filter((p) => Number(p.delivered_quantity ?? 0) > 0)
+  const hasConsumedParts = consumedParts.length > 0
+  const showReorderBtn = canReorder && hasConsumedParts && (wo.status === 'completed' || wo.status === 'closed')
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6 max-w-6xl mx-auto w-full">
@@ -403,6 +486,26 @@ export default function WoDetailPage() {
                 <CheckCheck className="size-4" /> Cerrar OT
               </Button>
             </>
+          )}
+          {canSignOff && wo.status === 'completed' && (
+            <Button size="sm" className="gap-1.5" onClick={() => setSignOpen(true)}>
+              <PenLine className="size-4" /> Firmar cierre
+            </Button>
+          )}
+          {isAdmin && wo.status === 'closed' && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setRevertSignOpen(true)}
+            >
+              <RotateCcw className="size-4" /> Revertir cierre
+            </Button>
+          )}
+          {showReorderBtn && (
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setReorderOpen(true)}>
+              <ShoppingCart className="size-4" /> Reponer partes
+            </Button>
           )}
         </div>
       </div>
@@ -512,6 +615,22 @@ export default function WoDetailPage() {
                   <div>
                     <dt className="text-[11px] text-muted-foreground">Completada</dt>
                     <dd>{format(new Date(wo.completed_at), 'd MMM yyyy, HH:mm', { locale: es })}</dd>
+                  </div>
+                </div>
+              )}
+              {wo.signed_off_at && (
+                <div className="flex items-start gap-2">
+                  <PenLine className="size-3.5 text-success mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <dt className="text-[11px] text-muted-foreground">
+                      Cerrada por {signerName ?? 'usuario'}
+                    </dt>
+                    <dd className="font-medium">
+                      {format(new Date(wo.signed_off_at), 'd MMM yyyy · HH:mm', { locale: es })}
+                    </dd>
+                    <dd className="text-[10px] text-muted-foreground">
+                      {formatDistanceToNow(new Date(wo.signed_off_at), { addSuffix: true, locale: es })}
+                    </dd>
                   </div>
                 </div>
               )}
@@ -712,6 +831,107 @@ export default function WoDetailPage() {
           },
         })}
         isPending={closeMutation.isPending}
+      />
+
+      {/* Sign-off dialog — admin/mantenimiento, status = completed */}
+      <Dialog
+        open={signOpen}
+        onOpenChange={(open) => {
+          if (!open) signaturePadRef.current?.clear()
+          setSignOpen(open)
+        }}
+      >
+        <DialogContent className="!max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Firmar cierre de {wo.folio}</DialogTitle>
+            <DialogDescription>
+              Dibuja tu firma con mouse, lápiz o el dedo. Al confirmar, la OT pasará
+              al estado <strong>Cerrada</strong> y la firma quedará grabada en el reporte PDF.
+            </DialogDescription>
+          </DialogHeader>
+
+          <SignaturePad ref={signaturePadRef} height={200} />
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setSignOpen(false)}
+              disabled={signWo.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="gap-1.5"
+              onClick={() => {
+                const dataUrl = signaturePadRef.current?.toDataUrl()
+                if (!dataUrl) {
+                  toast.error('Dibuja tu firma antes de confirmar')
+                  return
+                }
+                signWo.mutate(dataUrl)
+              }}
+              disabled={signWo.isPending}
+            >
+              {signWo.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <PenLine className="size-4" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revert sign-off — admin only */}
+      <Dialog open={revertSignOpen} onOpenChange={setRevertSignOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Revertir cierre de {wo.folio}?</DialogTitle>
+            <DialogDescription>
+              La OT volverá al estado <strong>Completada</strong> y se borrará la firma actual,
+              el firmante y la fecha de cierre. Útil para corregir un cierre por error.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRevertSignOpen(false)}
+              disabled={revertSignWo.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => revertSignWo.mutate()}
+              disabled={revertSignWo.isPending}
+            >
+              {revertSignWo.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <RotateCcw className="size-4" />}
+              Revertir cierre
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Auto-requisition: reponer partes consumidas */}
+      <ReorderPartsDialog
+        open={reorderOpen}
+        woId={wo.id}
+        folio={wo.folio}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        consumedParts={consumedParts as any[]}
+        onClose={() => setReorderOpen(false)}
+        onCreated={(reqId, reqFolio) => {
+          toast.success(`Requisición ${reqFolio ?? ''} creada`, {
+            description: 'Borrador listo en compras para que el comprador la cotice.',
+            action: reqId
+              ? { label: 'Ir a requisición', onClick: () => navigate(`/compras/requisiciones/${reqId}`) }
+              : undefined,
+          })
+          setReorderOpen(false)
+          qc.invalidateQueries({ queryKey: ['compras', 'requisitions'] })
+        }}
       />
     </div>
   )
@@ -1252,6 +1472,143 @@ function CloseWODialog({
           >
             {isPending && <Loader2 className="size-4 animate-spin" />}
             <CheckCheck className="size-4" /> Cerrar OT
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Auto-requisition dialog ─────────────────────────────────────────────────
+// Wraps the create_requisition_from_wo_parts RPC, which produces a draft
+// requisición with one line per consumed part scaled by `factor` (1.0 = strict
+// replenishment, 1.5/2.0 = over-stock).  The RPC returns the new req_id.
+
+interface ConsumedPartRow {
+  id: string
+  delivered_quantity: number
+  item?: { name: string | null; sku: string | null } | null
+}
+
+function ReorderPartsDialog({
+  open, woId, folio, consumedParts, onClose, onCreated,
+}: {
+  open: boolean
+  woId: string
+  folio: string
+  consumedParts: ConsumedPartRow[]
+  onClose: () => void
+  onCreated: (reqId: string | null, reqFolio: string | null) => void
+}) {
+  const [factor, setFactor] = useState('1')
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium')
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const f = Number(factor)
+      if (!Number.isFinite(f) || f <= 0) throw new Error('Factor debe ser mayor a 0')
+      const { data, error } = await db.rpc('create_requisition_from_wo_parts', {
+        p_wo_id: woId,
+        p_factor: f,
+        p_priority: priority,
+      })
+      if (error) throw error
+      // The RPC may return the bare uuid or a row { id, folio } — handle both.
+      if (typeof data === 'string') return { id: data, folio: null as string | null }
+      if (data && typeof data === 'object') {
+        const r = data as { id?: string; folio?: string | null }
+        return { id: r.id ?? null, folio: r.folio ?? null }
+      }
+      return { id: null as string | null, folio: null as string | null }
+    },
+    onSuccess: ({ id, folio: reqFolio }) => onCreated(id, reqFolio),
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo crear la requisición')
+      toast.error(title, { description })
+    },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="!max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShoppingCart className="size-4" /> Crear requisición de reposición
+          </DialogTitle>
+          <DialogDescription>
+            Se generará un <strong>borrador de requisición</strong> con las refacciones consumidas
+            en la OT {folio}.  Compras la cotizará y emitirá la OC correspondiente.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3">
+          <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
+            <div className="px-3 py-2 bg-muted/40 text-[10px] uppercase tracking-[0.06em] text-muted-foreground font-medium">
+              Refacciones consumidas ({consumedParts.length})
+            </div>
+            <ul className="divide-y divide-border max-h-48 overflow-auto">
+              {consumedParts.map((p) => (
+                <li key={p.id} className="px-3 py-2 flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{p.item?.name ?? '—'}</div>
+                    <div className="text-[10px] font-mono text-muted-foreground">{p.item?.sku ?? ''}</div>
+                  </div>
+                  <div className="font-mono tabular-nums text-right shrink-0">
+                    <span className="text-muted-foreground text-[10px]">consumido</span>
+                    <div>{p.delivered_quantity}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="reorder-factor">Factor</Label>
+              <Select value={factor} onValueChange={(v) => setFactor(v ?? '1')}>
+                <SelectTrigger id="reorder-factor" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1.0 — reposición exacta</SelectItem>
+                  <SelectItem value="1.5">1.5 — sobre-stock 50%</SelectItem>
+                  <SelectItem value="2">2.0 — sobre-stock 100%</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Multiplica la cantidad consumida en cada línea.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="reorder-priority">Prioridad</Label>
+              <Select value={priority} onValueChange={(v) => setPriority((v ?? 'medium') as typeof priority)}>
+                <SelectTrigger id="reorder-priority" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Baja</SelectItem>
+                  <SelectItem value="medium">Normal</SelectItem>
+                  <SelectItem value="high">Alta</SelectItem>
+                  <SelectItem value="critical">Crítica</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={create.isPending}>
+            Cancelar
+          </Button>
+          <Button
+            className="gap-1.5"
+            onClick={() => create.mutate()}
+            disabled={create.isPending || consumedParts.length === 0}
+          >
+            {create.isPending
+              ? <Loader2 className="size-4 animate-spin" />
+              : <ShoppingCart className="size-4" />}
+            Crear requisición
           </Button>
         </DialogFooter>
       </DialogContent>

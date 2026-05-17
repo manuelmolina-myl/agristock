@@ -18,6 +18,7 @@
  */
 import type { Organization, WorkOrder, WOStatus, WOType, WOPriority } from '@/lib/database.types'
 import { formatFechaCorta, formatMoney, formatQuantity } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 
 export interface WoPartRow {
   id: string
@@ -45,6 +46,9 @@ export interface WoForPdf extends WorkOrder {
   /** Optional pre-resolved names for helper technician ids — keeps the
    *  caller free to hydrate from `employees` once and pass us the strings. */
   helper_technician_names?: string[]
+  /** Name of the user who signed off the WO (resolved from profiles by the
+   *  caller).  Used in the signature box of the PDF. */
+  signed_off_by_name?: string | null
 }
 
 export interface GenerateWoPDFOptions {
@@ -76,6 +80,33 @@ const PRIORITY_LABEL: Record<WOPriority, string> = {
   medium:   'Normal',
   high:     'Alta',
   critical: 'Crítica',
+}
+
+/**
+ * Loads a signature PNG from the private 'cotizaciones' bucket as a data URL.
+ * Same pattern used by generate-po-pdf — short-lived signedUrl + fetch +
+ * FileReader.  Returns null on any failure so the PDF still renders without
+ * the signature image.
+ */
+async function loadSignatureDataUrl(storagePath: string): Promise<string | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.storage as any)
+      .from('cotizaciones')
+      .createSignedUrl(storagePath, 60)
+    if (error || !data?.signedUrl) return null
+    const res = await fetch(data.signedUrl)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
 }
 
 /** Loads an image URL into a data URL so jsPDF can embed it.  Returns null
@@ -505,20 +536,46 @@ async function buildWoPdfDoc(opts: GenerateWoPDFOptions) {
   doc.setFontSize(6)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(...MUTED)
-  doc.text('Firma', sigX + sigBoxW / 2, bY + 4, { align: 'center' })
+  doc.text('Firma de cierre', sigX + sigBoxW / 2, bY + 4, { align: 'center' })
+
+  // Handwritten signature (PNG embedded above the line) — only if the WO
+  // está firmada (signature_url) y podemos leer el PNG del bucket privado.
+  if (wo.signature_url) {
+    const sigImg = await loadSignatureDataUrl(wo.signature_url)
+    if (sigImg) {
+      try {
+        const imgW = sigBoxW - 12
+        const imgH = 14
+        doc.addImage(sigImg, 'PNG', sigX + 6, bY + 5, imgW, imgH)
+      } catch {
+        /* image embed failed — preserve text fallback */
+      }
+    }
+  }
 
   doc.setFontSize(7)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...PRIMARY_DARK)
   doc.text('TÉCNICO RESPONSABLE', sigX + sigBoxW / 2, bY + 26, { align: 'center' })
 
-  if (wo.primary_technician?.full_name) {
+  // Prefer the explicit signer name when the WO está cerrada; fallback al
+  // técnico principal para OTs aún sin firma.
+  const signerName = wo.signed_off_by_name ?? wo.primary_technician?.full_name ?? null
+  if (signerName) {
     doc.setFontSize(8)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(...INK)
-    doc.text(wo.primary_technician.full_name, sigX + sigBoxW / 2, bY + 31.5, { align: 'center' })
+    doc.text(signerName, sigX + sigBoxW / 2, bY + 31.5, { align: 'center' })
   }
-  if (wo.completed_at) {
+  if (wo.signed_off_at) {
+    doc.setFontSize(6)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...MUTED)
+    doc.text(
+      `Firmado: ${new Date(wo.signed_off_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}`,
+      sigX + sigBoxW / 2, bY + 34.5, { align: 'center' },
+    )
+  } else if (wo.completed_at) {
     doc.setFontSize(6)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(...MUTED)
