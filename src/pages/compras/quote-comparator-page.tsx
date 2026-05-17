@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -555,18 +555,33 @@ function NewQuotationDialog({
   const supplier = suppliers.find((s) => s.id === supplierId)
   const defaultCurrency = supplier?.default_currency ?? 'MXN'
 
-  // Reset state when opening with a new request.
-  useState(() => {
-    if (open) {
-      setLines(requisitionLines.map((rl) => ({
-        requisition_line_id: rl.id,
-        unit_cost: '',
-        currency: defaultCurrency,
-        discount_pct: '0',
-        tax_pct: '16',
-      })))
-    }
-  })
+  // Seed `lines` whenever the dialog opens (or the source list changes).
+  //
+  // PREVIOUS BUG: this used `useState(() => setLines(...))` (lazy initializer
+  // as side-effect, anti-pattern that only fires on first mount) plus a
+  // `useMemo` with side-effects.  When the dialog opened the FIRST time with
+  // open=false, the initializer's `if (open)` guard skipped seeding; the
+  // subsequent open=true render never re-fired.  Result: `lines` stayed `[]`,
+  // and `setLine`'s `prev.map(...)` was a no-op on the empty array, so
+  // typing into a unit_cost input did nothing → "no se puede agregar items".
+  useEffect(() => {
+    if (!open) return
+    setLines((prev) => {
+      // Build a position-indexed map of any values the user already typed so
+      // a re-seed (e.g. when the supplier changes) doesn't wipe their entry.
+      const byReqLine = new Map(prev.map((l) => [l.requisition_line_id, l]))
+      return requisitionLines.map((rl) => {
+        const existing = byReqLine.get(rl.id)
+        return {
+          requisition_line_id: rl.id,
+          unit_cost:    existing?.unit_cost    ?? '',
+          currency:     existing?.currency     ?? defaultCurrency,
+          discount_pct: existing?.discount_pct ?? '0',
+          tax_pct:      existing?.tax_pct      ?? '16',
+        }
+      })
+    })
+  }, [open, requisitionLines, defaultCurrency])
 
   // Re-seed lines when supplier changes (for currency).
   const handleSupplierChange = (v: string) => {
@@ -575,22 +590,21 @@ function NewQuotationDialog({
     setLines((prev) => prev.map((l) => ({ ...l, currency: newDefault })))
   }
 
-  // Seed on open.
-  useMemo(() => {
-    if (open && lines.length === 0) {
-      setLines(requisitionLines.map((rl) => ({
-        requisition_line_id: rl.id,
-        unit_cost: '',
-        currency: defaultCurrency,
-        discount_pct: '0',
-        tax_pct: '16',
-      })))
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, requisitionLines.length])
-
   const setLine = (idx: number, field: keyof NewQuotLine, value: string) => {
-    setLines((prev) => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l))
+    setLines((prev) => {
+      // Defensive: if `lines` somehow hasn't been seeded yet, hydrate now so
+      // the user's input is not silently dropped by `[].map(...)`.
+      const base = prev.length === requisitionLines.length
+        ? prev
+        : requisitionLines.map((rl) => ({
+            requisition_line_id: rl.id,
+            unit_cost: '',
+            currency: defaultCurrency,
+            discount_pct: '0',
+            tax_pct: '16',
+          }))
+      return base.map((l, i) => i === idx ? { ...l, [field]: value } : l)
+    })
   }
 
   const saveMutation = useMutation({
