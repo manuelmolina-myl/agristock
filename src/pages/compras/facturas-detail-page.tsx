@@ -294,6 +294,21 @@ export default function FacturasDetailPage() {
                       </Button>
                     )}
                   </div>
+
+                  {/* Preview del PDF del proveedor — iframe inline */}
+                  {inv.pdf_url ? (
+                    <div className="border-t bg-muted/30">
+                      <iframe
+                        src={inv.pdf_url}
+                        title={`Vista previa de factura ${inv.invoice_folio}`}
+                        className="w-full h-[65vh] min-h-[420px] bg-card"
+                      />
+                    </div>
+                  ) : (
+                    <div className="border-t bg-muted/20 px-4 py-6 text-center text-xs text-muted-foreground">
+                      Sin archivo PDF adjunto. La factura puede conciliarse igual con los metadatos.
+                    </div>
+                  )}
                 </section>
               )
             })
