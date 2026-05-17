@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, Calendar, Warehouse as WarehouseIcon, ArrowDownToLine,
-  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2,
+  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2, PenLine, Send, RotateCcw,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -25,13 +25,19 @@ import { ReceptionWizard } from './reception-wizard'
 const db = supabase as any
 
 const STATUS_LABEL: Record<POStatus, string> = {
-  draft: 'Borrador', sent: 'Enviada', confirmed: 'Confirmada',
-  partially_received: 'Parcialmente recibida', received: 'Recibida',
-  closed: 'Cerrada', cancelled: 'Cancelada',
+  draft: 'Borrador',
+  pending_signature: 'Pendiente de firma',
+  sent: 'Firmada',
+  confirmed: 'Confirmada',
+  partially_received: 'Parcialmente recibida',
+  received: 'Recibida',
+  closed: 'Cerrada',
+  cancelled: 'Cancelada',
 }
 
 const STATUS_TONE: Record<POStatus, string> = {
   draft:              'bg-muted text-muted-foreground',
+  pending_signature:  'bg-warning/15 text-warning',
   sent:               'bg-usd/15 text-usd',
   confirmed:          'bg-usd/15 text-usd',
   partially_received: 'bg-warning/15 text-warning',
@@ -41,15 +47,22 @@ const STATUS_TONE: Record<POStatus, string> = {
 }
 
 const STATUS_ICON: Record<POStatus, React.ElementType> = {
-  draft: Clock, sent: ArrowDownToLine, confirmed: CheckCircle2,
-  partially_received: AlertCircle, received: CheckCircle2,
-  closed: CheckCircle2, cancelled: XCircle,
+  draft: Clock,
+  pending_signature: PenLine,
+  sent: ArrowDownToLine,
+  confirmed: CheckCircle2,
+  partially_received: AlertCircle,
+  received: CheckCircle2,
+  closed: CheckCircle2,
+  cancelled: XCircle,
 }
 
 export default function PoDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { can } = usePermissions()
+  const { can, hasRole } = usePermissions()
+  const isAdmin = hasRole('admin')
+  const qc = useQueryClient()
 
   const { data: po, isLoading } = usePurchaseOrder(id)
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -60,6 +73,58 @@ export default function PoDetailPage() {
   const { organization, user } = useAuth()
 
   const creatorName = user?.user_metadata?.full_name ?? user?.email ?? undefined
+
+  // ── Signature flow mutations ──────────────────────────────────────────────
+  function invalidatePo() {
+    if (!id) return
+    qc.invalidateQueries({ queryKey: ['compras', 'purchase-orders', 'detail', id] })
+    qc.invalidateQueries({ queryKey: ['compras', 'purchase-orders'] })
+  }
+
+  const submitForSignature = useMutation({
+    mutationFn: async () => {
+      const { error } = await db.rpc('submit_po_for_signature', { p_po_id: id })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('OC enviada a firma', { description: 'El admin verá la OC pendiente y podrá firmarla.' })
+      invalidatePo()
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo enviar a firma')
+      toast.error(title, { description })
+    },
+  })
+
+  const signPo = useMutation({
+    mutationFn: async () => {
+      const { error } = await db.rpc('sign_po', { p_po_id: id })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('OC firmada', { description: 'Lista para enviar al proveedor y registrar recepción.' })
+      invalidatePo()
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo firmar la OC')
+      toast.error(title, { description })
+    },
+  })
+
+  const rejectSignature = useMutation({
+    mutationFn: async () => {
+      const { error } = await db.rpc('reject_po_signature', { p_po_id: id, p_reason: null })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Firma rechazada', { description: 'La OC volvió a borrador para corrección.' })
+      invalidatePo()
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo rechazar la firma')
+      toast.error(title, { description })
+    },
+  })
 
   async function handleDownloadPdf() {
     if (!po || !organization) return
@@ -215,7 +280,7 @@ export default function PoDetailPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <Button
             variant="outline"
             size="sm"
@@ -228,12 +293,65 @@ export default function PoDetailPage() {
               : <FileDown className="size-4" />}
             {downloadingPdf ? 'Generando…' : 'Descargar PDF'}
           </Button>
+
+          {/* Compras/admin: pasar a firma cuando está en draft */}
+          {po.status === 'draft' && can('purchase.create') && (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => submitForSignature.mutate()}
+              disabled={submitForSignature.isPending}
+            >
+              {submitForSignature.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <Send className="size-4" />}
+              Pasar a firma
+            </Button>
+          )}
+
+          {/* Admin: firmar / rechazar cuando está pending_signature */}
+          {po.status === 'pending_signature' && isAdmin && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => rejectSignature.mutate()}
+                disabled={rejectSignature.isPending}
+              >
+                {rejectSignature.isPending
+                  ? <Loader2 className="size-4 animate-spin" />
+                  : <RotateCcw className="size-4" />}
+                Devolver a borrador
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => signPo.mutate()}
+                disabled={signPo.isPending}
+              >
+                {signPo.isPending
+                  ? <Loader2 className="size-4 animate-spin" />
+                  : <PenLine className="size-4" />}
+                Firmar OC
+              </Button>
+            </>
+          )}
+
+          {/* Banner informativo cuando pending_signature y NO eres admin */}
+          {po.status === 'pending_signature' && !isAdmin && (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+              <PenLine className="size-3.5" />
+              Esperando firma del admin
+            </span>
+          )}
+
           {canReceive && (
-          <Button size="sm" className="gap-1.5" onClick={() => setWizardOpen(true)}>
-            <ArrowDownToLine className="size-4" />
-            Registrar recepción
-          </Button>
-        )}
+            <Button size="sm" className="gap-1.5" onClick={() => setWizardOpen(true)}>
+              <ArrowDownToLine className="size-4" />
+              Registrar recepción
+            </Button>
+          )}
         </div>
       </div>
 
@@ -445,6 +563,20 @@ export default function PoDetailPage() {
                   <div className="min-w-0">
                     <dt className="text-[11px] text-muted-foreground">Almacén destino</dt>
                     <dd className="truncate">{po.warehouse.name}</dd>
+                  </div>
+                </div>
+              )}
+              {po.approved_at && (
+                <div className="flex items-start gap-2">
+                  <PenLine className="size-3.5 text-success mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <dt className="text-[11px] text-muted-foreground">Firmada</dt>
+                    <dd className="text-success font-medium">
+                      {format(new Date(po.approved_at), 'd MMM yyyy · HH:mm', { locale: es })}
+                    </dd>
+                    <dd className="text-[10px] text-muted-foreground">
+                      {formatDistanceToNow(new Date(po.approved_at), { addSuffix: true, locale: es })}
+                    </dd>
                   </div>
                 </div>
               )}

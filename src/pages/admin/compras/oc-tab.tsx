@@ -13,7 +13,8 @@ import type { POStatus } from '@/lib/database.types'
 
 const PO_STATUS_LABEL: Record<POStatus, string> = {
   draft: 'Borrador',
-  sent: 'Enviada',
+  pending_signature: 'Pendiente de firma',
+  sent: 'Firmada',
   confirmed: 'Confirmada',
   partially_received: 'Recepción parcial',
   received: 'Recibida',
@@ -23,6 +24,7 @@ const PO_STATUS_LABEL: Record<POStatus, string> = {
 
 const PO_STATUS_VARIANT: Record<POStatus, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   draft: 'outline',
+  pending_signature: 'secondary',
   sent: 'secondary',
   confirmed: 'secondary',
   partially_received: 'secondary',

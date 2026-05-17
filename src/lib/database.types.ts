@@ -85,7 +85,7 @@ export interface PurchaseRequestQuote {
 }
 
 export type POStatus =
-  | 'draft' | 'sent' | 'confirmed' | 'partially_received'
+  | 'draft' | 'pending_signature' | 'sent' | 'confirmed' | 'partially_received'
   | 'received' | 'closed' | 'cancelled'
 
 export type ReceptionStatus = 'draft' | 'accepted' | 'rejected_partial' | 'rejected'
