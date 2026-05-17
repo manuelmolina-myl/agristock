@@ -30,6 +30,18 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Take over open tabs the moment a new SW activates.  Without this,
+        // users have to close every tab/PWA window to pick up new chunk
+        // hashes, and a stale index.html keeps requesting JS files that no
+        // longer exist — manifesting as MIME-type errors when Vercel's SPA
+        // fallback serves index.html for the missing chunk URLs.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        // Hashed chunks under /assets/ must NEVER fall back to index.html.
+        // If a chunk is gone we want a hard 404 so the dynamic-import
+        // retry triggers a fresh SW install rather than parsing HTML as JS.
+        navigateFallbackDenylist: [/^\/assets\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
