@@ -8,7 +8,7 @@
  * acciones Conciliar / Marcar pagada según status.
  */
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -84,9 +84,17 @@ interface PoDetail {
 export default function FacturasDetailPage() {
   const { poId } = useParams<{ poId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const { organization } = useAuth()
   const { can } = usePermissions()
   const canWrite = can('purchase.create')
+
+  // Smart back: si el usuario llegó desde /compras/pagos (Cuentas por pagar),
+  // el back arrow lo regresa ahí en vez de a /compras/facturas (default).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cameFrom = (location.state as any)?.from as string | undefined
+  const backTo = cameFrom && cameFrom.startsWith('/compras/') ? cameFrom : '/compras/facturas'
+  const backLabel = backTo === '/compras/pagos' ? 'Volver a Cuentas por pagar' : 'Volver a Facturas'
 
   const reconcile = useReconcileInvoice()
 
@@ -144,8 +152,8 @@ export default function FacturasDetailPage() {
         <p className="text-sm text-muted-foreground mt-1 mb-4">
           La OC que buscas no existe, fue eliminada o no está disponible para facturación.
         </p>
-        <Button onClick={() => navigate('/compras/facturas')} variant="outline">
-          Volver a Facturas
+        <Button onClick={() => navigate(backTo)} variant="outline">
+          {backLabel}
         </Button>
       </div>
     )
@@ -159,7 +167,7 @@ export default function FacturasDetailPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => navigate('/compras/facturas')}
+            onClick={() => navigate(backTo)}
             aria-label="Volver"
             className="mt-0.5"
           >
@@ -442,7 +450,7 @@ export default function FacturasDetailPage() {
             variant="outline"
             size="sm"
             className="gap-1.5"
-            onClick={() => navigate(`/compras/ordenes/${po.id}`)}
+            onClick={() => navigate(`/compras/ordenes/${po.id}`, { state: { from: location.pathname + location.search } })}
           >
             <ShoppingCart className="size-3.5" />
             Ver OC completa

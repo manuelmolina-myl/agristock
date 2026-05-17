@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, Calendar, Warehouse as WarehouseIcon, ArrowDownToLine,
@@ -66,9 +66,19 @@ const STATUS_ICON: Record<POStatus, React.ElementType> = {
 export default function PoDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const { can, hasRole } = usePermissions()
   const isAdmin = hasRole('admin')
   const qc = useQueryClient()
+
+  // Smart back: si el usuario entra a esta OC desde pagos/facturas/etc.,
+  // el back arrow lo regresa a ese contexto.  Default: lista de Órdenes.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cameFrom = (location.state as any)?.from as string | undefined
+  const backTo = cameFrom && cameFrom.startsWith('/compras/') ? cameFrom : '/compras/ordenes'
+  const backLabel = backTo === '/compras/pagos'    ? 'Volver a Cuentas por pagar'
+                  : backTo === '/compras/facturas' ? 'Volver a Facturas'
+                  : 'Volver a Órdenes'
 
   const { data: po, isLoading } = usePurchaseOrder(id)
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -401,8 +411,8 @@ export default function PoDetailPage() {
         <p className="text-sm text-muted-foreground mt-1 mb-4">
           La OC que buscas no existe o fue eliminada.
         </p>
-        <Button onClick={() => navigate('/compras/ordenes')} variant="outline">
-          Volver a Órdenes
+        <Button onClick={() => navigate(backTo)} variant="outline">
+          {backLabel}
         </Button>
       </div>
     )
@@ -420,7 +430,7 @@ export default function PoDetailPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => navigate('/compras/ordenes')}
+            onClick={() => navigate(backTo)}
             aria-label="Volver"
             className="mt-0.5"
           >

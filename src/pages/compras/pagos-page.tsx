@@ -303,7 +303,8 @@ export default function PagosPage() {
                   return (
                     <tr
                       key={r.id}
-                      className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
+                      onClick={() => r.po_id && navigate(`/compras/facturas/${r.po_id}`, { state: { from: '/compras/pagos' } })}
+                      className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
                     >
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
@@ -344,7 +345,7 @@ export default function PagosPage() {
                           {BUCKET_LABEL[r.bucket]}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-right">
+                      <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="inline-flex items-center gap-1">
                           {canWrite && r.status !== 'paid' && (
                             <Button
@@ -361,15 +362,7 @@ export default function PagosPage() {
                             </Button>
                           )}
                           {r.po_id && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => navigate(`/compras/facturas/${r.po_id}`)}
-                              aria-label="Ver factura"
-                            >
-                              <ChevronRight className="size-3" />
-                            </Button>
+                            <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
                           )}
                         </div>
                       </td>
