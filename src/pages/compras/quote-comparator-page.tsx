@@ -128,6 +128,26 @@ export default function QuoteComparatorPage() {
 
   const [newQuotOpen, setNewQuotOpen] = useState(false)
 
+  // Existing draft PO for this requisition (if any). When the user changes the
+  // winning quotation we want to REGENERATE the PO atomically via the RPC
+  // replace_po_quotation instead of silently leaving stale lines around.
+  const { data: existingPo } = useQuery<{ id: string; status: string } | null>({
+    queryKey: ['po-for-requisition', reqId],
+    enabled: !!reqId,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('purchase_orders')
+        .select('id, status')
+        .eq('requisition_id', reqId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      return data
+    },
+  })
+
   // Latest USD/MXN FX rate for normalizing cross-currency comparisons.
   // Falls back to 18 if no FX history exists (a safe MX agro default).
   const { data: latestFx } = useQuery<number>({
@@ -195,7 +215,19 @@ export default function QuoteComparatorPage() {
 
   const selectMutation = useMutation({
     mutationFn: async (quotationId: string) => {
-      // Mark this quotation as 'selected'; all others on this requisition → 'discarded'.
+      // If there's already a PO in 'draft' for this requisition, regenerate
+      // it atomically with the new winning quotation (RPC replace_po_quotation
+      // updates supplier, lines, FX, totals + marks the rest as discarded).
+      // Otherwise just toggle the status flags.
+      if (existingPo && existingPo.status === 'draft') {
+        const { error } = await db.rpc('replace_po_quotation', {
+          p_po_id: existingPo.id,
+          p_quotation_id: quotationId,
+        })
+        if (error) throw error
+        return { mode: 'regenerated' as const, poId: existingPo.id }
+      }
+
       const updates = quotations.map((q) =>
         db.from('quotations')
           .update({ status: q.id === quotationId ? 'selected' : 'discarded' })
@@ -203,10 +235,21 @@ export default function QuoteComparatorPage() {
       )
       const results = await Promise.all(updates)
       for (const r of results) if (r.error) throw r.error
+      return { mode: 'marked' as const }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['quotations-compare', reqId] })
-      toast.success('Cotización seleccionada')
+      qc.invalidateQueries({ queryKey: ['po-for-requisition', reqId] })
+      if (result.mode === 'regenerated') {
+        toast.success('OC actualizada con la nueva cotización', {
+          description: 'Las líneas, precios y proveedor se sincronizaron.',
+        })
+        // Bust the PO detail cache so the preview iframe regenerates with new lines.
+        qc.invalidateQueries({ queryKey: ['compras', 'purchase-orders', 'detail', result.poId] })
+        qc.invalidateQueries({ queryKey: ['compras', 'purchase-orders'] })
+      } else {
+        toast.success('Cotización seleccionada')
+      }
     },
     onError: (e) => {
       const { title, description } = formatSupabaseError(e, 'No se pudo seleccionar la cotización')
