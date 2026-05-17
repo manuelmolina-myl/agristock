@@ -11,7 +11,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, Phone, Mail, MapPin, ShoppingCart, ChevronRight,
-  Calendar, CreditCard,
+  Calendar, CreditCard, TrendingUp, Truck, CheckCircle2, XCircle,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -51,6 +51,20 @@ interface SupplierPo {
   expected_delivery_date: string | null
   total_mxn: number | null
   total_usd: number | null
+}
+
+interface SupplierKpis {
+  supplier_id: string
+  organization_id: string
+  supplier_name: string
+  total_pos: number
+  active_pos: number
+  completed_pos: number
+  cancelled_pos: number
+  total_mxn: number
+  on_time_count: number
+  eligible_for_on_time: number
+  avg_delivery_days: number | null
 }
 
 const PO_STATUS_LABEL: Record<POStatus, string> = {
@@ -113,15 +127,57 @@ export default function SupplierDetailPage() {
     },
   })
 
+  const { data: kpis } = useQuery<SupplierKpis | null>({
+    queryKey: ['supplier-kpis', id],
+    enabled: !!id && !!organization?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('supplier_kpis')
+        .select('*')
+        .eq('supplier_id', id)
+        .maybeSingle()
+      if (error) throw error
+      return data as SupplierKpis | null
+    },
+  })
+
   const stats = useMemo(() => {
     const active = pos.filter((p) => !['cancelled', 'closed'].includes(p.status))
-    const totalMxn = pos.reduce((s, p) => s + (p.total_mxn ?? 0), 0)
+    const fallbackTotalMxn = pos.reduce((s, p) => s + (p.total_mxn ?? 0), 0)
     return {
-      total: pos.length,
-      active: active.length,
-      totalMxn,
+      total: kpis?.total_pos ?? pos.length,
+      active: kpis?.active_pos ?? active.length,
+      totalMxn: kpis?.total_mxn ?? fallbackTotalMxn,
     }
-  }, [pos])
+  }, [pos, kpis])
+
+  // ── Performance KPIs derived from supplier_kpis view ──────────────────────
+  const performance = useMemo(() => {
+    if (!kpis) return null
+    const eligible = kpis.eligible_for_on_time ?? 0
+    const onTime = kpis.on_time_count ?? 0
+    const onTimePct = eligible > 0 ? (onTime / eligible) * 100 : null
+    const onTimeTone: 'success' | 'warning' | 'critical' | 'default' =
+      onTimePct === null ? 'default'
+        : onTimePct >= 80 ? 'success'
+        : onTimePct >= 50 ? 'warning'
+        : 'critical'
+    const completed = kpis.completed_pos ?? 0
+    const activeCount = kpis.active_pos ?? 0
+    const completionDen = completed + activeCount
+    const completionPct = completionDen > 0 ? (completed / completionDen) * 100 : null
+    return {
+      onTimePct,
+      onTimeTone,
+      onTimeCount: onTime,
+      onTimeEligible: eligible,
+      avgDeliveryDays: kpis.avg_delivery_days,
+      completed,
+      active: activeCount,
+      completionPct,
+      cancelled: kpis.cancelled_pos ?? 0,
+    }
+  }, [kpis])
 
   if (loadingSupplier) {
     return (
@@ -315,6 +371,92 @@ export default function SupplierDetailPage() {
                 Notas
               </h3>
               <p className="text-sm whitespace-pre-wrap text-muted-foreground">{supplier.notes}</p>
+            </section>
+          )}
+
+          {performance && (
+            <section className="rounded-xl border border-border bg-card p-4">
+              <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground mb-3 flex items-center gap-1.5">
+                <TrendingUp className="size-3" />
+                Desempeño
+              </h3>
+              <dl className="space-y-3 text-sm">
+                {/* Entregas a tiempo */}
+                <div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-muted-foreground text-xs flex items-center gap-1.5">
+                      <CheckCircle2 className="size-3" />
+                      Entregas a tiempo
+                    </dt>
+                    <dd
+                      className={
+                        'font-mono tabular-nums font-semibold ' +
+                        (performance.onTimeTone === 'success' ? 'text-success'
+                          : performance.onTimeTone === 'warning' ? 'text-warning'
+                          : performance.onTimeTone === 'critical' ? 'text-destructive'
+                          : 'text-foreground')
+                      }
+                    >
+                      {performance.onTimePct === null
+                        ? '—'
+                        : `${performance.onTimePct.toFixed(0)}%`}
+                    </dd>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {performance.onTimeEligible === 0
+                      ? 'Sin OCs recibidas con fecha de entrega'
+                      : `${performance.onTimeCount} de ${performance.onTimeEligible} entregas dentro del plazo`}
+                  </p>
+                </div>
+
+                {/* Tiempo promedio de entrega */}
+                <div className="border-t pt-2 flex items-baseline justify-between gap-2">
+                  <dt className="text-muted-foreground text-xs flex items-center gap-1.5">
+                    <Truck className="size-3" />
+                    Tiempo promedio
+                  </dt>
+                  <dd className="font-mono tabular-nums">
+                    {performance.avgDeliveryDays == null
+                      ? '—'
+                      : `${performance.avgDeliveryDays} ${performance.avgDeliveryDays === 1 ? 'día' : 'días'}`}
+                  </dd>
+                </div>
+
+                {/* Completadas vs activas */}
+                <div className="border-t pt-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-muted-foreground text-xs">Completadas vs activas</dt>
+                    <dd className="font-mono tabular-nums text-xs">
+                      {performance.completed} / {performance.active}
+                    </dd>
+                  </div>
+                  {performance.completionPct !== null && (
+                    <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full bg-success transition-all"
+                        style={{ width: `${performance.completionPct}%` }}
+                        aria-label={`${performance.completionPct.toFixed(0)}% completadas`}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* OCs canceladas */}
+                <div className="border-t pt-2 flex items-baseline justify-between gap-2">
+                  <dt className="text-muted-foreground text-xs flex items-center gap-1.5">
+                    <XCircle className="size-3" />
+                    OCs canceladas
+                  </dt>
+                  <dd
+                    className={
+                      'font-mono tabular-nums ' +
+                      (performance.cancelled > 0 ? 'text-destructive font-semibold' : 'text-foreground')
+                    }
+                  >
+                    {performance.cancelled}
+                  </dd>
+                </div>
+              </dl>
             </section>
           )}
 

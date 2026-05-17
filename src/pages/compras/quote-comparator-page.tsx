@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowLeft, Plus, Trophy, Trash2, ShoppingCart, Loader2,
-  FileText, Building2, Paperclip, X as XIcon, Sparkles,
+  FileText, Building2, Paperclip, X as XIcon, Sparkles, History,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -165,6 +165,57 @@ export default function QuoteComparatorPage() {
     },
   })
   const fxRate = latestFx ?? 18
+
+  // ── Price history per catalog item ────────────────────────────────────────
+  // For each requisition line that points to a catalog item, surface the last
+  // 3 historical unit_costs from the `price_history` view (cotizaciones
+  // anteriores agrupadas por (item_id, supplier_id)).  This lets compras
+  // sanity-check si los precios de las cotizaciones actuales están alineados
+  // con lo que se ha pagado en el pasado.
+  const itemIdsFromReq = useMemo(() => {
+    const ids = new Set<string>()
+    for (const rl of req?.lines ?? []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const itemId = (rl as any).item_id as string | null | undefined
+      if (itemId) ids.add(itemId)
+    }
+    return Array.from(ids).sort()
+  }, [req])
+
+  const { data: priceHistoryByItem } = useQuery<
+    Map<string, Array<{ unit_cost: number; currency: 'MXN' | 'USD'; observed_on: string }>>
+  >({
+    queryKey: ['price-history', { orgId: organization?.id, itemIds: itemIdsFromReq }],
+    enabled: !!organization?.id && itemIdsFromReq.length > 0,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      // Pull a generous slice and group client-side so a single trip to the
+      // view covers every requisition line.  `limit = ids * 5` gives enough
+      // headroom to keep at least the 3 most recent entries per item even
+      // when one supplier dominates the history.
+      const { data, error } = await db
+        .from('price_history')
+        .select('item_id, unit_cost, currency, observed_on')
+        .in('item_id', itemIdsFromReq)
+        .order('observed_on', { ascending: false })
+        .limit(itemIdsFromReq.length * 5)
+      if (error) throw error
+      const map = new Map<
+        string,
+        Array<{ unit_cost: number; currency: 'MXN' | 'USD'; observed_on: string }>
+      >()
+      for (const row of (data ?? []) as Array<{
+        item_id: string; unit_cost: number; currency: 'MXN' | 'USD'; observed_on: string
+      }>) {
+        const arr = map.get(row.item_id) ?? []
+        if (arr.length < 3) {
+          arr.push({ unit_cost: row.unit_cost, currency: row.currency, observed_on: row.observed_on })
+          map.set(row.item_id, arr)
+        }
+      }
+      return map
+    },
+  })
 
   // Compute totals per quotation across its lines.
   const totals = useMemo(() => {
@@ -493,6 +544,9 @@ export default function QuoteComparatorPage() {
               {(req?.lines ?? []).map((rl) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const itemRel = (rl as any).item as { name: string; sku: string } | null | undefined
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const rlItemId = (rl as any).item_id as string | null | undefined
+                const hist = (rlItemId && priceHistoryByItem?.get(rlItemId)) || []
                 return (
                   <tr key={rl.id} className="hover:bg-muted/20">
                     <td className="px-3 py-2.5 align-top">
@@ -505,6 +559,17 @@ export default function QuoteComparatorPage() {
                       <div className="text-[11px] text-muted-foreground mt-0.5">
                         Cantidad: <span className="font-mono tabular-nums">{rl.quantity.toLocaleString('es-MX')}</span>
                       </div>
+                      {hist.length > 0 && (
+                        <div
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground"
+                          title="Últimos 3 precios cotizados para este ítem"
+                        >
+                          <History className="size-2.5 shrink-0" strokeWidth={1.75} />
+                          <span className="font-mono tabular-nums">
+                            Hist: {hist.map((h) => fmt(h.unit_cost, h.currency)).join(', ')}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     {quotations.map((q) => {
                       const ql = (q.lines ?? []).find((x) => x.requisition_line_id === rl.id)

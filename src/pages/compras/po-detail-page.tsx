@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, Calendar, Warehouse as WarehouseIcon, ArrowDownToLine,
   AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2, PenLine, Send, RotateCcw, Ban,
+  MessageSquare, Trash2, ShieldAlert,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -83,6 +84,32 @@ export default function PoDetailPage() {
   const { organization, user } = useAuth()
 
   const creatorName = user?.user_metadata?.full_name ?? user?.email ?? undefined
+
+  // ── Aprobación por monto: threshold para doble firma ─────────────────────
+  // El umbral se guarda en organizations.settings.approval_threshold_mxn (escalar).
+  // Si no está configurado, default = 50,000 MXN.
+  const { data: approvalThreshold } = useQuery<number>({
+    queryKey: ['org-approval-threshold', organization?.id],
+    enabled: !!organization?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('organizations')
+        .select('settings')
+        .eq('id', organization!.id)
+        .maybeSingle()
+      if (error) throw error
+      const raw = (data as { settings?: { approval_threshold_mxn?: number | string } } | null)
+        ?.settings?.approval_threshold_mxn
+      const parsed = typeof raw === 'string' ? Number(raw) : raw
+      return typeof parsed === 'number' && !Number.isNaN(parsed) && parsed > 0
+        ? parsed
+        : 50000
+    },
+  })
+
+  const threshold = approvalThreshold ?? 50000
+  const exceedsThreshold = !!po && (po.total_mxn ?? 0) > threshold
+  const requiresDoubleSignature = exceedsThreshold && po?.status === 'pending_signature'
 
   // ── Signature flow mutations ──────────────────────────────────────────────
   function invalidatePo() {
@@ -269,6 +296,87 @@ export default function PoDetailPage() {
     },
   })
 
+  // ── Comments thread ──────────────────────────────────────────────────────
+  // Fetch comments and resolve author names in a second query because the FK
+  // `po_comments.user_id` references auth.users (not profiles), so the
+  // PostgREST embed via `profile:profiles(full_name)` is not guaranteed to
+  // resolve.  We hydrate full_name from `profiles` with `.in('id', ids)`.
+  const { data: comments = [] } = useQuery<
+    Array<{
+      id: string
+      po_id: string
+      user_id: string
+      body: string
+      created_at: string
+      author_name: string | null
+    }>
+  >({
+    queryKey: ['po-comments', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('po_comments')
+        .select('id, po_id, user_id, body, created_at')
+        .eq('po_id', id)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      const rows = (data ?? []) as Array<{
+        id: string; po_id: string; user_id: string; body: string; created_at: string
+      }>
+      const ids = Array.from(new Set(rows.map((r) => r.user_id))).filter(Boolean)
+      const nameMap = new Map<string, string | null>()
+      if (ids.length > 0) {
+        const { data: profs } = await db
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', ids)
+        for (const p of (profs ?? []) as Array<{ id: string; full_name: string | null }>) {
+          nameMap.set(p.id, p.full_name)
+        }
+      }
+      return rows.map((r) => ({ ...r, author_name: nameMap.get(r.user_id) ?? null }))
+    },
+  })
+
+  const [newComment, setNewComment] = useState('')
+
+  const addComment = useMutation({
+    mutationFn: async () => {
+      const trimmed = newComment.trim()
+      if (!trimmed) throw new Error('Escribe un comentario antes de enviar')
+      if (!organization?.id || !user?.id || !id) throw new Error('Sin contexto')
+      const { error } = await db.from('po_comments').insert({
+        organization_id: organization.id,
+        po_id: id,
+        user_id: user.id,
+        body: trimmed,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      setNewComment('')
+      qc.invalidateQueries({ queryKey: ['po-comments', id] })
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo enviar el comentario')
+      toast.error(title, { description })
+    },
+  })
+
+  const deleteComment = useMutation({
+    mutationFn: async (commentId: string) => {
+      const { error } = await db.from('po_comments').delete().eq('id', commentId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['po-comments', id] })
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo eliminar el comentario')
+      toast.error(title, { description })
+    },
+  })
+
   const linesProgress = useMemo(() => {
     if (!po?.lines) return { full: 0, total: 0 }
     const total = po.lines.length
@@ -382,9 +490,14 @@ export default function PoDetailPage() {
                 className="gap-1.5"
                 onClick={() => setSignDialogOpen(true)}
                 disabled={signPo.isPending}
+                title={
+                  exceedsThreshold
+                    ? `OC supera $${threshold.toLocaleString('es-MX')} MXN — requiere doble firma`
+                    : undefined
+                }
               >
                 <PenLine className="size-4" />
-                Firmar OC
+                {exceedsThreshold ? 'Firmar como admin (2 de 2)' : 'Firmar OC'}
               </Button>
             </>
           )}
@@ -432,6 +545,21 @@ export default function PoDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Banner: OC supera umbral → requiere doble firma */}
+      {requiresDoubleSignature && (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3">
+          <ShieldAlert className="size-4 text-warning shrink-0 mt-0.5" strokeWidth={2} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-warning">
+              Esta OC supera el umbral de ${threshold.toLocaleString('es-MX', { minimumFractionDigits: 0 })} MXN. Requiere doble firma.
+            </p>
+            <p className="text-xs text-warning/80 mt-0.5">
+              Aprobación de compras (firma 1 de 2) y firma del admin (firma 2 de 2).
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
         {/* Left — lines + reception history */}
@@ -524,6 +652,93 @@ export default function PoDetailPage() {
                 </tfoot>
               )}
             </table>
+          </section>
+
+          {/* Comments thread — entre Partidas y la vista previa del PDF */}
+          <section className="rounded-xl border border-border bg-card overflow-hidden">
+            <header className="px-4 py-3 border-b flex items-center justify-between gap-2">
+              <h2 className="font-heading text-sm font-semibold tracking-[-0.01em] flex items-center gap-2">
+                <MessageSquare className="size-4 text-muted-foreground" strokeWidth={1.75} />
+                Comentarios
+                <Badge variant="outline" className="text-[10px] font-mono tabular-nums">
+                  {comments.length}
+                </Badge>
+              </h2>
+            </header>
+
+            {comments.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Sin comentarios todavía. Abre la conversación con tu equipo escribiendo abajo.
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {comments.map((c) => {
+                  const isMine = user?.id === c.user_id
+                  const displayName = c.author_name ?? (isMine ? 'Tú' : 'Usuario')
+                  const initial = (displayName?.trim()?.[0] ?? 'U').toUpperCase()
+                  return (
+                    <li key={c.id} className="px-4 py-3 group">
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="flex size-8 items-center justify-center rounded-full bg-primary/15 text-primary shrink-0 text-xs font-semibold"
+                          aria-hidden
+                        >
+                          {initial}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium truncate">{displayName}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: es })}
+                            </span>
+                            {isMine && (
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                onClick={() => deleteComment.mutate(c.id)}
+                                disabled={deleteComment.isPending}
+                                aria-label="Eliminar comentario"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-sm mt-1 whitespace-pre-wrap break-words">
+                            {c.body}
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            <div className="px-4 py-3 border-t bg-muted/20 flex flex-col gap-2">
+              <Textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Escribe un comentario para el equipo…"
+                rows={2}
+                disabled={addComment.isPending}
+                className="bg-card"
+              />
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => addComment.mutate()}
+                  disabled={addComment.isPending || newComment.trim().length === 0}
+                >
+                  {addComment.isPending
+                    ? <Loader2 className="size-4 animate-spin" />
+                    : <Send className="size-4" />}
+                  Enviar
+                </Button>
+              </div>
+            </div>
           </section>
 
           {/* PDF preview — debajo de Partidas, mismo ancho que la columna */}
