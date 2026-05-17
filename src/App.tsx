@@ -78,6 +78,8 @@ const MantenimientoCrew           = lazy(() => import('@/pages/mantenimiento-mod
 
 // Almacén module (top-level)
 const AlmacenDashboard = lazy(() => import('@/pages/almacen/almacen-dashboard'))
+const AlmacenTanques = lazy(() => import('@/pages/almacen/tanques-page'))
+const AlmacenTanqueDetail = lazy(() => import('@/pages/almacen/tanque-detail-page'))
 
 // Cockpit del Director (cross-module executive view)
 const CockpitPage = lazy(() => import('@/pages/cockpit/cockpit-page'))
@@ -255,6 +257,22 @@ export default function App() {
           }
         >
           <Route index element={<MantenimientoCalendar />} />
+        </Route>
+
+        {/* ─── Almacén · Tanques (acceso ampliado a mantenimiento) ──── */}
+        {/* Mantenimiento necesita ver el combustible disponible para planear
+            tareas en tractores; se expone como ruta separada para no abrir
+            el resto del módulo a este rol. */}
+        <Route
+          path="/almacen/tanques"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'almacenista', 'mantenimiento']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<AlmacenTanques />} />
+          <Route path=":id" element={<AlmacenTanqueDetail />} />
         </Route>
 
         {/* ─── Almacén module (top-level) ────────────────────────────── */}

@@ -84,15 +84,17 @@ const MODULES: ModuleSection[] = [
   },
   {
     heading: 'Almacén',
-    allowedRoles: ['admin', 'almacenista', 'compras'],
+    // Mantenimiento se incluye para que vea Tanques (planifica diésel para tractores).
+    allowedRoles: ['admin', 'almacenista', 'compras', 'mantenimiento'],
     items: [
-      { label: 'Dashboard',   to: '/almacen',             icon: LayoutDashboard },
-      { label: 'Inventario',  to: '/almacen/inventario',  icon: Package },
-      { label: 'Entradas',    to: '/almacen/entradas',    icon: ArrowDownToLine },
-      { label: 'Salidas',     to: '/almacen/salidas',     icon: ArrowUpFromLine },
-      { label: 'Traspasos',   to: '/almacen/traspasos',   icon: ArrowLeftRight },
-      { label: 'Diésel',      to: '/almacen/diesel',      icon: Fuel },
-      { label: 'Lotes',       to: '/almacen/lotes',       icon: MapPin },
+      { label: 'Dashboard',   to: '/almacen',             icon: LayoutDashboard, allowedRoles: ['admin', 'almacenista', 'compras'] },
+      { label: 'Inventario',  to: '/almacen/inventario',  icon: Package,         allowedRoles: ['admin', 'almacenista', 'compras'] },
+      { label: 'Entradas',    to: '/almacen/entradas',    icon: ArrowDownToLine, allowedRoles: ['admin', 'almacenista', 'compras'] },
+      { label: 'Salidas',     to: '/almacen/salidas',     icon: ArrowUpFromLine, allowedRoles: ['admin', 'almacenista', 'compras'] },
+      { label: 'Traspasos',   to: '/almacen/traspasos',   icon: ArrowLeftRight,  allowedRoles: ['admin', 'almacenista', 'compras'] },
+      { label: 'Diésel',      to: '/almacen/diesel',      icon: Fuel,            allowedRoles: ['admin', 'almacenista', 'compras'] },
+      { label: 'Tanques',     to: '/almacen/tanques',     icon: Fuel,            allowedRoles: ['admin', 'almacenista', 'mantenimiento'] },
+      { label: 'Lotes',       to: '/almacen/lotes',       icon: MapPin,          allowedRoles: ['admin', 'almacenista', 'compras'] },
     ],
   },
   {
