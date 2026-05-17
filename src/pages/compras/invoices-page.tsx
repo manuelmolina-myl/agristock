@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import {
-  Plus, Search, Receipt, AlertOctagon, CheckCircle2, ExternalLink,
-  Loader2, FileText,
+  Search, Receipt, AlertOctagon, CheckCircle2, ExternalLink,
+  Loader2, FileText, Paperclip, X as XIcon, ShoppingCart,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -26,12 +26,13 @@ import {
 } from '@/components/ui/select'
 
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/use-auth'
 import { formatSupabaseError } from '@/lib/errors'
 import { usePermissions } from '@/hooks/use-permissions'
 import {
-  useSupplierInvoicesList, useCreateInvoice, useReconcileInvoice, useMarkInvoicePaid,
+  useCreateInvoice, useReconcileInvoice, useMarkInvoicePaid,
 } from '@/features/compras/invoice-hooks'
-import type { InvoiceStatus, Currency } from '@/lib/database.types'
+import type { InvoiceStatus, Currency, POStatus } from '@/lib/database.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -66,70 +67,121 @@ const invoiceSchema = z.object({
 
 type InvoiceForm = z.infer<typeof invoiceSchema>
 
-export default function InvoicesPage() {
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all')
-  const [search, setSearch] = useState('')
-  const [createOpen, setCreateOpen] = useState(false)
-  const [reconcileTarget, setReconcileTarget] = useState<string | null>(null)
+// ─── PO-centric row type ───────────────────────────────────────────────────
+interface POWithInvoices {
+  id: string
+  folio: string
+  status: POStatus
+  supplier_id: string
+  supplier?: { name: string; rfc: string | null } | null
+  total_mxn: number | null
+  total_usd: number | null
+  issue_date: string
+  expected_delivery_date: string | null
+  invoices: Array<{
+    id: string
+    invoice_folio: string
+    issue_date: string
+    due_date: string | null
+    total: number | null
+    currency: Currency
+    status: InvoiceStatus
+    pdf_url: string | null
+    xml_url: string | null
+    cfdi_uuid: string | null
+    discrepancies: unknown
+  }>
+}
 
-  const { data: invoices = [], isLoading } = useSupplierInvoicesList({ status: statusFilter })
+type Filter = 'all' | 'missing' | 'with_invoice'
+
+export default function InvoicesPage() {
+  const [filter, setFilter] = useState<Filter>('missing')
+  const [search, setSearch] = useState('')
+  const [adjuntarPo, setAdjuntarPo] = useState<POWithInvoices | null>(null)
+  const [viewPo, setViewPo] = useState<POWithInvoices | null>(null)
+  const [reconcileTarget, setReconcileTarget] = useState<string | null>(null)
+  const { organization } = useAuth()
   const { can } = usePermissions()
   const reconcile = useReconcileInvoice()
   const markPaid  = useMarkInvoicePaid()
   const canWrite  = can('purchase.create')
 
+  // Lista de OCs (firmadas en adelante) con sus facturas asociadas.
+  // Facturas comes BEFORE recepciones — esta es la vista principal del módulo.
+  const { data: pos = [], isLoading } = useQuery<POWithInvoices[]>({
+    queryKey: ['pos-with-invoices', { orgId: organization?.id }],
+    enabled: !!organization?.id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('purchase_orders')
+        .select(`
+          id, folio, status, supplier_id, total_mxn, total_usd,
+          issue_date, expected_delivery_date,
+          supplier:suppliers(name, rfc),
+          invoices:supplier_invoices(
+            id, invoice_folio, issue_date, due_date, total, currency, status,
+            pdf_url, xml_url, cfdi_uuid, discrepancies
+          )
+        `)
+        .eq('organization_id', organization!.id)
+        .is('deleted_at', null)
+        .in('status', ['sent', 'confirmed', 'partially_received', 'received', 'closed'])
+        .order('issue_date', { ascending: false })
+        .limit(200)
+      if (error) throw error
+      return (data ?? []) as POWithInvoices[]
+    },
+  })
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return invoices
-    return invoices.filter((i) =>
-      i.invoice_folio.toLowerCase().includes(q) ||
-      (i.cfdi_uuid ?? '').toLowerCase().includes(q) ||
-      (i.supplier?.name ?? '').toLowerCase().includes(q),
-    )
-  }, [invoices, search])
+    return pos.filter((po) => {
+      // Filter by invoice presence
+      if (filter === 'missing' && po.invoices.length > 0) return false
+      if (filter === 'with_invoice' && po.invoices.length === 0) return false
+      // Search
+      if (q) {
+        const haystack = [
+          po.folio,
+          po.supplier?.name ?? '',
+          ...po.invoices.map((i) => `${i.invoice_folio} ${i.cfdi_uuid ?? ''}`),
+        ].join(' ').toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      return true
+    })
+  }, [pos, filter, search])
 
-  // Counts per tab for visual feedback
   const counts = useMemo(() => ({
-    all: invoices.length,
-    pending: invoices.filter((i) => i.status === 'pending').length,
-    discrepancy: invoices.filter((i) => i.status === 'discrepancy').length,
-    reconciled: invoices.filter((i) => i.status === 'reconciled').length,
-    paid: invoices.filter((i) => i.status === 'paid').length,
-  }), [invoices])
+    all: pos.length,
+    missing: pos.filter((p) => p.invoices.length === 0).length,
+    with_invoice: pos.filter((p) => p.invoices.length > 0).length,
+  }), [pos])
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6 max-w-7xl mx-auto w-full">
       <PageHeader
         title="Facturas"
-        description="CFDIs de proveedores. Se concilian contra la OC con tolerancia configurada (default 2%)."
-        actions={
-          canWrite && (
-            <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" />
-              Cargar factura
-            </Button>
-          )
-        }
+        description="Adjunta la factura del proveedor (PDF/XML) a cada Orden de Compra antes de registrar la recepción."
       />
 
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por folio, UUID o proveedor…"
+            placeholder="Buscar por folio de OC, proveedor o factura…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as InvoiceStatus | 'all')}>
-          <SelectTrigger className="h-9 sm:w-56"><SelectValue placeholder="Estatus" /></SelectTrigger>
+        <Select value={filter} onValueChange={(v) => setFilter((v ?? 'all') as Filter)}>
+          <SelectTrigger className="h-9 sm:w-64"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos ({counts.all})</SelectItem>
-            <SelectItem value="pending">Pendientes ({counts.pending})</SelectItem>
-            <SelectItem value="discrepancy">Con discrepancia ({counts.discrepancy})</SelectItem>
-            <SelectItem value="reconciled">Conciliadas ({counts.reconciled})</SelectItem>
-            <SelectItem value="paid">Pagadas ({counts.paid})</SelectItem>
+            <SelectItem value="missing">Sin factura ({counts.missing})</SelectItem>
+            <SelectItem value="with_invoice">Con factura ({counts.with_invoice})</SelectItem>
+            <SelectItem value="all">Todas las OC ({counts.all})</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -140,28 +192,31 @@ export default function InvoicesPage() {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={search || statusFilter !== 'all' ? 'Sin resultados' : 'Sin facturas registradas'}
-          description={search || statusFilter !== 'all'
-            ? 'Ajusta los filtros.'
-            : 'Carga la factura del proveedor (PDF/XML) para iniciar la conciliación contra la OC.'}
+          title={search || filter !== 'all' ? 'Sin resultados' : 'Sin OC para facturar'}
+          description={
+            filter === 'missing'
+              ? 'Todas las OC firmadas ya tienen factura. Cuando llegue una nueva, aparecerá aquí.'
+              : filter === 'with_invoice'
+                ? 'Aún no se ha cargado ninguna factura. Cambia el filtro a "Sin factura" para empezar.'
+                : 'Cuando se firmen OCs, aparecerán aquí para que adjuntes la factura del proveedor.'
+          }
           icon={<Receipt className="size-8 text-muted-foreground" strokeWidth={1.5} />}
         />
       ) : (
         <div className="flex flex-col gap-2">
-          {filtered.map((inv) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const discrepancies = inv.discrepancies as any
-            const diffPct = discrepancies?.diff_pct as number | undefined
-            const diff    = discrepancies?.diff as number | undefined
-            const railTone =
-              inv.status === 'discrepancy' ? 'bg-destructive' :
-              inv.status === 'paid'        ? 'bg-success' :
-              inv.status === 'reconciled'  ? 'bg-usd' :
-              'bg-border'
+          {filtered.map((po) => {
+            const hasInvoice = po.invoices.length > 0
+            const totalInvoiced = po.invoices.reduce((s, i) => s + (i.total ?? 0), 0)
+            const hasDiscrepancy = po.invoices.some((i) => i.status === 'discrepancy')
+            const railTone = !hasInvoice ? 'bg-warning'
+              : hasDiscrepancy ? 'bg-destructive'
+              : po.invoices.every((i) => i.status === 'paid') ? 'bg-success'
+              : po.invoices.every((i) => ['reconciled', 'paid'].includes(i.status)) ? 'bg-usd'
+              : 'bg-border'
 
             return (
               <div
-                key={inv.id}
+                key={po.id}
                 className="rounded-xl border border-border bg-card overflow-hidden flex"
               >
                 <span aria-hidden className={`w-1 shrink-0 ${railTone}`} />
@@ -169,101 +224,79 @@ export default function InvoicesPage() {
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-sm font-medium">{inv.invoice_folio}</span>
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_TONE[inv.status]}`}>
-                          {inv.status === 'discrepancy' && <AlertOctagon className="size-2.5" strokeWidth={2.5} />}
-                          {inv.status === 'reconciled' && <CheckCircle2 className="size-2.5" strokeWidth={2.5} />}
-                          {STATUS_LABEL[inv.status]}
-                        </span>
-                        {inv.po?.folio && (
-                          <span className="font-mono text-[11px] text-muted-foreground">
-                            → OC {inv.po.folio}
+                        <ShoppingCart className="size-3.5 text-muted-foreground shrink-0" />
+                        <span className="font-mono text-sm font-medium">{po.folio}</span>
+                        {!hasInvoice && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-warning/15 text-warning">
+                            Sin factura
+                          </span>
+                        )}
+                        {hasInvoice && !hasDiscrepancy && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-success/15 text-success">
+                            <CheckCircle2 className="size-2.5" />
+                            {po.invoices.length} factura{po.invoices.length === 1 ? '' : 's'}
+                          </span>
+                        )}
+                        {hasDiscrepancy && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-destructive/15 text-destructive">
+                            <AlertOctagon className="size-2.5" />
+                            Discrepancia
                           </span>
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {inv.supplier?.name ?? '—'}
-                        {' · emitida '}{format(new Date(inv.issue_date), 'd MMM yyyy', { locale: es })}
-                        {inv.due_date && ` · vence ${formatDistanceToNow(new Date(inv.due_date), { addSuffix: true, locale: es })}`}
+                        {po.supplier?.name ?? '—'}
+                        {' · emitida '}{format(new Date(po.issue_date), 'd MMM yyyy', { locale: es })}
                       </div>
-                      {inv.cfdi_uuid && (
-                        <div className="font-mono text-[10px] text-muted-foreground mt-0.5">
-                          CFDI {inv.cfdi_uuid}
-                        </div>
-                      )}
                     </div>
 
                     <div className="text-right shrink-0">
                       <div className="text-base font-semibold font-mono tabular-nums">
-                        {inv.currency === 'USD' ? 'US$' : '$'}
-                        {(inv.total ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        ${(po.total_mxn ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                       </div>
                       <div className="text-[10px] text-muted-foreground">
-                        {inv.currency} {inv.tax != null && `· IVA $${inv.tax.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`}
+                        MXN · OC total
+                        {hasInvoice && (
+                          <> · facturado <span className="font-mono">${totalInvoiced.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Discrepancy details */}
-                  {inv.status === 'discrepancy' && diff != null && (
-                    <div className="mt-2 rounded-md bg-destructive/5 border border-destructive/20 px-3 py-2 text-xs text-destructive flex items-start gap-2">
-                      <AlertOctagon className="size-3.5 shrink-0 mt-0.5" />
-                      <div>
-                        Diferencia de <span className="font-mono tabular-nums font-semibold">
-                          {inv.currency === 'USD' ? 'US$' : '$'}{Math.abs(diff).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                        </span>
-                        {' '}({diffPct?.toFixed(2)}%) frente a la OC.
-                        {' '}{diff > 0 ? 'Factura mayor que OC.' : 'Factura menor que OC.'}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Actions */}
                   <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    {inv.pdf_url && (
-                      <a
-                        href={inv.pdf_url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 h-7 px-2 text-xs rounded-md border border-input bg-background hover:bg-accent text-foreground transition-colors"
-                      >
-                        <FileText className="size-3" /> PDF
-                        <ExternalLink className="size-2.5" />
-                      </a>
-                    )}
-                    {inv.xml_url && (
-                      <a
-                        href={inv.xml_url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 h-7 px-2 text-xs rounded-md border border-input bg-background hover:bg-accent text-foreground transition-colors"
-                      >
-                        XML <ExternalLink className="size-2.5" />
-                      </a>
-                    )}
-                    {canWrite && inv.status === 'pending' && (
+                    {hasInvoice ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={() => setViewPo(po)}
+                        >
+                          <FileText className="size-3" />
+                          Ver facturas ({po.invoices.length})
+                        </Button>
+                        {canWrite && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                            onClick={() => setAdjuntarPo(po)}
+                          >
+                            <Paperclip className="size-3" />
+                            Adjuntar otra
+                          </Button>
+                        )}
+                      </>
+                    ) : canWrite ? (
                       <Button
-                        size="sm" className="h-7 px-2 text-xs gap-1 ml-auto"
-                        onClick={() => setReconcileTarget(inv.id)}
-                        disabled={reconcile.isPending}
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1 ml-auto"
+                        onClick={() => setAdjuntarPo(po)}
                       >
-                        <CheckCircle2 className="size-3" /> Conciliar
+                        <Paperclip className="size-3" />
+                        Adjuntar factura
                       </Button>
-                    )}
-                    {canWrite && inv.status === 'discrepancy' && (
-                      <Button
-                        size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 ml-auto"
-                        onClick={() => setReconcileTarget(inv.id)}
-                      >
-                        Conciliar de todos modos
-                      </Button>
-                    )}
-                    {canWrite && inv.status === 'reconciled' && (
-                      <Button
-                        size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 ml-auto"
-                        onClick={() => markPaid.mutate(inv.id, {
-                          onSuccess: () => toast.success('Marcada como pagada'),
-                        })}
-                      >
-                        Marcar pagada
-                      </Button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -272,10 +305,116 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      <CreateInvoiceDialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-      />
+      {/* Attach invoice dialog */}
+      {adjuntarPo && (
+        <CreateInvoiceDialog
+          open={!!adjuntarPo}
+          poContext={{
+            id: adjuntarPo.id,
+            folio: adjuntarPo.folio,
+            supplier_id: adjuntarPo.supplier_id,
+            supplier_name: adjuntarPo.supplier?.name ?? '—',
+            total_mxn: adjuntarPo.total_mxn,
+            total_usd: adjuntarPo.total_usd,
+          }}
+          onClose={() => setAdjuntarPo(null)}
+        />
+      )}
+
+      {/* View invoices for a PO */}
+      {viewPo && (
+        <Dialog open={!!viewPo} onOpenChange={(o) => !o && setViewPo(null)}>
+          <DialogContent className="!max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Facturas de OC {viewPo.folio}</DialogTitle>
+            </DialogHeader>
+            <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pt-2">
+              {viewPo.invoices.map((inv) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const discrep = inv.discrepancies as any
+                const diff    = discrep?.diff as number | undefined
+                return (
+                  <li key={inv.id} className="rounded-md border border-border bg-card p-3">
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-sm font-medium">{inv.invoice_folio}</span>
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_TONE[inv.status]}`}>
+                            {STATUS_LABEL[inv.status]}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Emitida {format(new Date(inv.issue_date), 'd MMM yyyy', { locale: es })}
+                          {inv.due_date && ` · vence ${formatDistanceToNow(new Date(inv.due_date), { addSuffix: true, locale: es })}`}
+                        </div>
+                        {inv.cfdi_uuid && (
+                          <div className="font-mono text-[10px] text-muted-foreground mt-0.5">
+                            CFDI {inv.cfdi_uuid}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold font-mono tabular-nums text-sm">
+                          {inv.currency === 'USD' ? 'US$' : '$'}
+                          {(inv.total ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">{inv.currency}</div>
+                      </div>
+                    </div>
+                    {inv.status === 'discrepancy' && diff != null && (
+                      <div className="mt-2 rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive">
+                        Diferencia ${Math.abs(diff).toLocaleString('es-MX', { minimumFractionDigits: 2 })} vs OC.
+                      </div>
+                    )}
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      {inv.pdf_url && (
+                        <a
+                          href={inv.pdf_url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded border border-input hover:bg-accent transition-colors"
+                        >
+                          <FileText className="size-2.5" /> PDF <ExternalLink className="size-2.5" />
+                        </a>
+                      )}
+                      {inv.xml_url && (
+                        <a
+                          href={inv.xml_url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded border border-input hover:bg-accent transition-colors"
+                        >
+                          XML <ExternalLink className="size-2.5" />
+                        </a>
+                      )}
+                      {canWrite && inv.status === 'pending' && (
+                        <Button size="sm" className="h-6 px-2 text-[11px] gap-1 ml-auto"
+                          onClick={() => setReconcileTarget(inv.id)}
+                          disabled={reconcile.isPending}
+                        >
+                          <CheckCircle2 className="size-2.5" /> Conciliar
+                        </Button>
+                      )}
+                      {canWrite && inv.status === 'discrepancy' && (
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] ml-auto"
+                          onClick={() => setReconcileTarget(inv.id)}
+                        >
+                          Conciliar igual
+                        </Button>
+                      )}
+                      {canWrite && inv.status === 'reconciled' && (
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] ml-auto"
+                          onClick={() => markPaid.mutate(inv.id, {
+                            onSuccess: () => toast.success('Marcada como pagada'),
+                          })}
+                        >
+                          Marcar pagada
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ConfirmReconcileDialog
         open={!!reconcileTarget}
@@ -301,35 +440,33 @@ export default function InvoicesPage() {
 
 // ─── Create invoice dialog ──────────────────────────────────────────────────
 
-interface CreateProps { open: boolean; onClose: () => void }
+interface CreateProps {
+  open: boolean
+  onClose: () => void
+  /** Pre-selected PO context — when present, hides the OC Select. */
+  poContext: {
+    id: string
+    folio: string
+    supplier_id: string
+    supplier_name: string
+    total_mxn: number | null
+    total_usd: number | null
+  }
+}
 
-function CreateInvoiceDialog({ open, onClose }: CreateProps) {
+function CreateInvoiceDialog({ open, onClose, poContext }: CreateProps) {
   const create = useCreateInvoice()
-
-  // Eligible POs: have a supplier and are awaiting/received.
-  const { data: pos = [] } = useQuery<Array<{
-    id: string; folio: string; supplier_id: string; supplier?: { name: string } | null;
-    total_mxn: number | null; total_usd: number | null
-  }>>({
-    queryKey: ['pos-for-invoice'],
-    enabled: open,
-    queryFn: async () => {
-      const { data, error } = await db
-        .from('purchase_orders')
-        .select('id, folio, supplier_id, total_mxn, total_usd, supplier:suppliers(name)')
-        .is('deleted_at', null)
-        .in('status', ['sent', 'confirmed', 'partially_received', 'received'])
-        .order('issue_date', { ascending: false })
-        .limit(100)
-      if (error) throw error
-      return data
-    },
-  })
+  const { organization } = useAuth()
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [xmlFile, setXmlFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
+  const xmlInputRef = useRef<HTMLInputElement>(null)
 
   const form = useForm<InvoiceForm>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: {
-      po_id: '', invoice_folio: '', cfdi_uuid: null,
+      po_id: poContext.id, invoice_folio: '', cfdi_uuid: null,
       issue_date: new Date().toISOString().slice(0, 10),
       due_date: null, subtotal: null, tax: null, total: 0,
       currency: 'MXN', pdf_url: null, xml_url: null, notes: null,
@@ -337,50 +474,80 @@ function CreateInvoiceDialog({ open, onClose }: CreateProps) {
   })
   const { register, handleSubmit, formState: { errors }, setValue, watch, reset } = form
 
-  const poId = watch('po_id')
   const currency = watch('currency')
   const total = watch('total')
 
-  const po = pos.find((p) => p.id === poId)
-  const poTotal = po ? (currency === 'USD' ? po.total_usd : po.total_mxn) : null
-  const projectedDiff = po && total && poTotal != null
+  const poTotal = currency === 'USD' ? poContext.total_usd : poContext.total_mxn
+  const projectedDiff = total && poTotal != null
     ? { diff: total - poTotal, pct: Math.abs((total - poTotal) / poTotal) * 100 }
     : null
 
-  const handleClose = () => { reset(); onClose() }
+  const handleClose = () => {
+    reset()
+    setPdfFile(null)
+    setXmlFile(null)
+    if (pdfInputRef.current) pdfInputRef.current.value = ''
+    if (xmlInputRef.current) xmlInputRef.current.value = ''
+    onClose()
+  }
 
-  const onSubmit = (values: InvoiceForm) => {
-    if (!po) {
-      toast.error('Selecciona una OC válida'); return
+  async function uploadInvoiceFile(file: File, kind: 'pdf' | 'xml'): Promise<string | null> {
+    if (!organization) return null
+    const ext = file.name.split('.').pop() ?? (kind === 'pdf' ? 'pdf' : 'xml')
+    const path = `${organization.id}/invoices/${poContext.id}/${Date.now()}-${kind}.${ext}`
+    const { error } = await supabase.storage
+      .from('cotizaciones')
+      .upload(path, file, { upsert: true, contentType: file.type || undefined })
+    if (error) throw error
+    const { data: signed, error: signErr } = await supabase.storage
+      .from('cotizaciones')
+      .createSignedUrl(path, 60 * 60 * 24 * 30 * 12) // 1 año — la URL se persiste; bucket privado de la org
+    if (signErr) throw signErr
+    return signed.signedUrl
+  }
+
+  const onSubmit = async (values: InvoiceForm) => {
+    setUploading(true)
+    try {
+      let pdfUrl = values.pdf_url || null
+      let xmlUrl = values.xml_url || null
+      if (pdfFile) pdfUrl = await uploadInvoiceFile(pdfFile, 'pdf')
+      if (xmlFile) xmlUrl = await uploadInvoiceFile(xmlFile, 'xml')
+
+      create.mutate({
+        po_id: poContext.id,
+        supplier_id: poContext.supplier_id,
+        invoice_folio: values.invoice_folio,
+        cfdi_uuid: values.cfdi_uuid || null,
+        issue_date: values.issue_date,
+        due_date: values.due_date || null,
+        subtotal: values.subtotal,
+        tax: values.tax,
+        total: values.total,
+        currency: values.currency as Currency,
+        pdf_url: pdfUrl,
+        xml_url: xmlUrl,
+        notes: values.notes ?? null,
+      }, {
+        onSuccess: (inv) => {
+          toast.success(inv.status === 'discrepancy' ? 'Factura cargada con discrepancia' : 'Factura cargada', {
+            description: inv.status === 'discrepancy'
+              ? 'El total no coincide con la OC dentro de la tolerancia.'
+              : 'Lista para conciliar contra la OC.',
+          })
+          handleClose()
+        },
+        onError: (e) => {
+          const { title, description } = formatSupabaseError(e, 'No se pudo cargar la factura')
+          toast.error(title, { description })
+        },
+      })
+    } catch (err) {
+      const { title, description } = formatSupabaseError(err, 'No se pudo subir el archivo')
+      toast.error(title, { description })
+    } finally {
+      setUploading(false)
     }
-    create.mutate({
-      po_id: values.po_id,
-      supplier_id: po.supplier_id,
-      invoice_folio: values.invoice_folio,
-      cfdi_uuid: values.cfdi_uuid || null,
-      issue_date: values.issue_date,
-      due_date: values.due_date || null,
-      subtotal: values.subtotal,
-      tax: values.tax,
-      total: values.total,
-      currency: values.currency as Currency,
-      pdf_url: values.pdf_url || null,
-      xml_url: values.xml_url || null,
-      notes: values.notes ?? null,
-    }, {
-      onSuccess: (inv) => {
-        toast.success(inv.status === 'discrepancy' ? 'Factura cargada con discrepancia' : 'Factura cargada', {
-          description: inv.status === 'discrepancy'
-            ? 'El total no coincide con la OC dentro de la tolerancia.'
-            : 'Lista para conciliar contra la OC.',
-        })
-        handleClose()
-      },
-      onError: (e) => {
-        const { title, description } = formatSupabaseError(e, 'No se pudo cargar la factura')
-        toast.error(title, { description })
-      },
-    })
   }
 
   return (
@@ -391,24 +558,17 @@ function CreateInvoiceDialog({ open, onClose }: CreateProps) {
         </DialogHeader>
 
         <form id="invoice-form" onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label>OC asociada <span className="text-destructive">*</span></Label>
-            <Select value={poId} onValueChange={(v) => setValue('po_id', v ?? '', { shouldDirty: true })}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Selecciona OC" /></SelectTrigger>
-              <SelectContent>
-                {pos.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.folio} — {p.supplier?.name ?? '—'}
-                    {p.total_mxn != null && (
-                      <span className="ml-2 text-muted-foreground text-xs font-mono tabular-nums">
-                        ${p.total_mxn.toLocaleString('es-MX', { minimumFractionDigits: 0 })}
-                      </span>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.po_id && <p className="text-xs text-destructive">{errors.po_id.message}</p>}
+          {/* PO context — read-only banner */}
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ShoppingCart className="size-3.5" /> OC
+              <span className="font-mono text-sm font-medium text-foreground">{poContext.folio}</span>
+              <span>·</span>
+              <span className="text-foreground">{poContext.supplier_name}</span>
+              <span className="ml-auto font-mono tabular-nums text-foreground">
+                ${(poContext.total_mxn ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -483,14 +643,81 @@ function CreateInvoiceDialog({ open, onClose }: CreateProps) {
             </div>
           </div>
 
+          {/* File uploads — preferred over URL */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pdf">URL del PDF</Label>
-              <Input id="pdf" type="url" {...register('pdf_url', { setValueAs: (v) => v || null })} className="h-9" placeholder="https://…" />
+              <Label>Archivo PDF</Label>
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept="application/pdf,image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  if (f.size > 10 * 1024 * 1024) {
+                    toast.error('PDF máximo 10 MB')
+                    e.target.value = ''
+                    return
+                  }
+                  setPdfFile(f)
+                }}
+              />
+              {pdfFile ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 h-9">
+                  <Paperclip className="size-3.5 text-muted-foreground" />
+                  <span className="text-xs truncate flex-1">{pdfFile.name}</span>
+                  <Button type="button" variant="ghost" size="icon-sm" onClick={() => { setPdfFile(null); if (pdfInputRef.current) pdfInputRef.current.value = '' }}>
+                    <XIcon className="size-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => pdfInputRef.current?.click()}
+                  className="h-9 justify-start gap-2 text-muted-foreground text-xs"
+                >
+                  <Paperclip className="size-3.5" /> Adjuntar PDF
+                </Button>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="xml">URL del XML</Label>
-              <Input id="xml" type="url" {...register('xml_url', { setValueAs: (v) => v || null })} className="h-9" placeholder="https://…" />
+              <Label>Archivo XML (CFDI)</Label>
+              <input
+                ref={xmlInputRef}
+                type="file"
+                accept="text/xml,application/xml,.xml"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  if (f.size > 5 * 1024 * 1024) {
+                    toast.error('XML máximo 5 MB')
+                    e.target.value = ''
+                    return
+                  }
+                  setXmlFile(f)
+                }}
+              />
+              {xmlFile ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 h-9">
+                  <Paperclip className="size-3.5 text-muted-foreground" />
+                  <span className="text-xs truncate flex-1">{xmlFile.name}</span>
+                  <Button type="button" variant="ghost" size="icon-sm" onClick={() => { setXmlFile(null); if (xmlInputRef.current) xmlInputRef.current.value = '' }}>
+                    <XIcon className="size-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => xmlInputRef.current?.click()}
+                  className="h-9 justify-start gap-2 text-muted-foreground text-xs"
+                >
+                  <Paperclip className="size-3.5" /> Adjuntar XML
+                </Button>
+              )}
             </div>
           </div>
 
@@ -511,7 +738,7 @@ function CreateInvoiceDialog({ open, onClose }: CreateProps) {
                 Diferencia <span className="font-mono tabular-nums">
                   {currency === 'USD' ? 'US$' : '$'}{Math.abs(projectedDiff.diff).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                 </span> ({projectedDiff.pct.toFixed(2)}%)
-                {' '}vs OC <span className="font-mono">{po?.folio}</span>.
+                {' '}vs OC <span className="font-mono">{poContext.folio}</span>.
                 {projectedDiff.pct > 2 ? ' Excede tolerancia del 2%; se marcará como discrepancia.' : ' Dentro de tolerancia.'}
               </div>
             </div>
@@ -519,15 +746,15 @@ function CreateInvoiceDialog({ open, onClose }: CreateProps) {
         </form>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={create.isPending}>Cancelar</Button>
+          <Button variant="outline" onClick={handleClose} disabled={create.isPending || uploading}>Cancelar</Button>
           <Button
             type="button"
             onClick={handleSubmit(onSubmit)}
-            disabled={create.isPending}
+            disabled={create.isPending || uploading}
             className="gap-1.5"
           >
-            {create.isPending && <Loader2 className="size-4 animate-spin" />}
-            Cargar factura
+            {(create.isPending || uploading) && <Loader2 className="size-4 animate-spin" />}
+            {uploading ? 'Subiendo archivos…' : 'Cargar factura'}
           </Button>
         </DialogFooter>
       </DialogContent>
