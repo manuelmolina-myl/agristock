@@ -1,7 +1,30 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, lazy, Suspense } from 'react'
 import { useLocation, useParams, useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
-import { ArrowLeft, Download, FileSpreadsheet, Clock } from 'lucide-react'
+import {
+  ArrowLeft,
+  Download,
+  FileSpreadsheet,
+  FileDown,
+  Clock,
+  Boxes,
+  AlertTriangle,
+  Tags,
+  Truck,
+  Receipt,
+  Users,
+  Sprout,
+  Layers,
+  Flame,
+  DollarSign,
+  Fuel,
+  Gauge,
+  TrendingUp,
+  TrendingDown,
+  Percent,
+  PackageX,
+  ArrowDownUp,
+} from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 import { useAuth } from '@/hooks/use-auth'
@@ -9,10 +32,24 @@ import { useItems, useWarehouses, useSuppliers, useCropLots } from '@/hooks/use-
 import { supabase } from '@/lib/supabase'
 import { useQuery } from '@tanstack/react-query'
 import { formatFechaCorta, formatMoney, formatQuantity } from '@/lib/utils'
+import { exportToCsv } from '@/lib/csv-export'
 
 import { PageHeader } from '@/components/custom/page-header'
 import { EmptyState } from '@/components/custom/empty-state'
 import { MoneyDisplay } from '@/components/custom/money-display'
+import { ReportMiniDashboard, type KpiTile } from '@/components/custom/report-mini-dashboard'
+import { Skeleton } from '@/components/ui/skeleton'
+
+// Lazy-loaded chart chunks — kept out of the initial reports bundle.
+const ReportExistenciasBarChart = lazy(
+  () => import('@/components/charts/report-existencias-bar-chart'),
+)
+const ReportHorizontalAmountBarChart = lazy(
+  () => import('@/components/charts/report-horizontal-amount-bar-chart'),
+)
+const ReportDieselMonthlyAreaChart = lazy(
+  () => import('@/components/charts/report-diesel-monthly-area-chart'),
+)
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -134,6 +171,30 @@ function generateExcel(
   XLSX.writeFile(wb, `${reportTitle.toLowerCase().replace(/\s+/g, '-')}.xlsx`)
 }
 
+// ─── CSV helper ───────────────────────────────────────────────────────────────
+
+/**
+ * Trigger a CSV download for a report. Reuses `exportToCsv` from
+ * `@/lib/csv-export` and computes a slug-friendly filename from the title.
+ *
+ * Footer rows (e.g. "TOTAL") are appended verbatim so that spreadsheet apps
+ * show them inline with the data rows.
+ */
+function downloadReportCsv(
+  reportTitle: string,
+  headers: string[],
+  rows: Array<Array<string | number | null | undefined>>,
+  footRow?: Array<string | number>,
+) {
+  const date = new Date().toISOString().slice(0, 10)
+  const filename = `${reportTitle.toLowerCase().replace(/\s+/g, '-')}-${date}.csv`
+  exportToCsv({
+    filename,
+    headers,
+    rows: footRow ? [...rows, footRow] : rows,
+  })
+}
+
 // ─── Placeholder component ────────────────────────────────────────────────────
 
 function ComingSoon({ title }: { title: string }) {
@@ -231,6 +292,20 @@ function KardexReport({ orgName }: { orgName: string }) {
   const selectedItem = items.find((i) => i.id === itemId)
   const filtersLabel = `Ítem: ${selectedItem?.name ?? 'N/A'} | ${dateFrom || 'inicio'} – ${dateTo}`
 
+  // KPIs: entradas (#), salidas (#), saldo final, costo último
+  const kpis: KpiTile[] = useMemo(() => {
+    if (kardex.length === 0) return []
+    const entradas = kardex.filter((k) => k.entrada > 0).length
+    const salidas = kardex.filter((k) => k.salida > 0).length
+    const lastLine = kardex[kardex.length - 1]
+    return [
+      { label: 'Entradas',     value: entradas,                                                  tone: 'success',  icon: TrendingUp,   hint: `${kardex.length} movimientos totales` },
+      { label: 'Salidas',      value: salidas,                                                   tone: 'warning',  icon: TrendingDown, hint: 'En el período' },
+      { label: 'Saldo final',  value: formatQuantity(lastLine.saldo),                            tone: 'info',     icon: Boxes,        hint: selectedItem?.name ?? '' },
+      { label: 'Último costo', value: formatMoney(lastLine.unit_cost_native, lastLine.currency as 'MXN' | 'USD'), tone: 'default', icon: DollarSign, hint: formatFechaCorta(lastLine.movement.created_at) },
+    ]
+  }, [kardex, selectedItem])
+
   return (
     <div className="flex flex-col gap-4">
       {/* Filters */}
@@ -259,19 +334,8 @@ function KardexReport({ orgName }: { orgName: string }) {
         </div>
       </div>
 
-      {/* Export buttons */}
-      {kardex.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Kardex General', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
-            <Download className="mr-1.5 size-3.5" />
-            Exportar PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => generateExcel('Kardex General', HEAD, buildRows() as (string | number)[][])}>
-            <FileSpreadsheet className="mr-1.5 size-3.5" />
-            Exportar Excel
-          </Button>
-        </div>
-      )}
+      {/* Mini dashboard */}
+      {kardex.length > 0 && <ReportMiniDashboard kpis={kpis} isLoading={isLoading} />}
 
       <Separator />
 
@@ -312,6 +376,24 @@ function KardexReport({ orgName }: { orgName: string }) {
           </Table>
         </div>
       )}
+
+      {/* Export buttons */}
+      {kardex.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Kardex General', HEAD, buildRows() as (string | number)[][])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Kardex General', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Kardex General', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -328,6 +410,7 @@ interface ItemStockRow {
   item?: {
     sku: string
     name: string
+    reorder_point?: number | null
     category?: { name: string } | null
     unit?: { code: string } | null
   }
@@ -350,7 +433,7 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
           warehouse_id,
           quantity,
           avg_cost_mxn,
-          item:items(sku, name, category:categories(name), unit:units(code)),
+          item:items(sku, name, reorder_point, category:categories(name), unit:units(code)),
           warehouse:warehouses(name, code)
         `)
         .eq('season_id', activeSeason?.id)
@@ -368,6 +451,36 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
   const totals = useMemo(() => ({
     mxn: stock.reduce((s, r) => s + (r.quantity * (r.avg_cost_mxn ?? 0)), 0),
   }), [stock])
+
+  // Aggregate value by category for the mini-dashboard chart (top 8).
+  const categoryBreakdown = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const r of stock) {
+      const cat = r.item?.category?.name ?? 'Sin categoría'
+      const value = r.quantity * (r.avg_cost_mxn ?? 0)
+      map.set(cat, (map.get(cat) ?? 0) + value)
+    }
+    return Array.from(map.entries())
+      .map(([category, total_mxn]) => ({ category, total_mxn }))
+      .sort((a, b) => b.total_mxn - a.total_mxn)
+      .slice(0, 8)
+  }, [stock])
+
+  // KPI values: total value, # items, low-stock count, top category.
+  const kpis: KpiTile[] = useMemo(() => {
+    if (stock.length === 0) return []
+    const itemCount = new Set(stock.map((r) => r.item_id)).size
+    const lowStock = stock.filter(
+      (r) => (r.item?.reorder_point ?? 0) > 0 && r.quantity < (r.item?.reorder_point ?? 0),
+    ).length
+    const topCategory = categoryBreakdown[0]
+    return [
+      { label: 'Valor total',     value: formatMoney(totals.mxn, 'MXN'),                                       tone: 'success',  icon: DollarSign, hint: 'Inventario valorizado' },
+      { label: 'Ítems',           value: itemCount,                                                            tone: 'info',     icon: Boxes,      hint: `${stock.length} ubicaciones` },
+      { label: 'Bajo reorden',    value: lowStock,                                                             tone: lowStock > 0 ? 'warning' : 'default', icon: AlertTriangle, hint: lowStock > 0 ? 'Reponer pronto' : 'Sin alertas' },
+      { label: 'Top categoría',   value: topCategory ? topCategory.category : '—',                             tone: 'default',  icon: Tags,       hint: topCategory ? formatMoney(topCategory.total_mxn, 'MXN') : '' },
+    ]
+  }, [stock, totals, categoryBreakdown])
 
   const HEAD = ['SKU', 'Nombre', 'Categoría', 'Unidad', 'Cantidad', 'Costo Prom. MXN', 'Valor Total MXN']
 
@@ -406,18 +519,18 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
         </div>
       </div>
 
-      {/* Export */}
+      {/* Mini dashboard */}
       {stock.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Existencias Valuadas', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow)}>
-            <Download className="mr-1.5 size-3.5" />
-            Exportar PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => generateExcel('Existencias Valuadas', HEAD, buildRows() as (string | number)[][], footRow)}>
-            <FileSpreadsheet className="mr-1.5 size-3.5" />
-            Exportar Excel
-          </Button>
-        </div>
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Top categorías por valor"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportExistenciasBarChart data={categoryBreakdown} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
       )}
 
       <Separator />
@@ -461,6 +574,24 @@ function ExistenciasReport({ orgName }: { orgName: string }) {
               </TableRow>
             </TableFooter>
           </Table>
+        </div>
+      )}
+
+      {/* Export buttons */}
+      {stock.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Existencias Valuadas', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Existencias Valuadas', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Existencias Valuadas', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow)}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
         </div>
       )}
     </div>
@@ -539,6 +670,27 @@ function EntradasProveedorReport({ orgName }: { orgName: string }) {
     usd:   grouped.reduce((s, r) => s + r.total_usd, 0),
   }), [grouped])
 
+  // Top 8 suppliers by MXN amount, for the bar chart.
+  const topSuppliers = useMemo(
+    () =>
+      grouped.slice(0, 8).map((r) => ({
+        label: r.supplier_name,
+        amount: r.total_mxn,
+      })),
+    [grouped],
+  )
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (grouped.length === 0) return []
+    const topSup = grouped[0]
+    return [
+      { label: 'Total entradas', value: formatMoney(totals.mxn, 'MXN'), tone: 'success', icon: Receipt,   hint: 'Compras del período' },
+      { label: '# Entradas',     value: totals.count,                   tone: 'info',    icon: Truck,     hint: 'OCs registradas' },
+      { label: '# Proveedores',  value: grouped.length,                 tone: 'default', icon: Users,     hint: 'Distintos en el período' },
+      { label: 'Top proveedor',  value: topSup?.supplier_name ?? '—',   tone: 'default', icon: Tags,      hint: topSup ? formatMoney(topSup.total_mxn, 'MXN') : '' },
+    ]
+  }, [grouped, totals])
+
   const HEAD = ['Proveedor', '# Entradas', 'Total MXN', 'Total USD']
 
   function buildRows() {
@@ -581,18 +733,18 @@ function EntradasProveedorReport({ orgName }: { orgName: string }) {
         </div>
       </div>
 
-      {/* Export */}
+      {/* Mini dashboard */}
       {grouped.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Entradas por Proveedor', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow as (string | number)[])}>
-            <Download className="mr-1.5 size-3.5" />
-            Exportar PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => generateExcel('Entradas por Proveedor', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
-            <FileSpreadsheet className="mr-1.5 size-3.5" />
-            Exportar Excel
-          </Button>
-        </div>
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Top proveedores por monto"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportHorizontalAmountBarChart data={topSuppliers} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
       )}
 
       <Separator />
@@ -636,6 +788,24 @@ function EntradasProveedorReport({ orgName }: { orgName: string }) {
               </TableRow>
             </TableFooter>
           </Table>
+        </div>
+      )}
+
+      {/* Export buttons */}
+      {grouped.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Entradas por Proveedor', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Entradas por Proveedor', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Entradas por Proveedor', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow as (string | number)[])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
         </div>
       )}
     </div>
@@ -727,6 +897,28 @@ function SalidasLoteReport({ orgName }: { orgName: string }) {
 
   const totalMxn = useMemo(() => grouped.reduce((s, r) => s + r.total_mxn, 0), [grouped])
 
+  // Top 8 lots by total MXN for the chart.
+  const topLots = useMemo(
+    () =>
+      grouped.slice(0, 8).map((r) => ({
+        label: r.lot_code,
+        amount: r.total_mxn,
+      })),
+    [grouped],
+  )
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (grouped.length === 0) return []
+    const topLot = grouped[0]
+    const avg = totalMxn / grouped.length
+    return [
+      { label: 'Costo total',     value: formatMoney(totalMxn, 'MXN'),       tone: 'success', icon: DollarSign, hint: 'Consumido por lotes' },
+      { label: '# Lotes',         value: grouped.length,                     tone: 'info',    icon: Sprout,     hint: 'Con consumo' },
+      { label: 'Lote más caro',   value: topLot?.lot_code ?? '—',            tone: 'warning', icon: Layers,     hint: topLot ? formatMoney(topLot.total_mxn, 'MXN') : '' },
+      { label: 'Promedio / lote', value: formatMoney(avg, 'MXN'),            tone: 'default', icon: Gauge,      hint: 'Costo medio' },
+    ]
+  }, [grouped, totalMxn])
+
   const HEAD = ['Lote', 'Cultivo', 'Hectáreas', 'Total Consumido MXN', 'Costo por Ha']
 
   function buildRows() {
@@ -759,18 +951,18 @@ function SalidasLoteReport({ orgName }: { orgName: string }) {
         </div>
       </div>
 
-      {/* Export */}
+      {/* Mini dashboard */}
       {grouped.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Salidas por Lote', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow)}>
-            <Download className="mr-1.5 size-3.5" />
-            Exportar PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => generateExcel('Salidas por Lote', HEAD, buildRows() as (string | number)[][], footRow)}>
-            <FileSpreadsheet className="mr-1.5 size-3.5" />
-            Exportar Excel
-          </Button>
-        </div>
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Top lotes por costo"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportHorizontalAmountBarChart data={topLots} yAxisWidth={100} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
       )}
 
       <Separator />
@@ -812,6 +1004,24 @@ function SalidasLoteReport({ orgName }: { orgName: string }) {
               </TableRow>
             </TableFooter>
           </Table>
+        </div>
+      )}
+
+      {/* Export buttons */}
+      {grouped.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Salidas por Lote', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Salidas por Lote', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Salidas por Lote', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow)}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
         </div>
       )}
     </div>
@@ -885,6 +1095,35 @@ function ConsumoDieselReport({ orgName }: { orgName: string }) {
     cost:   lines.reduce((s, l) => s + l.unit_cost_native * (l.diesel_liters ?? l.quantity), 0),
   }), [lines])
 
+  // Aggregate litres by month (last 6 months window).
+  const monthlySeries = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const l of lines) {
+      const d = new Date(l.movement.created_at)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      map.set(key, (map.get(key) ?? 0) + (l.diesel_liters ?? l.quantity))
+    }
+    const monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6)
+      .map(([key, liters]) => {
+        const [y, m] = key.split('-')
+        return { month: `${monthNames[Number(m) - 1]} ${y.slice(2)}`, liters }
+      })
+  }, [lines])
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (lines.length === 0) return []
+    const avgPerLoad = totals.liters / lines.length
+    return [
+      { label: 'Total litros',   value: `${formatQuantity(totals.liters, 0)} L`,    tone: 'info',    icon: Fuel,       hint: 'Consumido' },
+      { label: 'Costo total',    value: formatMoney(totals.cost, 'MXN'),            tone: 'success', icon: DollarSign, hint: 'A precio de carga' },
+      { label: '# Cargas',       value: lines.length,                               tone: 'default', icon: Flame,      hint: 'Cargas registradas' },
+      { label: 'Promedio/carga', value: `${formatQuantity(avgPerLoad, 1)} L`,       tone: 'default', icon: Gauge,      hint: 'Litros por carga' },
+    ]
+  }, [lines, totals])
+
   const HEAD = ['Fecha', 'Folio', 'Equipo', 'Operador', 'Litros', 'Costo/Litro', 'Total']
 
   function buildRows() {
@@ -919,14 +1158,16 @@ function ConsumoDieselReport({ orgName }: { orgName: string }) {
       </div>
 
       {lines.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Consumo Diésel', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow)}>
-            <Download className="mr-1.5 size-3.5" />Exportar PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => generateExcel('Consumo Diésel', HEAD, buildRows() as (string | number)[][], footRow)}>
-            <FileSpreadsheet className="mr-1.5 size-3.5" />Exportar Excel
-          </Button>
-        </div>
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Consumo mensual (últimos 6 meses)"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportDieselMonthlyAreaChart data={monthlySeries} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
       )}
       <Separator />
       {isLoading ? (
@@ -966,6 +1207,24 @@ function ConsumoDieselReport({ orgName }: { orgName: string }) {
               </TableRow>
             </TableFooter>
           </Table>
+        </div>
+      )}
+
+      {/* Export buttons */}
+      {lines.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Consumo Diésel', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Consumo Diésel', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Consumo Diésel', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow)}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
         </div>
       )}
     </div>
@@ -1028,6 +1287,17 @@ function SinMovimientoReport({ orgName }: { orgName: string }) {
 
   const isLoading = loadingStock || loadingMoved
 
+  const kpis: KpiTile[] = useMemo(() => {
+    if (sinMovimiento.length === 0 && allStock.length === 0) return []
+    const totalQty = sinMovimiento.reduce((s, r) => s + r.quantity, 0)
+    const pct = allStock.length > 0 ? (sinMovimiento.length / allStock.length) * 100 : 0
+    return [
+      { label: 'Sin movimiento', value: sinMovimiento.length,                     tone: sinMovimiento.length > 0 ? 'warning' : 'success', icon: PackageX, hint: 'En el período' },
+      { label: 'Existencia',     value: formatQuantity(totalQty, 0),              tone: 'info',    icon: Boxes,   hint: 'Unidades estancadas' },
+      { label: '% del catálogo', value: `${pct.toFixed(1)}%`,                     tone: 'default', icon: Percent, hint: `de ${allStock.length} ítems` },
+    ]
+  }, [sinMovimiento, allStock])
+
   const HEAD = ['SKU', 'Artículo', 'Categoría', 'Existencia actual']
 
   function buildRows() {
@@ -1054,15 +1324,9 @@ function SinMovimientoReport({ orgName }: { orgName: string }) {
         </div>
       </div>
 
-      {sinMovimiento.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Ítems sin Movimiento', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
-            <Download className="mr-1.5 size-3.5" />Exportar PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => generateExcel('Ítems sin Movimiento', HEAD, buildRows() as (string | number)[][])}>
-            <FileSpreadsheet className="mr-1.5 size-3.5" />Exportar Excel
-          </Button>
-        </div>
+      {/* Mini dashboard */}
+      {(sinMovimiento.length > 0 || allStock.length > 0) && (
+        <ReportMiniDashboard kpis={kpis} isLoading={isLoading} />
       )}
       <Separator />
       {isLoading ? (
@@ -1093,6 +1357,24 @@ function SinMovimientoReport({ orgName }: { orgName: string }) {
       <p className="text-xs text-muted-foreground text-right">
         {sinMovimiento.length} artículo{sinMovimiento.length !== 1 ? 's' : ''} sin movimiento
       </p>
+
+      {/* Export buttons */}
+      {sinMovimiento.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Ítems sin Movimiento', HEAD, buildRows() as (string | number)[][])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Ítems sin Movimiento', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Ítems sin Movimiento', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1151,6 +1433,30 @@ function VariacionPreciosReport({ orgName }: { orgName: string }) {
   const selectedItem = items.find((i) => i.id === itemId)
   const currency = lines[0]?.currency ?? 'MXN'
 
+  // Per-line variations (skipping the first entry which has no prior).
+  const variations = useMemo(() => {
+    const out: number[] = []
+    for (let i = 1; i < lines.length; i++) {
+      const prev = lines[i - 1].unit_cost_native
+      if (prev > 0) out.push(((lines[i].unit_cost_native - prev) / prev) * 100)
+    }
+    return out
+  }, [lines])
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (lines.length === 0) return []
+    const changed = variations.filter((v) => Math.abs(v) > 0.01).length
+    const avg = variations.length > 0 ? variations.reduce((s, v) => s + v, 0) / variations.length : 0
+    const maxInc = variations.length > 0 ? Math.max(...variations) : 0
+    const maxDec = variations.length > 0 ? Math.min(...variations) : 0
+    return [
+      { label: 'Cambios',          value: changed,                                  tone: 'info',     icon: ArrowDownUp, hint: `de ${variations.length} comparaciones` },
+      { label: 'Cambio promedio',  value: `${avg >= 0 ? '+' : ''}${avg.toFixed(1)}%`, tone: avg >= 0 ? 'warning' : 'success', icon: Percent, hint: 'Tendencia del período' },
+      { label: 'Mayor incremento', value: `${maxInc >= 0 ? '+' : ''}${maxInc.toFixed(1)}%`, tone: 'warning',  icon: TrendingUp,   hint: 'Pico al alza' },
+      { label: 'Mayor decremento', value: `${maxDec.toFixed(1)}%`,                  tone: 'success',  icon: TrendingDown, hint: 'Pico a la baja' },
+    ]
+  }, [lines, variations])
+
   const HEAD = ['Fecha', 'Folio', 'Proveedor', `Precio (${currency})`, 'Precio MXN', 'Variación']
 
   function buildRows() {
@@ -1197,16 +1503,8 @@ function VariacionPreciosReport({ orgName }: { orgName: string }) {
         </div>
       </div>
 
-      {lines.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Variación de Precios', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
-            <Download className="mr-1.5 size-3.5" />Exportar PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => generateExcel('Variación de Precios', HEAD, buildRows() as (string | number)[][])}>
-            <FileSpreadsheet className="mr-1.5 size-3.5" />Exportar Excel
-          </Button>
-        </div>
-      )}
+      {/* Mini dashboard */}
+      {lines.length > 0 && <ReportMiniDashboard kpis={kpis} isLoading={isLoading} />}
       <Separator />
       {itemId === 'all' ? (
         <EmptyState title="Selecciona un ítem" description="Elige un artículo para ver su historial de precios de compra." />
@@ -1241,6 +1539,24 @@ function VariacionPreciosReport({ orgName }: { orgName: string }) {
               })}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {/* Export buttons */}
+      {lines.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Variación de Precios', HEAD, buildRows() as (string | number)[][])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Variación de Precios', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Variación de Precios', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
         </div>
       )}
     </div>
