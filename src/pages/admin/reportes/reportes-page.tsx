@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
 import {
   FileText,
@@ -108,7 +108,18 @@ const REPORTS: ReportCard[] = [
 
 export default function ReportesPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const basePath = useBasePath()
+
+  // Si la página está montada bajo /direccion, /reportes o /gerente,
+  // navega manteniendo el mismo prefijo (más predecible que basePath).
+  const reportsRoot = location.pathname.startsWith('/direccion/reportes')
+    ? '/direccion/reportes'
+    : location.pathname.startsWith('/gerente/reportes')
+    ? '/gerente/reportes'
+    : location.pathname.startsWith('/reportes')
+    ? '/reportes'
+    : `${basePath}/reportes`
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -143,7 +154,7 @@ export default function ReportesPage() {
                   size="sm"
                   variant="outline"
                   className="w-full"
-                  onClick={() => navigate(`${basePath}/reportes/${report.slug}`)}
+                  onClick={() => navigate(`${reportsRoot}/${report.slug}`)}
                 >
                   Generar
                 </Button>

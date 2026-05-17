@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useLocation, useParams, useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
 import { ArrowLeft, Download, FileSpreadsheet, Clock } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -1254,8 +1254,18 @@ function VariacionPreciosReport({ orgName }: { orgName: string }) {
 export default function ReportViewerPage() {
   const { slug = '' } = useParams<{ slug: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const basePath = useBasePath()
   const { organization } = useAuth()
+
+  // Mantén el mismo prefijo de ruta al volver al índice.
+  const reportsRoot = location.pathname.startsWith('/direccion/reportes')
+    ? '/direccion/reportes'
+    : location.pathname.startsWith('/gerente/reportes')
+    ? '/gerente/reportes'
+    : location.pathname.startsWith('/reportes')
+    ? '/reportes'
+    : `${basePath}/reportes`
 
   const meta = REPORT_META[slug]
   const orgName = organization?.name ?? 'AgriStock'
@@ -1263,7 +1273,7 @@ export default function ReportViewerPage() {
   if (!meta) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <Button variant="ghost" size="sm" className="w-fit gap-1.5" onClick={() => navigate(`${basePath}/reportes`)}>
+        <Button variant="ghost" size="sm" className="w-fit gap-1.5" onClick={() => navigate(reportsRoot)}>
           <ArrowLeft className="size-3.5" />
           Reportes
         </Button>
@@ -1280,7 +1290,7 @@ export default function ReportViewerPage() {
           variant="ghost"
           size="sm"
           className="w-fit gap-1.5 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate(`${basePath}/reportes`)}
+          onClick={() => navigate(reportsRoot)}
         >
           <ArrowLeft className="size-3.5" />
           Reportes

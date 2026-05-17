@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { ROLE_ROUTES_NEW } from '@/lib/constants'
 import { ErrorBoundary } from '@/components/custom/error-boundary'
@@ -81,8 +81,8 @@ const AlmacenDashboard = lazy(() => import('@/pages/almacen/almacen-dashboard'))
 const AlmacenTanques = lazy(() => import('@/pages/almacen/tanques-page'))
 const AlmacenTanqueDetail = lazy(() => import('@/pages/almacen/tanque-detail-page'))
 
-// Cockpit del Director (cross-module executive view)
-const CockpitPage = lazy(() => import('@/pages/cockpit/cockpit-page'))
+// Dirección — vista ejecutiva cross-módulo (reemplaza al antiguo /cockpit)
+const TableroEjecutivoPage = lazy(() => import('@/pages/direccion/tablero-ejecutivo-page'))
 
 // Notifications inbox (all roles)
 const NotificacionesPage = lazy(() => import('@/pages/notificaciones/notificaciones-page'))
@@ -125,6 +125,11 @@ function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>
 }
 
+function LegacyAdminReporteRedirect() {
+  const { slug } = useParams()
+  return <Navigate to={`/direccion/reportes/${slug ?? ''}`} replace />
+}
+
 function DashboardRedirect() {
   const { profile, primaryRole, isLoading } = useAuth()
   if (isLoading) return <LoadingFallback />
@@ -165,17 +170,26 @@ export default function App() {
         {/* Onboarding (requires auth, but before org setup) */}
         <Route path="/onboarding" element={<OnboardingPage />} />
 
-        {/* ─── Cockpit del Director (cross-module executive view) ─── */}
+        {/* ─── Dirección · Tablero Ejecutivo + Reportes ─── */}
         <Route
-          path="/cockpit"
+          path="/direccion"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AppLayout />
             </ProtectedRoute>
           }
         >
-          <Route index element={<CockpitPage />} />
+          <Route index element={<Navigate to="/direccion/tablero" replace />} />
+          <Route path="tablero" element={<TableroEjecutivoPage />} />
+          <Route path="reportes" element={<ReportesPage />} />
+          <Route path="reportes/:slug" element={<ReportViewerPage />} />
         </Route>
+
+        {/* Legacy cockpit → tablero ejecutivo */}
+        <Route path="/cockpit" element={<Navigate to="/direccion/tablero" replace />} />
+        {/* Legacy admin reportes → dirección reportes */}
+        <Route path="/admin/reportes" element={<Navigate to="/direccion/reportes" replace />} />
+        <Route path="/admin/reportes/:slug" element={<LegacyAdminReporteRedirect />} />
 
         {/* ─── Notifications inbox (all roles) ────────────────────────── */}
         <Route
@@ -365,8 +379,7 @@ export default function App() {
           <Route path="lotes/:id" element={<LoteDetailPage />} />
           <Route path="equipos" element={<EquiposPage />} />
           <Route path="equipos/:id" element={<EquipoDetailPage />} />
-          <Route path="reportes" element={<ReportesPage />} />
-          <Route path="reportes/:slug" element={<ReportViewerPage />} />
+          {/* Reportes movidos a /direccion/reportes (ver redirect arriba) */}
           <Route path="auditoria" element={<AuditoriaPage />} />
           <Route path="configuracion" element={<CatalogosPage />} />
           <Route path="tipo-cambio" element={<FxRatesPage />} />

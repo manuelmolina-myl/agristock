@@ -27,6 +27,7 @@ import {
   LogOut,
   CreditCard,
   MessageSquareWarning,
+  TrendingUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -79,7 +80,8 @@ const MODULES: ModuleSection[] = [
     heading: 'Dirección',
     allowedRoles: ['admin'],
     items: [
-      { label: 'Cockpit', to: '/cockpit', icon: LayoutDashboard },
+      { label: 'Tablero ejecutivo', to: '/direccion/tablero',   icon: TrendingUp },
+      { label: 'Reportes',          to: '/direccion/reportes',  icon: BarChart3 },
     ],
   },
   {
@@ -131,7 +133,9 @@ const MODULES: ModuleSection[] = [
   },
   {
     heading: 'Reportes',
-    allowedRoles: ['admin', 'compras', 'mantenimiento'],
+    // Admin ve sus reportes desde Dirección; aquí lo conservamos para
+    // compras y mantenimiento que no tienen módulo de Dirección.
+    allowedRoles: ['compras', 'mantenimiento'],
     items: [
       { label: 'Reportes', to: '/reportes', icon: BarChart3 },
     ],
