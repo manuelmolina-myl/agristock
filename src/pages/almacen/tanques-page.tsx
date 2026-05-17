@@ -3,10 +3,10 @@
  *
  * KPIs: capacidad total, inventario actual, tanques en bajo nivel,
  * consumo 30 días. Tarjetas con barra de progreso por tanque. Filtros por
- * código/nombre y tipo (estacionario / móvil).
+ * código/nombre y tipo (estacionario / móvil). Admin puede crear, editar,
+ * archivar (soft-delete) y restaurar tanques.
  */
 import { useMemo, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,6 +23,10 @@ import {
   Search,
   Plus,
   Loader2,
+  MoreVertical,
+  Pencil,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react'
 
 import { supabase } from '@/lib/supabase'
@@ -56,6 +60,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -72,6 +92,7 @@ interface TankBalance {
   current_level_liters: number
   alert_threshold_pct: number
   location: string | null
+  notes: string | null
   supplier_id: string | null
   supplier_name: string | null
   last_load_at: string | null
@@ -86,20 +107,21 @@ type FilterType = 'all' | 'stationary' | 'mobile'
 
 // ─── Fetch ───────────────────────────────────────────────────────────────────
 
-async function fetchTanks(orgId: string): Promise<TankBalance[]> {
-  const { data, error } = await db
+async function fetchTanks(orgId: string, includeArchived: boolean): Promise<TankBalance[]> {
+  let q = db
     .from('diesel_tank_balance')
     .select('*')
     .eq('organization_id', orgId)
-    .eq('is_active', true)
     .order('code', { ascending: true })
+  if (!includeArchived) q = q.eq('is_active', true)
+  const { data, error } = await q
   if (error) throw error
   return (data ?? []) as TankBalance[]
 }
 
-// ─── New Tank Dialog ─────────────────────────────────────────────────────────
+// ─── Tank Form (create + edit) ───────────────────────────────────────────────
 
-const newTankSchema = z.object({
+const tankFormSchema = z.object({
   code: z.string().min(1, 'Código requerido').max(40),
   name: z.string().min(1, 'Nombre requerido').max(120),
   type: z.enum(['stationary', 'mobile']),
@@ -109,30 +131,38 @@ const newTankSchema = z.object({
   notes: z.string().max(500).optional(),
 })
 
-type NewTankForm = z.infer<typeof newTankSchema>
+type TankFormValues = z.infer<typeof tankFormSchema>
 
-interface NewTankDialogProps {
+interface TankFormDialogProps {
   open: boolean
   onClose: () => void
+  mode: 'create' | 'edit'
+  tank?: TankBalance | null
 }
 
-function NewTankDialog({ open, onClose }: NewTankDialogProps) {
+function TankFormDialog({ open, onClose, mode, tank }: TankFormDialogProps) {
   const { organization } = useAuth()
   const qc = useQueryClient()
   const [submitting, setSubmitting] = useState(false)
 
-  const form = useForm<NewTankForm>({
+  const defaults = useMemo<TankFormValues>(
+    () => ({
+      code: tank?.code ?? '',
+      name: tank?.name ?? '',
+      type: tank?.type ?? 'stationary',
+      capacity_liters:
+        tank?.capacity_liters ?? (undefined as unknown as number),
+      alert_threshold_pct: tank?.alert_threshold_pct ?? 20,
+      location: tank?.location ?? '',
+      notes: tank?.notes ?? '',
+    }),
+    [tank],
+  )
+
+  const form = useForm<TankFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(newTankSchema) as any,
-    defaultValues: {
-      code: '',
-      name: '',
-      type: 'stationary',
-      capacity_liters: undefined as unknown as number,
-      alert_threshold_pct: 20,
-      location: '',
-      notes: '',
-    },
+    resolver: zodResolver(tankFormSchema) as any,
+    values: defaults,
   })
 
   const {
@@ -147,46 +177,60 @@ function NewTankDialog({ open, onClose }: NewTankDialogProps) {
   const typeVal = watch('type')
 
   const handleClose = () => {
-    reset({
-      code: '',
-      name: '',
-      type: 'stationary',
-      capacity_liters: undefined as unknown as number,
-      alert_threshold_pct: 20,
-      location: '',
-      notes: '',
-    })
+    reset(defaults)
     onClose()
   }
 
-  const onSubmit = async (values: NewTankForm) => {
+  const onSubmit = async (values: TankFormValues) => {
     if (!organization) {
       toast.error('Sin organización activa')
       return
     }
     setSubmitting(true)
     try {
-      const { error } = await db.from('diesel_tanks').insert({
-        organization_id: organization.id,
-        code: values.code.trim(),
-        name: values.name.trim(),
-        type: values.type,
-        capacity_liters: values.capacity_liters,
-        current_level_liters: 0,
-        alert_threshold_pct: values.alert_threshold_pct,
-        location: values.location?.trim() || null,
-        notes: values.notes?.trim() || null,
-        is_active: true,
-      })
-      if (error) throw error
+      if (mode === 'edit' && tank) {
+        const { error } = await db
+          .from('diesel_tanks')
+          .update({
+            code: values.code.trim(),
+            name: values.name.trim(),
+            type: values.type,
+            capacity_liters: values.capacity_liters,
+            alert_threshold_pct: values.alert_threshold_pct,
+            location: values.location?.trim() || null,
+            notes: values.notes?.trim() || null,
+          })
+          .eq('id', tank.id)
+        if (error) throw error
+        toast.success('Tanque actualizado', {
+          description: `${values.name} (${values.code})`,
+        })
+      } else {
+        const { error } = await db.from('diesel_tanks').insert({
+          organization_id: organization.id,
+          code: values.code.trim(),
+          name: values.name.trim(),
+          type: values.type,
+          capacity_liters: values.capacity_liters,
+          current_level_liters: 0,
+          alert_threshold_pct: values.alert_threshold_pct,
+          location: values.location?.trim() || null,
+          notes: values.notes?.trim() || null,
+          is_active: true,
+        })
+        if (error) throw error
+        toast.success('Tanque creado', {
+          description: `${values.name} (${values.code})`,
+        })
+      }
 
-      toast.success('Tanque creado', {
-        description: `${values.name} (${values.code})`,
-      })
       qc.invalidateQueries({ queryKey: ['diesel-tanks'] })
       handleClose()
     } catch (err) {
-      const { title, description } = formatSupabaseError(err, 'No se pudo crear el tanque')
+      const { title, description } = formatSupabaseError(
+        err,
+        mode === 'edit' ? 'No se pudo actualizar el tanque' : 'No se pudo crear el tanque',
+      )
       toast.error(title, { description })
     } finally {
       setSubmitting(false)
@@ -197,14 +241,16 @@ function NewTankDialog({ open, onClose }: NewTankDialogProps) {
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Nuevo tanque</DialogTitle>
+          <DialogTitle>{mode === 'edit' ? 'Editar tanque' : 'Nuevo tanque'}</DialogTitle>
           <DialogDescription>
-            Registra un tanque estacionario o móvil de combustible.
+            {mode === 'edit'
+              ? 'Actualiza la información del tanque. El nivel actual no se modifica aquí.'
+              : 'Registra un tanque estacionario o móvil de combustible.'}
           </DialogDescription>
         </DialogHeader>
 
         <form
-          id="new-tank-form"
+          id="tank-form"
           onSubmit={handleSubmit(onSubmit)}
           className="flex flex-col gap-3"
         >
@@ -343,7 +389,9 @@ function NewTankDialog({ open, onClose }: NewTankDialogProps) {
             className="gap-1.5"
           >
             {submitting && <Loader2 className="size-4 animate-spin" />}
-            {submitting ? 'Creando…' : 'Crear tanque'}
+            {submitting
+              ? mode === 'edit' ? 'Guardando…' : 'Creando…'
+              : mode === 'edit' ? 'Guardar cambios' : 'Crear tanque'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -351,16 +399,92 @@ function NewTankDialog({ open, onClose }: NewTankDialogProps) {
   )
 }
 
+// ─── Archive / Restore confirmation ──────────────────────────────────────────
+
+interface ArchiveDialogProps {
+  open: boolean
+  onClose: () => void
+  tank: TankBalance | null
+  mode: 'archive' | 'restore'
+}
+
+function ArchiveDialog({ open, onClose, tank, mode }: ArchiveDialogProps) {
+  const qc = useQueryClient()
+  const [submitting, setSubmitting] = useState(false)
+
+  const archive = mode === 'archive'
+
+  const onConfirm = async () => {
+    if (!tank) return
+    setSubmitting(true)
+    try {
+      const { error } = await db
+        .from('diesel_tanks')
+        .update({ is_active: archive ? false : true })
+        .eq('id', tank.id)
+      if (error) throw error
+      toast.success(archive ? 'Tanque archivado' : 'Tanque restaurado', {
+        description: `${tank.name} (${tank.code})`,
+      })
+      qc.invalidateQueries({ queryKey: ['diesel-tanks'] })
+      onClose()
+    } catch (err) {
+      const { title, description } = formatSupabaseError(
+        err,
+        archive ? 'No se pudo archivar' : 'No se pudo restaurar',
+      )
+      toast.error(title, { description })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {archive ? '¿Archivar este tanque?' : '¿Restaurar este tanque?'}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {archive
+              ? `"${tank?.name}" dejará de aparecer en el listado activo y no podrá recibir cargas ni dispensar combustible. El histórico se conserva y puedes restaurarlo en cualquier momento desde "Mostrar archivados".`
+              : `"${tank?.name}" volverá al listado activo y podrá usarse nuevamente para cargas y dispensas.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={submitting}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            disabled={submitting}
+            className={cn(
+              'gap-1.5',
+              archive && 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+            )}
+          >
+            {submitting && <Loader2 className="size-4 animate-spin" />}
+            {archive ? 'Archivar' : 'Restaurar'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 // ─── Tank Card ───────────────────────────────────────────────────────────────
 
 interface TankCardProps {
   tank: TankBalance
-  onClick: () => void
+  isAdmin: boolean
+  onEdit: () => void
+  onArchive: () => void
+  onRestore: () => void
 }
 
-function TankCard({ tank, onClick }: TankCardProps) {
+function TankCard({ tank, isAdmin, onEdit, onArchive, onRestore }: TankCardProps) {
   const Icon = tank.type === 'mobile' ? Truck : Fuel
   const fillPct = Math.max(0, Math.min(100, tank.fill_pct ?? 0))
+  const archived = !tank.is_active
 
   const barColor =
     tank.level_status === 'low'
@@ -369,8 +493,9 @@ function TankCard({ tank, onClick }: TankCardProps) {
       ? 'bg-warning'
       : 'bg-success'
 
-  const railTone =
-    tank.level_status === 'low'
+  const railTone = archived
+    ? 'bg-muted-foreground/30'
+    : tank.level_status === 'low'
       ? 'bg-destructive'
       : tank.level_status === 'medium'
       ? 'bg-warning'
@@ -381,13 +506,11 @@ function TankCard({ tank, onClick }: TankCardProps) {
     : 'sin recargas'
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
         'group relative w-full overflow-hidden rounded-xl border border-border bg-card',
         'flex flex-col text-left transition-all duration-150',
-        'hover:border-foreground/20 hover:shadow-sm',
+        archived && 'opacity-70',
       )}
     >
       <span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-1', railTone)} />
@@ -403,9 +526,45 @@ function TankCard({ tank, onClick }: TankCardProps) {
           </p>
           <p className="font-mono text-xs text-muted-foreground">{tank.code}</p>
         </div>
-        <Badge variant="outline" className="text-[10px] h-5 px-1.5 shrink-0">
-          {tank.type === 'mobile' ? 'Móvil' : 'Estacionario'}
-        </Badge>
+        <div className="flex items-center gap-1 shrink-0">
+          {archived && (
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-muted-foreground/40 text-muted-foreground">
+              Archivado
+            </Badge>
+          )}
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+            {tank.type === 'mobile' ? 'Móvil' : 'Estacionario'}
+          </Badge>
+          {isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="Acciones del tanque"
+                className="-mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <MoreVertical className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[12rem]">
+                {!archived && (
+                  <DropdownMenuItem onClick={onEdit} className="gap-2">
+                    <Pencil className="size-3.5" /> Editar
+                  </DropdownMenuItem>
+                )}
+                {archived ? (
+                  <DropdownMenuItem onClick={onRestore} className="gap-2">
+                    <ArchiveRestore className="size-3.5" /> Restaurar
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    onClick={onArchive}
+                    className="gap-2 text-destructive focus:text-destructive"
+                  >
+                    <Archive className="size-3.5" /> Archivar
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
 
       {/* Big number */}
@@ -431,7 +590,7 @@ function TankCard({ tank, onClick }: TankCardProps) {
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {fillPct.toFixed(1)}%
           </span>
-          {tank.level_status === 'low' && (
+          {tank.level_status === 'low' && !archived && (
             <Badge
               variant="outline"
               className="text-[10px] h-4 px-1 border-destructive/40 text-destructive gap-0.5"
@@ -458,15 +617,13 @@ function TankCard({ tank, onClick }: TankCardProps) {
         </p>
         <p className="text-[11px] text-muted-foreground truncate">Último: {lastLoadLabel}</p>
       </div>
-    </button>
+    </div>
   )
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function TanquesPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
   const { organization } = useAuth()
   const { hasRole } = usePermissions()
   const orgId = organization?.id ?? ''
@@ -475,15 +632,23 @@ export default function TanquesPage() {
 
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<FilterType>('all')
-  const [newTankOpen, setNewTankOpen] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
+
+  const [formOpen, setFormOpen] = useState(false)
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
+  const [editingTank, setEditingTank] = useState<TankBalance | null>(null)
+
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [archiveMode, setArchiveMode] = useState<'archive' | 'restore'>('archive')
+  const [targetTank, setTargetTank] = useState<TankBalance | null>(null)
 
   const {
     data: tanks = [],
     isLoading,
     error,
   } = useQuery<TankBalance[]>({
-    queryKey: ['diesel-tanks', orgId],
-    queryFn: () => fetchTanks(orgId),
+    queryKey: ['diesel-tanks', { orgId, includeArchived: showArchived }],
+    queryFn: () => fetchTanks(orgId, showArchived),
     enabled: !!orgId,
   })
 
@@ -492,18 +657,26 @@ export default function TanquesPage() {
     toast.error(title, { description })
   }
 
-  // KPIs
+  // KPIs — solo cuentan tanques activos
   const kpis = useMemo(() => {
-    const totalCapacity = tanks.reduce((s, t) => s + (t.capacity_liters ?? 0), 0)
-    const totalLevel = tanks.reduce((s, t) => s + (t.current_level_liters ?? 0), 0)
-    const lowCount = tanks.filter((t) => t.level_status === 'low').length
-    const consumed30d = tanks.reduce((s, t) => s + (t.dispensed_30d ?? 0), 0)
+    const active = tanks.filter((t) => t.is_active)
+    const totalCapacity = active.reduce((s, t) => s + (t.capacity_liters ?? 0), 0)
+    const totalLevel = active.reduce((s, t) => s + (t.current_level_liters ?? 0), 0)
+    const lowCount = active.filter((t) => t.level_status === 'low').length
+    const consumed30d = active.reduce((s, t) => s + (t.dispensed_30d ?? 0), 0)
     const utilPct = totalCapacity > 0 ? (totalLevel / totalCapacity) * 100 : 0
     const avgPerDay = consumed30d / 30
-    return { totalCapacity, totalLevel, lowCount, consumed30d, utilPct, avgPerDay }
+    return {
+      totalCapacity,
+      totalLevel,
+      lowCount,
+      consumed30d,
+      utilPct,
+      avgPerDay,
+      activeCount: active.length,
+    }
   }, [tanks])
 
-  // Filtering
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return tanks.filter((t) => {
@@ -517,6 +690,30 @@ export default function TanquesPage() {
     })
   }, [tanks, search, filterType])
 
+  const openCreate = () => {
+    setFormMode('create')
+    setEditingTank(null)
+    setFormOpen(true)
+  }
+
+  const openEdit = (t: TankBalance) => {
+    setFormMode('edit')
+    setEditingTank(t)
+    setFormOpen(true)
+  }
+
+  const openArchive = (t: TankBalance) => {
+    setArchiveMode('archive')
+    setTargetTank(t)
+    setArchiveOpen(true)
+  }
+
+  const openRestore = (t: TankBalance) => {
+    setArchiveMode('restore')
+    setTargetTank(t)
+    setArchiveOpen(true)
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
       <PageHeader
@@ -524,7 +721,7 @@ export default function TanquesPage() {
         description="Niveles actuales, recargas y consumo"
         actions={
           isAdmin && (
-            <Button size="sm" onClick={() => setNewTankOpen(true)} className="gap-1.5">
+            <Button size="sm" onClick={openCreate} className="gap-1.5">
               <Plus className="size-3.5" /> Nuevo tanque
             </Button>
           )
@@ -537,7 +734,7 @@ export default function TanquesPage() {
           icon={Droplet}
           label="Capacidad total"
           value={`${formatQuantity(kpis.totalCapacity, 0)} L`}
-          hint={tanks.length === 1 ? '1 tanque' : `${tanks.length} tanques`}
+          hint={kpis.activeCount === 1 ? '1 tanque' : `${kpis.activeCount} tanques`}
           loading={isLoading}
         />
         <KpiCard
@@ -602,6 +799,18 @@ export default function TanquesPage() {
             </SelectContent>
           </Select>
         </div>
+        {isAdmin && (
+          <Button
+            type="button"
+            variant={showArchived ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowArchived((v) => !v)}
+            className="h-9 gap-1.5 sm:w-auto"
+          >
+            <Archive className="size-3.5" />
+            {showArchived ? 'Ocultar archivados' : 'Mostrar archivados'}
+          </Button>
+        )}
       </div>
 
       {/* Grid */}
@@ -635,7 +844,7 @@ export default function TanquesPage() {
             }
             action={
               tanks.length === 0 && isAdmin
-                ? { label: '+ Nuevo tanque', onClick: () => setNewTankOpen(true) }
+                ? { label: '+ Nuevo tanque', onClick: openCreate }
                 : undefined
             }
           />
@@ -646,17 +855,27 @@ export default function TanquesPage() {
             <TankCard
               key={t.id}
               tank={t}
-              onClick={() =>
-                navigate(`/almacen/tanques/${t.id}`, {
-                  state: { from: location.pathname },
-                })
-              }
+              isAdmin={isAdmin}
+              onEdit={() => openEdit(t)}
+              onArchive={() => openArchive(t)}
+              onRestore={() => openRestore(t)}
             />
           ))}
         </div>
       )}
 
-      <NewTankDialog open={newTankOpen} onClose={() => setNewTankOpen(false)} />
+      <TankFormDialog
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        mode={formMode}
+        tank={editingTank}
+      />
+      <ArchiveDialog
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        tank={targetTank}
+        mode={archiveMode}
+      />
     </div>
   )
 }
