@@ -13,6 +13,7 @@ import {
   Lock,
   Users,
   DollarSign,
+  CreditCard,
 } from 'lucide-react'
 
 import { PageHeader } from '@/components/custom/page-header'
@@ -101,6 +102,18 @@ const REPORTS: ReportCard[] = [
     title: 'Conversiones de Moneda',
     description: 'Historial de tipos de cambio y conversiones MXN/USD aplicadas.',
     icon: DollarSign,
+  },
+  {
+    slug: 'cuentas-por-pagar',
+    title: 'Cuentas por Pagar Aging',
+    description: 'Antigüedad de facturas pendientes de pago a proveedores.',
+    icon: CreditCard,
+  },
+  {
+    slug: 'costo-mantenimiento-equipo',
+    title: 'Costo de Mantenimiento por Equipo',
+    description: 'Costo total de mantenimiento por equipo en el período seleccionado.',
+    icon: Wrench,
   },
 ]
 

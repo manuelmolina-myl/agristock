@@ -24,15 +24,31 @@ import {
   Percent,
   PackageX,
   ArrowDownUp,
+  Wrench,
+  RefreshCw,
+  Activity,
+  CalendarClock,
+  CreditCard,
+  ListChecks,
+  ShieldCheck,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 import { useAuth } from '@/hooks/use-auth'
-import { useItems, useWarehouses, useSuppliers, useCropLots } from '@/hooks/use-supabase-query'
+import {
+  useItems,
+  useWarehouses,
+  useSuppliers,
+  useCropLots,
+  useCategories,
+  useEquipment,
+} from '@/hooks/use-supabase-query'
 import { supabase } from '@/lib/supabase'
 import { useQuery } from '@tanstack/react-query'
 import { formatFechaCorta, formatMoney, formatQuantity } from '@/lib/utils'
 import { exportToCsv } from '@/lib/csv-export'
+import { formatSupabaseError } from '@/lib/errors'
+import { Badge } from '@/components/ui/badge'
 
 import { PageHeader } from '@/components/custom/page-header'
 import { EmptyState } from '@/components/custom/empty-state'
@@ -49,6 +65,15 @@ const ReportHorizontalAmountBarChart = lazy(
 )
 const ReportDieselMonthlyAreaChart = lazy(
   () => import('@/components/charts/report-diesel-monthly-area-chart'),
+)
+const ReportFxHistoryLineChart = lazy(
+  () => import('@/components/charts/report-fx-history-line-chart'),
+)
+const ReportAuditStackedBarChart = lazy(
+  () => import('@/components/charts/report-audit-stacked-bar-chart'),
+)
+const ReportRotacionBucketBarChart = lazy(
+  () => import('@/components/charts/report-rotacion-bucket-bar-chart'),
 )
 
 import { Button } from '@/components/ui/button'
@@ -99,6 +124,8 @@ const REPORT_META: Record<string, ReportMeta> = {
   'cierre-temporada':   { slug: 'cierre-temporada',      title: 'Cierre de Temporada',     description: 'Resumen ejecutivo al cierre de temporada' },
   'auditoria-usuario':  { slug: 'auditoria-usuario',     title: 'Auditoría por Usuario',   description: 'Acciones por usuario' },
   'conversiones-moneda':{ slug: 'conversiones-moneda',   title: 'Conversiones de Moneda',  description: 'Tipos de cambio aplicados' },
+  'cuentas-por-pagar':  { slug: 'cuentas-por-pagar',     title: 'Cuentas por Pagar Aging', description: 'Antigüedad de saldos por proveedor' },
+  'costo-mantenimiento-equipo': { slug: 'costo-mantenimiento-equipo', title: 'Costo de Mantenimiento por Equipo', description: 'Costo de OTs por equipo en el período' },
 }
 
 // ─── PDF helper ───────────────────────────────────────────────────────────────
@@ -1564,6 +1591,1566 @@ function VariacionPreciosReport({ orgName }: { orgName: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Report 8: Salidas por Equipo
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SalidaEquipoLineRaw {
+  id: string
+  quantity: number
+  line_total_mxn: number | null
+  equipment_id: string | null
+  equipment?: { id: string; name: string; code: string } | null
+  movement?: {
+    id: string
+    movement_type: string
+    status: string
+    season_id: string
+    created_at: string
+  } | null
+}
+
+interface SalidaEquipoRow {
+  equipment_id: string
+  code: string
+  name: string
+  count: number
+  quantity: number
+  cost_mxn: number
+}
+
+function SalidasEquipoReport({ orgName }: { orgName: string }) {
+  const { activeSeason } = useAuth()
+  const today = new Date().toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo]     = useState<string>(today)
+
+  const { data: lines = [], isLoading, error } = useQuery<SalidaEquipoLineRaw[]>({
+    queryKey: ['salidas-equipo-report', { seasonId: activeSeason?.id, dateFrom, dateTo }],
+    queryFn: async () => {
+      let q = db
+        .from('stock_movement_lines')
+        .select(`
+          id, quantity, line_total_mxn, equipment_id,
+          equipment:equipment(id, name, code),
+          movement:stock_movements!inner(id, movement_type, status, season_id, created_at)
+        `)
+        .eq('destination_type', 'equipment')
+        .not('equipment_id', 'is', null)
+        .like('movement.movement_type', 'exit_%')
+        .eq('movement.status', 'posted')
+        .eq('movement.season_id', activeSeason?.id)
+
+      if (dateFrom) q = q.gte('movement.created_at', `${dateFrom}T00:00:00`)
+      if (dateTo)   q = q.lte('movement.created_at', `${dateTo}T23:59:59`)
+
+      const { data, error } = await q
+      if (error) throw error
+      return (data as SalidaEquipoLineRaw[]).filter((l) => l.movement && l.equipment_id)
+    },
+    enabled: !!activeSeason?.id,
+  })
+
+  const grouped = useMemo<SalidaEquipoRow[]>(() => {
+    const map = new Map<string, SalidaEquipoRow>()
+    const movementSet = new Map<string, Set<string>>()
+    for (const l of lines) {
+      const eid = l.equipment_id
+      if (!eid) continue
+      if (!map.has(eid)) {
+        map.set(eid, {
+          equipment_id: eid,
+          code: l.equipment?.code ?? '—',
+          name: l.equipment?.name ?? '—',
+          count: 0,
+          quantity: 0,
+          cost_mxn: 0,
+        })
+        movementSet.set(eid, new Set<string>())
+      }
+      const row = map.get(eid)!
+      row.quantity += l.quantity ?? 0
+      row.cost_mxn += l.line_total_mxn ?? 0
+      if (l.movement?.id) movementSet.get(eid)!.add(l.movement.id)
+    }
+    for (const [eid, set] of movementSet) {
+      const row = map.get(eid)
+      if (row) row.count = set.size
+    }
+    return Array.from(map.values()).sort((a, b) => b.cost_mxn - a.cost_mxn)
+  }, [lines])
+
+  const totals = useMemo(() => ({
+    count: grouped.reduce((s, r) => s + r.count, 0),
+    cost: grouped.reduce((s, r) => s + r.cost_mxn, 0),
+  }), [grouped])
+
+  const topEquipos = useMemo(
+    () => grouped.slice(0, 8).map((r) => ({ label: r.code, amount: r.cost_mxn })),
+    [grouped],
+  )
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (grouped.length === 0) return []
+    const avg = grouped.length > 0 ? totals.cost / grouped.length : 0
+    return [
+      { label: 'Equipos atendidos', value: grouped.length,                tone: 'info',    icon: Wrench,    hint: 'Con consumo' },
+      { label: '# Salidas',         value: totals.count,                  tone: 'default', icon: Receipt,   hint: 'Movimientos posted' },
+      { label: 'Costo total',       value: formatMoney(totals.cost, 'MXN'), tone: 'success', icon: DollarSign, hint: 'Consumido por equipos' },
+      { label: 'Promedio / equipo', value: formatMoney(avg, 'MXN'),        tone: 'default', icon: Gauge,     hint: 'Costo medio' },
+    ]
+  }, [grouped, totals])
+
+  const HEAD = ['Código', 'Equipo', '# Salidas', 'Cantidad total', 'Costo MXN']
+
+  function buildRows() {
+    return grouped.map((r) => [
+      r.code,
+      r.name,
+      r.count,
+      formatQuantity(r.quantity),
+      formatMoney(r.cost_mxn, 'MXN'),
+    ])
+  }
+
+  const footRow = ['TOTAL', '', totals.count, '', formatMoney(totals.cost, 'MXN')]
+  const filtersLabel = `${dateFrom || 'inicio'} – ${dateTo}`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Desde</Label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Hasta</Label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-destructive">{formatSupabaseError(error).description}</p>
+      )}
+
+      {grouped.length > 0 && (
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Top equipos por costo"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportHorizontalAmountBarChart data={topEquipos} yAxisWidth={120} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
+      )}
+
+      <Separator />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : grouped.length === 0 ? (
+        <EmptyState title="Sin salidas a equipos" description="No se encontraron salidas con destino a equipos en el período seleccionado." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {grouped.map((r) => (
+                <TableRow key={r.equipment_id}>
+                  <TableCell className="font-mono text-xs">{r.code}</TableCell>
+                  <TableCell className="text-xs font-medium">{r.name}</TableCell>
+                  <TableCell className="text-center text-xs">{r.count}</TableCell>
+                  <TableCell className="text-right text-xs">{formatQuantity(r.quantity)}</TableCell>
+                  <TableCell className="text-right text-xs">
+                    <MoneyDisplay amount={r.cost_mxn} currency="MXN" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={2} className="text-xs font-semibold">TOTAL</TableCell>
+                <TableCell className="text-center text-xs font-semibold">{totals.count}</TableCell>
+                <TableCell />
+                <TableCell className="text-right text-xs font-semibold">
+                  <MoneyDisplay amount={totals.cost} currency="MXN" />
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </div>
+      )}
+
+      {grouped.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Salidas por Equipo', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Salidas por Equipo', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Salidas por Equipo', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow as (string | number)[])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report 9: Rotación de Inventario
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RotacionItemRaw {
+  id: string
+  sku: string
+  name: string
+  category_id: string | null
+  category?: { id: string; name: string } | null
+  stocks?: Array<{ quantity: number; avg_cost_mxn: number; season_id: string }>
+}
+
+interface RotacionExitRaw {
+  item_id: string
+  quantity: number
+  movement?: { season_id: string; movement_type: string; status: string; created_at: string } | null
+}
+
+interface RotacionRow {
+  id: string
+  sku: string
+  name: string
+  category: string
+  stock: number
+  exits: number
+  rotation: number
+  days_inventory: number
+}
+
+function RotacionReport({ orgName }: { orgName: string }) {
+  const { activeSeason, organization } = useAuth()
+  const { data: categories = [] } = useCategories()
+  const [categoryId, setCategoryId] = useState<string>('all')
+
+  // Use the active season as the analysis window: from start_date → today.
+  const startDate = activeSeason?.start_date ?? null
+  const endDate = new Date().toISOString().slice(0, 10)
+  const daysPeriodo = useMemo(() => {
+    if (!startDate) return 365
+    const start = new Date(`${startDate}T00:00:00`).getTime()
+    const end = new Date(`${endDate}T23:59:59`).getTime()
+    return Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)))
+  }, [startDate, endDate])
+
+  const { data: items = [], isLoading: loadingItems, error: itemsError } = useQuery<RotacionItemRaw[]>({
+    queryKey: ['rotacion-items', { orgId: organization?.id, seasonId: activeSeason?.id, categoryId }],
+    queryFn: async () => {
+      let q = db
+        .from('items')
+        .select(`
+          id, sku, name, category_id,
+          category:categories(id, name),
+          stocks:item_stock(quantity, avg_cost_mxn, season_id)
+        `)
+        .eq('organization_id', organization?.id)
+        .eq('is_active', true)
+      if (categoryId !== 'all') q = q.eq('category_id', categoryId)
+      const { data, error } = await q
+      if (error) throw error
+      return data as RotacionItemRaw[]
+    },
+    enabled: !!organization?.id,
+  })
+
+  const { data: exits = [], isLoading: loadingExits, error: exitsError } = useQuery<RotacionExitRaw[]>({
+    queryKey: ['rotacion-exits', { seasonId: activeSeason?.id }],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('stock_movement_lines')
+        .select(`
+          item_id, quantity,
+          movement:stock_movements!inner(season_id, movement_type, status, created_at)
+        `)
+        .like('movement.movement_type', 'exit_%')
+        .eq('movement.status', 'posted')
+        .eq('movement.season_id', activeSeason?.id)
+      if (error) throw error
+      return data as RotacionExitRaw[]
+    },
+    enabled: !!activeSeason?.id,
+  })
+
+  const isLoading = loadingItems || loadingExits
+  const error = itemsError ?? exitsError
+
+  const rows = useMemo<RotacionRow[]>(() => {
+    const exitsByItem = new Map<string, number>()
+    for (const e of exits) {
+      if (!e.movement) continue
+      exitsByItem.set(e.item_id, (exitsByItem.get(e.item_id) ?? 0) + (e.quantity ?? 0))
+    }
+    const out: RotacionRow[] = []
+    for (const it of items) {
+      const stocksForSeason = (it.stocks ?? []).filter((s) => s.season_id === activeSeason?.id)
+      const stock = stocksForSeason.reduce((s, r) => s + (r.quantity ?? 0), 0)
+      const exitsQty = exitsByItem.get(it.id) ?? 0
+      // promedio_inventario ≈ stock actual (proxy)
+      // rotación = (exits / avg_inventory) * (365 / days_periodo)
+      const avgInv = stock
+      const rotation = avgInv > 0 ? (exitsQty / avgInv) * (365 / daysPeriodo) : 0
+      const days_inventory = rotation > 0 ? 365 / rotation : Number.POSITIVE_INFINITY
+      // Only include items that have either stock or exits in the period.
+      if (avgInv > 0 || exitsQty > 0) {
+        out.push({
+          id: it.id,
+          sku: it.sku,
+          name: it.name,
+          category: it.category?.name ?? '—',
+          stock,
+          exits: exitsQty,
+          rotation,
+          days_inventory,
+        })
+      }
+    }
+    return out.sort((a, b) => b.rotation - a.rotation)
+  }, [items, exits, daysPeriodo, activeSeason?.id])
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (rows.length === 0) return []
+    const withRotation = rows.filter((r) => r.rotation > 0)
+    const avgRot = withRotation.length > 0
+      ? withRotation.reduce((s, r) => s + r.rotation, 0) / withRotation.length
+      : 0
+    const avgDays = avgRot > 0 ? 365 / avgRot : 0
+    const critical = rows.filter((r) => r.rotation > 0 && r.rotation < 1).length
+    return [
+      { label: 'Ítems analizados',  value: rows.length,                              tone: 'info',     icon: Boxes,    hint: 'Con stock o salidas' },
+      { label: 'Rotación promedio', value: `${avgRot.toFixed(2)}×`,                  tone: 'default',  icon: RefreshCw, hint: 'Veces al año' },
+      { label: 'Días inv. promedio', value: avgDays > 0 ? `${Math.round(avgDays)} d` : '—', tone: 'default', icon: CalendarClock, hint: 'Estimado' },
+      { label: 'Ítems críticos',    value: critical,                                 tone: critical > 0 ? 'warning' : 'success', icon: AlertTriangle, hint: 'Rotación < 1×' },
+    ]
+  }, [rows])
+
+  const buckets = useMemo(() => {
+    const counts = { '0-1': 0, '1-3': 0, '3-6': 0, '6+': 0 }
+    for (const r of rows) {
+      if (r.rotation < 1) counts['0-1']++
+      else if (r.rotation < 3) counts['1-3']++
+      else if (r.rotation < 6) counts['3-6']++
+      else counts['6+']++
+    }
+    return Object.entries(counts).map(([bucket, count]) => ({ bucket, count }))
+  }, [rows])
+
+  const HEAD = ['SKU', 'Nombre', 'Categoría', 'Stock', 'Salidas', 'Rotación', 'Días inv.']
+
+  function buildRows() {
+    return rows.map((r) => [
+      r.sku,
+      r.name,
+      r.category,
+      formatQuantity(r.stock),
+      formatQuantity(r.exits),
+      `${r.rotation.toFixed(2)}×`,
+      Number.isFinite(r.days_inventory) ? `${Math.round(r.days_inventory)} d` : '∞',
+    ])
+  }
+
+  const filtersLabel = `Temporada: ${activeSeason?.name ?? 'N/A'} | Categoría: ${categoryId === 'all' ? 'Todas' : (categories.find((c) => c.id === categoryId)?.name ?? categoryId)} | ${daysPeriodo} días`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Categoría</Label>
+          <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? '')}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las categorías</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-destructive">{formatSupabaseError(error).description}</p>
+      )}
+
+      {rows.length > 0 && (
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Distribución por rotación"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportRotacionBucketBarChart data={buckets} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
+      )}
+
+      <Separator />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : rows.length === 0 ? (
+        <EmptyState title="Sin datos suficientes" description="No se encontraron ítems con stock o salidas en la temporada seleccionada." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="font-mono text-xs">{r.sku}</TableCell>
+                  <TableCell className="text-xs font-medium">{r.name}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{r.category}</TableCell>
+                  <TableCell className="text-right text-xs">{formatQuantity(r.stock)}</TableCell>
+                  <TableCell className="text-right text-xs">{formatQuantity(r.exits)}</TableCell>
+                  <TableCell className={`text-right text-xs font-medium ${r.rotation > 0 && r.rotation < 1 ? 'text-destructive' : ''}`}>{r.rotation.toFixed(2)}×</TableCell>
+                  <TableCell className="text-right text-xs">{Number.isFinite(r.days_inventory) ? `${Math.round(r.days_inventory)} d` : '∞'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Rotación de Inventario', HEAD, buildRows() as (string | number)[][])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Rotación de Inventario', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Rotación de Inventario', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report 10: Cierre de Temporada
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SeasonRow {
+  id: string
+  name: string
+  status: 'planning' | 'active' | 'closing' | 'closed'
+  start_date: string
+  end_date: string
+}
+
+interface CierreStockRaw {
+  item_id: string
+  quantity: number
+  avg_cost_mxn: number
+  item?: { sku: string; name: string; category?: { name: string } | null } | null
+}
+
+interface CierreMovementRaw {
+  movement_type: string
+  status: string
+  total_mxn: number | null
+}
+
+function CierreTemporadaReport({ orgName }: { orgName: string }) {
+  const { activeSeason, organization } = useAuth()
+
+  // Seasons picker: closed/closing first, then active, then planning.
+  const { data: seasons = [], isLoading: loadingSeasons } = useQuery<SeasonRow[]>({
+    queryKey: ['seasons-list', organization?.id],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('seasons')
+        .select('id, name, status, start_date, end_date')
+        .eq('organization_id', organization?.id)
+        .order('start_date', { ascending: false })
+      if (error) throw error
+      return data as SeasonRow[]
+    },
+    enabled: !!organization?.id,
+  })
+
+  const sortedSeasons = useMemo(() => {
+    const priority: Record<SeasonRow['status'], number> = {
+      closed: 0,
+      closing: 1,
+      active: 2,
+      planning: 3,
+    }
+    return [...seasons].sort((a, b) => {
+      const pa = priority[a.status] ?? 4
+      const pb = priority[b.status] ?? 4
+      if (pa !== pb) return pa - pb
+      return b.start_date.localeCompare(a.start_date)
+    })
+  }, [seasons])
+
+  const defaultSeasonId =
+    sortedSeasons.find((s) => s.status === 'closed' || s.status === 'closing')?.id ??
+    activeSeason?.id ??
+    sortedSeasons[0]?.id ??
+    ''
+
+  const [seasonId, setSeasonId] = useState<string>(defaultSeasonId)
+
+  // When sortedSeasons resolves and seasonId is empty, hydrate.
+  const effectiveSeasonId = seasonId || defaultSeasonId
+  const selectedSeason = sortedSeasons.find((s) => s.id === effectiveSeasonId)
+
+  const { data: stock = [], isLoading: loadingStock, error: stockError } = useQuery<CierreStockRaw[]>({
+    queryKey: ['cierre-stock', effectiveSeasonId],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('item_stock')
+        .select(`
+          item_id, quantity, avg_cost_mxn,
+          item:items(sku, name, category:categories(name))
+        `)
+        .eq('season_id', effectiveSeasonId)
+        .gt('quantity', 0)
+      if (error) throw error
+      return data as CierreStockRaw[]
+    },
+    enabled: !!effectiveSeasonId,
+  })
+
+  const { data: movements = [], isLoading: loadingMov, error: movError } = useQuery<CierreMovementRaw[]>({
+    queryKey: ['cierre-movements', effectiveSeasonId],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('stock_movements')
+        .select('movement_type, status, total_mxn')
+        .eq('season_id', effectiveSeasonId)
+        .eq('status', 'posted')
+      if (error) throw error
+      return data as CierreMovementRaw[]
+    },
+    enabled: !!effectiveSeasonId,
+  })
+
+  const isLoading = loadingSeasons || loadingStock || loadingMov
+  const error = stockError ?? movError
+
+  const rows = useMemo(
+    () =>
+      stock.map((s) => ({
+        item_id: s.item_id,
+        sku: s.item?.sku ?? '—',
+        name: s.item?.name ?? '—',
+        category: s.item?.category?.name ?? '—',
+        quantity: s.quantity,
+        cost_unit: s.avg_cost_mxn ?? 0,
+        value: s.quantity * (s.avg_cost_mxn ?? 0),
+      })),
+    [stock],
+  )
+
+  const totalValue = useMemo(() => rows.reduce((s, r) => s + r.value, 0), [rows])
+  const itemCount = useMemo(() => new Set(rows.map((r) => r.item_id)).size, [rows])
+  const entradas = useMemo(
+    () => movements
+      .filter((m) => m.movement_type.startsWith('entry_'))
+      .reduce((s, m) => s + (m.total_mxn ?? 0), 0),
+    [movements],
+  )
+  const salidas = useMemo(
+    () => movements
+      .filter((m) => m.movement_type.startsWith('exit_'))
+      .reduce((s, m) => s + (m.total_mxn ?? 0), 0),
+    [movements],
+  )
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (rows.length === 0 && movements.length === 0) return []
+    return [
+      { label: 'Valor inventario', value: formatMoney(totalValue, 'MXN'), tone: 'success', icon: DollarSign, hint: 'Al cierre' },
+      { label: '# Ítems con stock', value: itemCount,                     tone: 'info',    icon: Boxes,      hint: `${rows.length} ubicaciones` },
+      { label: 'Costo entradas',    value: formatMoney(entradas, 'MXN'),  tone: 'default', icon: Truck,      hint: 'Temporada completa' },
+      { label: 'Costo salidas',     value: formatMoney(salidas, 'MXN'),   tone: 'default', icon: TrendingDown, hint: 'Temporada completa' },
+    ]
+  }, [rows, movements, totalValue, itemCount, entradas, salidas])
+
+  const categoryBreakdown = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const r of rows) {
+      map.set(r.category, (map.get(r.category) ?? 0) + r.value)
+    }
+    return Array.from(map.entries())
+      .map(([label, amount]) => ({ label, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 8)
+  }, [rows])
+
+  const HEAD = ['SKU', 'Nombre', 'Categoría', 'Stock final', 'Costo unit', 'Valor MXN']
+
+  function buildRows() {
+    return rows.map((r) => [
+      r.sku,
+      r.name,
+      r.category,
+      formatQuantity(r.quantity),
+      formatMoney(r.cost_unit, 'MXN'),
+      formatMoney(r.value, 'MXN'),
+    ])
+  }
+
+  const footRow = ['', '', '', '', 'TOTAL', formatMoney(totalValue, 'MXN')]
+  const filtersLabel = `Temporada: ${selectedSeason?.name ?? '—'} (${selectedSeason?.status ?? '—'})`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="col-span-2 sm:col-span-1 flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Temporada</Label>
+          <Select value={effectiveSeasonId} onValueChange={(v) => setSeasonId(v ?? '')}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Seleccionar temporada…" />
+            </SelectTrigger>
+            <SelectContent>
+              {sortedSeasons.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name} · {s.status}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-destructive">{formatSupabaseError(error).description}</p>
+      )}
+
+      {(rows.length > 0 || movements.length > 0) && (
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Top categorías por valor final"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportHorizontalAmountBarChart data={categoryBreakdown} yAxisWidth={140} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
+      )}
+
+      <Separator />
+
+      {!effectiveSeasonId ? (
+        <EmptyState title="Selecciona una temporada" description="Elige una temporada para ver el snapshot del inventario al cierre." />
+      ) : isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : rows.length === 0 ? (
+        <EmptyState title="Sin inventario" description="No se encontraron ítems con stock para la temporada seleccionada." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.item_id}>
+                  <TableCell className="font-mono text-xs">{r.sku}</TableCell>
+                  <TableCell className="text-xs font-medium">{r.name}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{r.category}</TableCell>
+                  <TableCell className="text-right text-xs">{formatQuantity(r.quantity)}</TableCell>
+                  <TableCell className="text-right text-xs">
+                    <MoneyDisplay amount={r.cost_unit} currency="MXN" />
+                  </TableCell>
+                  <TableCell className="text-right text-xs font-medium">
+                    <MoneyDisplay amount={r.value} currency="MXN" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={5} className="text-xs font-semibold">TOTAL</TableCell>
+                <TableCell className="text-right text-xs font-semibold">
+                  <MoneyDisplay amount={totalValue} currency="MXN" />
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Cierre de Temporada', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Cierre de Temporada', HEAD, buildRows() as (string | number)[][], footRow)}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Cierre de Temporada', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow)}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report 11: Auditoría por Usuario
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AuditRowRaw {
+  id: number
+  occurred_at: string
+  user_id: string | null
+  user_email: string | null
+  action: string
+}
+
+interface AuditUserStat {
+  user_id: string
+  display: string
+  insert: number
+  update: number
+  delete: number
+  total: number
+  last_at: string
+}
+
+function AuditoriaUsuarioReport({ orgName }: { orgName: string }) {
+  const { organization } = useAuth()
+  const today = new Date()
+  const defaultFrom = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+  const todayStr = today.toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom] = useState<string>(defaultFrom)
+  const [dateTo, setDateTo]     = useState<string>(todayStr)
+
+  const { data: logs = [], isLoading, error } = useQuery<AuditRowRaw[]>({
+    queryKey: ['audit-log-report', { orgId: organization?.id, dateFrom, dateTo }],
+    queryFn: async () => {
+      let q = db
+        .from('audit_log')
+        .select('id, occurred_at, user_id, user_email, action')
+        .eq('organization_id', organization?.id)
+        .order('occurred_at', { ascending: false })
+        .limit(5000)
+      if (dateFrom) q = q.gte('occurred_at', `${dateFrom}T00:00:00`)
+      if (dateTo)   q = q.lte('occurred_at', `${dateTo}T23:59:59`)
+      const { data, error } = await q
+      if (error) throw error
+      return data as AuditRowRaw[]
+    },
+    enabled: !!organization?.id,
+  })
+
+  const stats = useMemo<AuditUserStat[]>(() => {
+    const map = new Map<string, AuditUserStat>()
+    for (const l of logs) {
+      const key = l.user_id ?? l.user_email ?? '__anon__'
+      if (!map.has(key)) {
+        map.set(key, {
+          user_id: key,
+          display: l.user_email ?? l.user_id ?? 'Anónimo',
+          insert: 0,
+          update: 0,
+          delete: 0,
+          total: 0,
+          last_at: l.occurred_at,
+        })
+      }
+      const row = map.get(key)!
+      const action = (l.action ?? '').toUpperCase()
+      if (action.includes('INSERT') || action === 'CREATE') row.insert++
+      else if (action.includes('UPDATE') || action === 'EDIT') row.update++
+      else if (action.includes('DELETE') || action === 'REMOVE') row.delete++
+      row.total++
+      if (l.occurred_at > row.last_at) row.last_at = l.occurred_at
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total)
+  }, [logs])
+
+  const totalActions = logs.length
+  const mostCommonAction = useMemo(() => {
+    const counts = { INSERT: 0, UPDATE: 0, DELETE: 0, OTHER: 0 }
+    for (const l of logs) {
+      const a = (l.action ?? '').toUpperCase()
+      if (a.includes('INSERT') || a === 'CREATE') counts.INSERT++
+      else if (a.includes('UPDATE') || a === 'EDIT') counts.UPDATE++
+      else if (a.includes('DELETE') || a === 'REMOVE') counts.DELETE++
+      else counts.OTHER++
+    }
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
+    return sorted[0]?.[1] > 0 ? sorted[0][0] : '—'
+  }, [logs])
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (logs.length === 0) return []
+    const top = stats[0]
+    return [
+      { label: 'Usuarios activos', value: stats.length,           tone: 'info',     icon: Users,       hint: 'En el período' },
+      { label: '# Acciones',       value: totalActions,           tone: 'default',  icon: Activity,    hint: 'Total registrado' },
+      { label: 'Acción más común', value: mostCommonAction,       tone: 'default',  icon: ListChecks,  hint: 'Operación dominante' },
+      { label: 'Usuario más activo', value: top ? top.display : '—', tone: 'success', icon: ShieldCheck, hint: top ? `${top.total} acciones` : '' },
+    ]
+  }, [logs, stats, totalActions, mostCommonAction])
+
+  const chartData = useMemo(
+    () =>
+      stats.slice(0, 10).map((s) => ({
+        user: s.display.length > 22 ? `${s.display.slice(0, 20)}…` : s.display,
+        INSERT: s.insert,
+        UPDATE: s.update,
+        DELETE: s.delete,
+      })),
+    [stats],
+  )
+
+  const HEAD = ['Usuario', '# INSERT', '# UPDATE', '# DELETE', 'Última actividad']
+
+  function buildRows() {
+    return stats.map((s) => [
+      s.display,
+      s.insert,
+      s.update,
+      s.delete,
+      formatFechaCorta(s.last_at),
+    ])
+  }
+
+  const filtersLabel = `${dateFrom} – ${dateTo}`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Desde</Label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Hasta</Label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-destructive">{formatSupabaseError(error).description}</p>
+      )}
+
+      {logs.length > 0 && (
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Top 10 usuarios por acción"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportAuditStackedBarChart data={chartData} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
+      )}
+
+      <Separator />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : logs.length === 0 ? (
+        <EmptyState title="Sin actividad" description="No hay registros de auditoría en el período seleccionado." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {stats.map((s) => (
+                <TableRow key={s.user_id}>
+                  <TableCell className="text-xs font-medium">{s.display}</TableCell>
+                  <TableCell className="text-right text-xs">{s.insert}</TableCell>
+                  <TableCell className="text-right text-xs">{s.update}</TableCell>
+                  <TableCell className="text-right text-xs">{s.delete}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{formatFechaCorta(s.last_at)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {stats.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Auditoría por Usuario', HEAD, buildRows() as (string | number)[][])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Auditoría por Usuario', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Auditoría por Usuario', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report 12: Conversiones de Moneda
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface FxRateRow {
+  id: string
+  date: string
+  rate: number
+  source: string
+}
+
+function ConversionesMonedaReport({ orgName }: { orgName: string }) {
+  const { organization } = useAuth()
+
+  const { data: rates = [], isLoading, error } = useQuery<FxRateRow[]>({
+    queryKey: ['fx-rates-report', organization?.id],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('fx_rates')
+        .select('id, date, rate, source')
+        .eq('organization_id', organization?.id)
+        .eq('currency_from', 'USD')
+        .eq('currency_to', 'MXN')
+        .order('date', { ascending: false })
+        .limit(365)
+      if (error) throw error
+      return data as FxRateRow[]
+    },
+    enabled: !!organization?.id,
+  })
+
+  // Newest first → reverse for chart timeline (oldest → newest).
+  const chronological = useMemo(() => [...rates].reverse(), [rates])
+
+  const chartData = useMemo(
+    () =>
+      chronological.map((r) => ({
+        date: r.date.slice(5), // mm-dd shorthand for the axis
+        rate: r.rate,
+      })),
+    [chronological],
+  )
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (rates.length === 0) return []
+    const current = rates[0].rate
+    const avg = rates.reduce((s, r) => s + r.rate, 0) / rates.length
+    const min = Math.min(...rates.map((r) => r.rate))
+    const max = Math.max(...rates.map((r) => r.rate))
+    return [
+      { label: 'TC actual',        value: current.toFixed(4),               tone: 'info',     icon: DollarSign, hint: rates[0].date },
+      { label: 'Promedio período', value: avg.toFixed(4),                   tone: 'default',  icon: Activity,   hint: `${rates.length} días` },
+      { label: 'Mínimo',           value: min.toFixed(4),                   tone: 'success',  icon: TrendingDown, hint: 'Período' },
+      { label: 'Máximo',           value: max.toFixed(4),                   tone: 'warning',  icon: TrendingUp,   hint: 'Período' },
+    ]
+  }, [rates])
+
+  const HEAD = ['Fecha', 'Rate', 'Variación vs anterior', 'Fuente']
+
+  function buildRows() {
+    // Iterate newest-first; "previous" in user terms means the next entry (older date).
+    return rates.map((r, idx) => {
+      const prev = idx < rates.length - 1 ? rates[idx + 1].rate : null
+      const variation = prev && prev > 0 ? ((r.rate - prev) / prev) * 100 : null
+      return [
+        r.date,
+        r.rate.toFixed(4),
+        variation === null ? '—' : `${variation >= 0 ? '+' : ''}${variation.toFixed(2)}%`,
+        r.source,
+      ]
+    })
+  }
+
+  const filtersLabel = `Último año · ${rates.length} registros`
+
+  return (
+    <div className="flex flex-col gap-4">
+      {error && (
+        <p className="text-xs text-destructive">{formatSupabaseError(error).description}</p>
+      )}
+
+      {rates.length > 0 && (
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Histórico USD / MXN"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportFxHistoryLineChart data={chartData} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
+      )}
+
+      <Separator />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : rates.length === 0 ? (
+        <EmptyState title="Sin tipos de cambio" description="No hay registros de tipo de cambio en el último año." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rates.map((r, idx) => {
+                const prev = idx < rates.length - 1 ? rates[idx + 1].rate : null
+                const variation = prev && prev > 0 ? ((r.rate - prev) / prev) * 100 : null
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell className="text-xs">{r.date}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums font-medium">{r.rate.toFixed(4)}</TableCell>
+                    <TableCell className={`text-right text-xs font-medium ${variation === null ? 'text-muted-foreground' : variation >= 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                      {variation === null ? '—' : `${variation >= 0 ? '+' : ''}${variation.toFixed(2)}%`}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.source}</TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {rates.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Conversiones de Moneda', HEAD, buildRows() as (string | number)[][])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Conversiones de Moneda', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Conversiones de Moneda', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report 13: Cuentas por Pagar Aging
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ApAgingRow {
+  id: string
+  supplier_id: string | null
+  supplier_name: string
+  invoice_folio: string | null
+  due_date: string | null
+  total: number
+  currency: string
+  status: string
+  paid_at: string | null
+  bucket: string
+  days_overdue: number | null
+}
+
+const BUCKET_LABEL: Record<string, string> = {
+  al_corriente: 'Al corriente',
+  d_0_30: '0–30 días',
+  d_31_60: '31–60 días',
+  d_61_90: '61–90 días',
+  d_90_plus: '+90 días',
+  paid: 'Pagada',
+  sin_vencimiento: 'Sin vencimiento',
+}
+
+const BUCKET_TONE: Record<string, 'default' | 'success' | 'info' | 'warning' | 'destructive'> = {
+  al_corriente: 'success',
+  d_0_30: 'info',
+  d_31_60: 'warning',
+  d_61_90: 'warning',
+  d_90_plus: 'destructive',
+  paid: 'default',
+  sin_vencimiento: 'default',
+}
+
+function CuentasPorPagarReport({ orgName }: { orgName: string }) {
+  const { organization } = useAuth()
+  const { data: suppliers = [] } = useSuppliers()
+  const [bucket, setBucket]         = useState<string>('all')
+  const [supplierId, setSupplierId] = useState<string>('all')
+
+  const { data: rows = [], isLoading, error } = useQuery<ApAgingRow[]>({
+    queryKey: ['ap-aging-report', { orgId: organization?.id, bucket, supplierId }],
+    queryFn: async () => {
+      let q = db
+        .from('ap_aging')
+        .select('id, supplier_id, supplier_name, invoice_folio, due_date, total, currency, status, paid_at, bucket, days_overdue')
+        .eq('organization_id', organization?.id)
+        .order('days_overdue', { ascending: false, nullsFirst: false })
+      if (bucket !== 'all') q = q.eq('bucket', bucket)
+      if (supplierId !== 'all') q = q.eq('supplier_id', supplierId)
+      const { data, error } = await q
+      if (error) throw error
+      return data as ApAgingRow[]
+    },
+    enabled: !!organization?.id,
+  })
+
+  // Aggregate amount + count per bucket. Convert USD → MXN with a simple flag
+  // (raw amount is shown in its own currency for the table; KPIs are in MXN).
+  const byBucket = useMemo(() => {
+    const order = ['al_corriente', 'd_0_30', 'd_31_60', 'd_61_90', 'd_90_plus']
+    const map = new Map<string, { total: number; count: number }>()
+    for (const r of rows) {
+      if (r.status === 'paid') continue
+      if (!order.includes(r.bucket)) continue
+      const cur = map.get(r.bucket) ?? { total: 0, count: 0 }
+      cur.total += r.total ?? 0
+      cur.count += 1
+      map.set(r.bucket, cur)
+    }
+    return order
+      .filter((b) => map.has(b))
+      .map((b) => ({
+        label: BUCKET_LABEL[b] ?? b,
+        amount: map.get(b)!.total,
+        count: map.get(b)!.count,
+      }))
+  }, [rows])
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (rows.length === 0) return []
+    const pending = rows.filter((r) => r.status !== 'paid')
+    const overdue = pending.filter((r) => (r.days_overdue ?? 0) > 0)
+    const totalPending = pending.reduce((s, r) => s + (r.total ?? 0), 0)
+    const totalOverdue = overdue.reduce((s, r) => s + (r.total ?? 0), 0)
+    const maxOverdue = overdue.reduce((m, r) => Math.max(m, r.days_overdue ?? 0), 0)
+    return [
+      { label: 'Saldo total',          value: formatMoney(totalPending, 'MXN'),  tone: 'info',        icon: CreditCard, hint: 'Pendiente de pago' },
+      { label: 'Vencido total',        value: formatMoney(totalOverdue, 'MXN'),  tone: totalOverdue > 0 ? 'warning' : 'success', icon: AlertTriangle, hint: `${overdue.length} facturas` },
+      { label: '# Facturas pendientes', value: pending.length,                    tone: 'default',     icon: Receipt,    hint: `${rows.length} en total` },
+      { label: 'Mayor mora',            value: maxOverdue > 0 ? `${maxOverdue} d` : '—', tone: maxOverdue > 60 ? 'critical' : 'default', icon: CalendarClock, hint: 'Días de atraso' },
+    ]
+  }, [rows])
+
+  const chartData = useMemo(
+    () => byBucket.map((b) => ({ label: `${b.label} (${b.count})`, amount: b.amount })),
+    [byBucket],
+  )
+
+  const HEAD = ['Factura', 'Proveedor', 'Vencimiento', 'Días mora', 'Monto', 'Status']
+
+  function buildRows() {
+    return rows.map((r) => [
+      r.invoice_folio ?? '—',
+      r.supplier_name,
+      r.due_date ?? '—',
+      r.days_overdue !== null && r.days_overdue !== undefined ? r.days_overdue : '—',
+      formatMoney(r.total ?? 0, (r.currency as 'MXN' | 'USD') ?? 'MXN'),
+      r.status,
+    ])
+  }
+
+  const filtersLabel = `Bucket: ${bucket === 'all' ? 'Todos' : (BUCKET_LABEL[bucket] ?? bucket)} | Proveedor: ${supplierId === 'all' ? 'Todos' : (suppliers.find((s) => s.id === supplierId)?.name ?? supplierId)}`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Bucket</Label>
+          <Select value={bucket} onValueChange={(v) => setBucket(v ?? 'all')}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los buckets</SelectItem>
+              <SelectItem value="al_corriente">Al corriente</SelectItem>
+              <SelectItem value="d_0_30">0–30 días</SelectItem>
+              <SelectItem value="d_31_60">31–60 días</SelectItem>
+              <SelectItem value="d_61_90">61–90 días</SelectItem>
+              <SelectItem value="d_90_plus">+90 días</SelectItem>
+              <SelectItem value="paid">Pagadas</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Proveedor</Label>
+          <Select value={supplierId} onValueChange={(v) => setSupplierId(v ?? 'all')}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los proveedores</SelectItem>
+              {suppliers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-destructive">{formatSupabaseError(error).description}</p>
+      )}
+
+      {rows.length > 0 && (
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Aging por bucket"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportHorizontalAmountBarChart data={chartData} yAxisWidth={140} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
+      )}
+
+      <Separator />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : rows.length === 0 ? (
+        <EmptyState title="Sin facturas" description="No se encontraron facturas de proveedor con los filtros seleccionados." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => {
+                const tone = BUCKET_TONE[r.bucket] ?? 'default'
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs">{r.invoice_folio ?? '—'}</TableCell>
+                    <TableCell className="text-xs font-medium">{r.supplier_name}</TableCell>
+                    <TableCell className="text-xs">{r.due_date ?? '—'}</TableCell>
+                    <TableCell className={`text-right text-xs font-medium ${(r.days_overdue ?? 0) > 60 ? 'text-destructive' : (r.days_overdue ?? 0) > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                      {r.days_overdue !== null && r.days_overdue !== undefined ? `${r.days_overdue} d` : '—'}
+                    </TableCell>
+                    <TableCell className="text-right text-xs">
+                      <MoneyDisplay amount={r.total ?? 0} currency={(r.currency as 'MXN' | 'USD') ?? 'MXN'} />
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <Badge
+                        variant={tone === 'destructive' ? 'destructive' : tone === 'success' ? 'default' : 'secondary'}
+                        className="text-[10px]"
+                      >
+                        {BUCKET_LABEL[r.bucket] ?? r.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Cuentas por Pagar', HEAD, buildRows() as (string | number)[][])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Cuentas por Pagar', HEAD, buildRows() as (string | number)[][])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Cuentas por Pagar', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report 14: Costo de Mantenimiento por Equipo
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MantenimientoWoRaw {
+  id: string
+  equipment_id: string
+  total_cost_mxn: number | null
+  downtime_minutes: number | null
+  created_at: string
+  equipment?: { id: string; name: string; code: string; type: string } | null
+}
+
+interface MantenimientoRow {
+  equipment_id: string
+  code: string
+  name: string
+  type: string
+  count: number
+  downtime_h: number
+  cost: number
+}
+
+function CostoMantenimientoEquipoReport({ orgName }: { orgName: string }) {
+  const { organization } = useAuth()
+  const { data: equipment = [] } = useEquipment()
+  void equipment // referenced via the type filter only
+  const today = new Date()
+  const yearAgo = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+  const todayStr = today.toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom] = useState<string>(yearAgo)
+  const [dateTo, setDateTo]     = useState<string>(todayStr)
+  const [equipType, setEquipType] = useState<string>('all')
+
+  const { data: wos = [], isLoading, error } = useQuery<MantenimientoWoRaw[]>({
+    queryKey: ['mantenimiento-wo', { orgId: organization?.id, dateFrom, dateTo, equipType }],
+    queryFn: async () => {
+      let q = db
+        .from('work_orders')
+        .select(`
+          id, equipment_id, total_cost_mxn, downtime_minutes, created_at,
+          equipment:equipment!inner(id, name, code, type)
+        `)
+        .eq('organization_id', organization?.id)
+        .is('deleted_at', null)
+      if (dateFrom) q = q.gte('created_at', `${dateFrom}T00:00:00`)
+      if (dateTo)   q = q.lte('created_at', `${dateTo}T23:59:59`)
+      if (equipType !== 'all') q = q.eq('equipment.type', equipType)
+      const { data, error } = await q
+      if (error) throw error
+      return (data as MantenimientoWoRaw[]).filter((w) => w.equipment)
+    },
+    enabled: !!organization?.id,
+  })
+
+  const grouped = useMemo<MantenimientoRow[]>(() => {
+    const map = new Map<string, MantenimientoRow>()
+    for (const w of wos) {
+      const eid = w.equipment_id
+      if (!map.has(eid)) {
+        map.set(eid, {
+          equipment_id: eid,
+          code: w.equipment?.code ?? '—',
+          name: w.equipment?.name ?? '—',
+          type: w.equipment?.type ?? '—',
+          count: 0,
+          downtime_h: 0,
+          cost: 0,
+        })
+      }
+      const row = map.get(eid)!
+      row.count++
+      row.downtime_h += (w.downtime_minutes ?? 0) / 60
+      row.cost += w.total_cost_mxn ?? 0
+    }
+    return Array.from(map.values()).sort((a, b) => b.cost - a.cost)
+  }, [wos])
+
+  const totals = useMemo(() => ({
+    cost: grouped.reduce((s, r) => s + r.cost, 0),
+    downtime: grouped.reduce((s, r) => s + r.downtime_h, 0),
+  }), [grouped])
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (grouped.length === 0) return []
+    const avg = totals.cost / grouped.length
+    const top = grouped[0]
+    return [
+      { label: 'Costo total año',  value: formatMoney(totals.cost, 'MXN'), tone: 'success', icon: DollarSign, hint: 'En el período' },
+      { label: '# Equipos',        value: grouped.length,                  tone: 'info',    icon: Wrench,     hint: 'Con OTs' },
+      { label: 'Promedio / equipo', value: formatMoney(avg, 'MXN'),         tone: 'default', icon: Gauge,      hint: 'Costo medio' },
+      { label: 'Equipo más caro',  value: top?.code ?? '—',                tone: 'warning', icon: AlertTriangle, hint: top ? formatMoney(top.cost, 'MXN') : '' },
+    ]
+  }, [grouped, totals])
+
+  const topEquipos = useMemo(
+    () => grouped.slice(0, 8).map((r) => ({ label: r.code, amount: r.cost })),
+    [grouped],
+  )
+
+  const HEAD = ['Equipo', 'Tipo', '# OTs', 'Downtime hrs', 'Costo MXN', 'Costo/h']
+
+  function buildRows() {
+    return grouped.map((r) => [
+      `${r.code} – ${r.name}`,
+      r.type,
+      r.count,
+      formatQuantity(r.downtime_h, 1),
+      formatMoney(r.cost, 'MXN'),
+      r.downtime_h > 0 ? formatMoney(r.cost / r.downtime_h, 'MXN') : '—',
+    ])
+  }
+
+  const footRow = [
+    'TOTAL',
+    '',
+    grouped.reduce((s, r) => s + r.count, 0),
+    formatQuantity(totals.downtime, 1),
+    formatMoney(totals.cost, 'MXN'),
+    '',
+  ]
+  const filtersLabel = `${dateFrom} – ${dateTo} | Tipo: ${equipType === 'all' ? 'Todos' : equipType}`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Desde</Label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Hasta</Label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Tipo equipo</Label>
+          <Select value={equipType} onValueChange={(v) => setEquipType(v ?? 'all')}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los tipos</SelectItem>
+              <SelectItem value="tractor">Tractor</SelectItem>
+              <SelectItem value="implement">Implemento</SelectItem>
+              <SelectItem value="vehicle">Vehículo</SelectItem>
+              <SelectItem value="pump">Bomba</SelectItem>
+              <SelectItem value="other">Otro</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-destructive">{formatSupabaseError(error).description}</p>
+      )}
+
+      {grouped.length > 0 && (
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Top equipos por costo"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportHorizontalAmountBarChart data={topEquipos} yAxisWidth={120} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
+      )}
+
+      <Separator />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : grouped.length === 0 ? (
+        <EmptyState title="Sin órdenes de trabajo" description="No se encontraron OTs para los filtros seleccionados." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {grouped.map((r) => (
+                <TableRow key={r.equipment_id}>
+                  <TableCell className="text-xs font-medium">{r.code} – {r.name}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{r.type}</TableCell>
+                  <TableCell className="text-center text-xs">{r.count}</TableCell>
+                  <TableCell className="text-right text-xs">{formatQuantity(r.downtime_h, 1)} h</TableCell>
+                  <TableCell className="text-right text-xs font-medium">
+                    <MoneyDisplay amount={r.cost} currency="MXN" />
+                  </TableCell>
+                  <TableCell className="text-right text-xs">
+                    {r.downtime_h > 0 ? <MoneyDisplay amount={r.cost / r.downtime_h} currency="MXN" /> : '—'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={2} className="text-xs font-semibold">TOTAL</TableCell>
+                <TableCell className="text-center text-xs font-semibold">{grouped.reduce((s, r) => s + r.count, 0)}</TableCell>
+                <TableCell className="text-right text-xs font-semibold">{formatQuantity(totals.downtime, 1)} h</TableCell>
+                <TableCell className="text-right text-xs font-semibold">
+                  <MoneyDisplay amount={totals.cost} currency="MXN" />
+                </TableCell>
+                <TableCell />
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </div>
+      )}
+
+      {grouped.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Costo Mantenimiento Equipo', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Costo Mantenimiento Equipo', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Costo Mantenimiento Equipo', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow as (string | number)[])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main page component
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1626,8 +3213,20 @@ export default function ReportViewerPage() {
           {slug === 'consumo-diesel' && <ConsumoDieselReport orgName={orgName} />}
           {slug === 'sin-movimiento' && <SinMovimientoReport orgName={orgName} />}
           {slug === 'variacion-precios' && <VariacionPreciosReport orgName={orgName} />}
+          {slug === 'salidas-equipo' && <SalidasEquipoReport orgName={orgName} />}
+          {slug === 'rotacion' && <RotacionReport orgName={orgName} />}
+          {slug === 'cierre-temporada' && <CierreTemporadaReport orgName={orgName} />}
+          {slug === 'auditoria-usuario' && <AuditoriaUsuarioReport orgName={orgName} />}
+          {slug === 'conversiones-moneda' && <ConversionesMonedaReport orgName={orgName} />}
+          {slug === 'cuentas-por-pagar' && <CuentasPorPagarReport orgName={orgName} />}
+          {slug === 'costo-mantenimiento-equipo' && <CostoMantenimientoEquipoReport orgName={orgName} />}
 
-          {!['kardex', 'existencias', 'entradas-proveedor', 'salidas-lote', 'consumo-diesel', 'sin-movimiento', 'variacion-precios'].includes(slug) && (
+          {![
+            'kardex', 'existencias', 'entradas-proveedor', 'salidas-lote', 'consumo-diesel',
+            'sin-movimiento', 'variacion-precios', 'salidas-equipo', 'rotacion',
+            'cierre-temporada', 'auditoria-usuario', 'conversiones-moneda',
+            'cuentas-por-pagar', 'costo-mantenimiento-equipo',
+          ].includes(slug) && (
             <ComingSoon title={meta.title} />
           )}
         </CardContent>
