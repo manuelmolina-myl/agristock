@@ -180,6 +180,9 @@ export interface PurchaseOrder {
   created_by: string | null
   approved_by: string | null
   approved_at: string | null
+  cancellation_reason: string | null
+  cancelled_at: string | null
+  cancelled_by: string | null
   created_at: string
   updated_at: string | null
   deleted_at: string | null

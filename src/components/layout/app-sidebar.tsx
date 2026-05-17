@@ -23,6 +23,7 @@ import {
   DollarSign,
   Lock,
   LogOut,
+  CreditCard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -98,6 +99,7 @@ const MODULES: ModuleSection[] = [
       { label: 'Órdenes',       to: '/compras/ordenes',        icon: ShoppingCart },
       { label: 'Recepciones',   to: '/compras/recepciones',    icon: ArrowDownToLine },
       { label: 'Facturas',      to: '/compras/facturas',       icon: Receipt },
+      { label: 'Cuentas por pagar', to: '/compras/pagos',      icon: CreditCard },
       { label: 'Proveedores',   to: '/compras/proveedores',    icon: Building2 },
     ],
   },

@@ -1,12 +1,12 @@
 import { useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import {
-  Search, Receipt, AlertOctagon, CheckCircle2,
+  Search, Receipt, AlertOctagon, CheckCircle2, Download, RotateCcw,
   Loader2, Paperclip, X as XIcon, ShoppingCart, ChevronRight,
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -14,6 +14,7 @@ import { es } from 'date-fns/locale'
 
 import { PageHeader } from '@/components/custom/page-header'
 import { EmptyState } from '@/components/custom/empty-state'
+import { DateRangeFilter } from '@/components/custom/date-range-filter'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,6 +31,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
 import { formatSupabaseError } from '@/lib/errors'
 import { useCreateInvoice } from '@/features/compras/invoice-hooks'
+import { useSuppliersLite } from '@/features/compras/hooks'
+import { exportToCsv } from '@/lib/csv-export'
 import type { InvoiceStatus, Currency, POStatus } from '@/lib/database.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,16 +91,43 @@ interface POWithInvoices {
     xml_url: string | null
     cfdi_uuid: string | null
     discrepancies: unknown
+    // Optional payment metadata added in migration 051 — these fields may
+    // not exist yet on every deployment, so they are typed as optional.
+    payment_method?: string | null
+    payment_reference?: string | null
+    paid_at?: string | null
   }>
 }
 
 type Filter = 'all' | 'missing' | 'with_invoice'
 
 export default function InvoicesPage() {
-  const [filter, setFilter] = useState<Filter>('all')
+  const [params, setParams] = useSearchParams()
+  const [filter, setFilter] = useState<Filter>(
+    (params.get('view') as Filter) || 'all',
+  )
   const [search, setSearch] = useState('')
   const { organization } = useAuth()
   const navigate = useNavigate()
+
+  // URL-driven filters — supplier + invoice issue date range.
+  const supplier = params.get('supplier') ?? 'all'
+  const from     = params.get('from')     ?? ''
+  const to       = params.get('to')       ?? ''
+
+  const updateParam = (key: string, value: string, defaultValue = '') => {
+    const next = new URLSearchParams(params)
+    if (!value || value === defaultValue) next.delete(key)
+    else next.set(key, value)
+    setParams(next, { replace: true })
+  }
+
+  const resetFilters = () => {
+    setFilter('all')
+    setParams({}, { replace: true })
+  }
+
+  const { data: suppliers = [] } = useSuppliersLite()
 
   // Lista de OCs (firmadas en adelante) con sus facturas asociadas.
   // Facturas comes BEFORE recepciones — esta es la vista principal del módulo.
@@ -113,7 +143,8 @@ export default function InvoicesPage() {
           supplier:suppliers(name, rfc),
           invoices:supplier_invoices(
             id, invoice_folio, issue_date, due_date, total, currency, status,
-            pdf_url, xml_url, cfdi_uuid, discrepancies
+            pdf_url, xml_url, cfdi_uuid, discrepancies,
+            payment_method, payment_reference, paid_at
           )
         `)
         .eq('organization_id', organization!.id)
@@ -138,6 +169,20 @@ export default function InvoicesPage() {
       const invs = po.invoices ?? []
       if (filter === 'missing' && invs.length > 0) return false
       if (filter === 'with_invoice' && invs.length === 0) return false
+      if (supplier !== 'all' && po.supplier_id !== supplier) return false
+      // Date range applies to invoice issue_date.  When there is no invoice the
+      // PO still matches if the user is browsing "all" or "missing" without
+      // a date range — but a date filter implies the user only cares about
+      // POs whose invoices land in the window, so we drop empty rows.
+      if (from || to) {
+        if (invs.length === 0) return false
+        const inWindow = invs.some((i) => {
+          if (from && i.issue_date < from) return false
+          if (to && i.issue_date > to) return false
+          return true
+        })
+        if (!inWindow) return false
+      }
       if (q) {
         const haystack = [
           po.folio,
@@ -148,13 +193,70 @@ export default function InvoicesPage() {
       }
       return true
     })
-  }, [pos, filter, search])
+  }, [pos, filter, search, supplier, from, to])
 
   const counts = useMemo(() => ({
     all: pos.length,
     missing: pos.filter((p) => (p.invoices ?? []).length === 0).length,
     with_invoice: pos.filter((p) => (p.invoices ?? []).length > 0).length,
   }), [pos])
+
+  const hasActiveFilters =
+    filter !== 'all' || supplier !== 'all' || !!from || !!to
+
+  function handleExportCsv() {
+    if (filtered.length === 0) {
+      toast.info('Sin datos para exportar')
+      return
+    }
+    // Flatten: one row per invoice. POs with no invoices emit a single
+    // row with empty invoice columns so the export reflects "OC sin factura"
+    // visibility from the list view.
+    const rows: Array<Array<string | number | null>> = []
+    for (const po of filtered) {
+      const invs = po.invoices ?? []
+      if (invs.length === 0) {
+        rows.push([
+          po.folio,
+          po.supplier?.name ?? '',
+          '', '', '', '', '', '', '', '', '',
+        ])
+        continue
+      }
+      for (const inv of invs) {
+        rows.push([
+          po.folio,
+          po.supplier?.name ?? '',
+          inv.invoice_folio,
+          inv.issue_date,
+          inv.due_date ?? '',
+          inv.total ?? '',
+          inv.currency,
+          INVOICE_STATUS_LABEL[inv.status],
+          inv.payment_method ?? '',
+          inv.payment_reference ?? '',
+          inv.paid_at ?? '',
+        ])
+      }
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    exportToCsv({
+      filename: `facturas-${today}.csv`,
+      headers: [
+        'po_folio', 'proveedor', 'invoice_folio', 'fecha_emision',
+        'fecha_vencimiento', 'total', 'moneda', 'status',
+        'payment_method', 'payment_reference', 'paid_at',
+      ],
+      rows,
+    })
+    toast.success(`Exportadas ${rows.length} filas`)
+  }
+
+  const handleFilterChange = (v: string | null) => {
+    const next = (v ?? 'all') as Filter
+    setFilter(next)
+    updateParam('view', next, 'all')
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6 max-w-7xl mx-auto w-full">
@@ -173,7 +275,7 @@ export default function InvoicesPage() {
             className="pl-9 h-9"
           />
         </div>
-        <Select value={filter} onValueChange={(v) => setFilter((v ?? 'all') as Filter)}>
+        <Select value={filter} onValueChange={handleFilterChange}>
           <SelectTrigger className="h-9 sm:w-64"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="missing">Sin factura ({counts.missing})</SelectItem>
@@ -181,6 +283,58 @@ export default function InvoicesPage() {
             <SelectItem value="all">Todas las OC ({counts.all})</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5"
+          onClick={handleExportCsv}
+          disabled={isLoading || filtered.length === 0}
+        >
+          <Download className="size-3.5" />
+          Exportar CSV
+        </Button>
+      </div>
+
+      {/* ── Advanced filters: invoice issue date + supplier ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <DateRangeFilter
+          label="Fecha de emisión (factura)"
+          from={from}
+          to={to}
+          onFromChange={(v) => updateParam('from', v)}
+          onToChange={(v) => updateParam('to', v)}
+        />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted-foreground">Proveedor</span>
+          <Select
+            value={supplier}
+            onValueChange={(v) => updateParam('supplier', v ?? 'all', 'all')}
+          >
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Todos los proveedores" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los proveedores</SelectItem>
+              {suppliers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 gap-1.5 text-muted-foreground"
+            onClick={resetFilters}
+            disabled={!hasActiveFilters}
+          >
+            <RotateCcw className="size-3.5" />
+            Limpiar filtros
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (

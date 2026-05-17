@@ -34,6 +34,38 @@ export const comprasKeys = {
   poLines: (poId: string) => ['compras', 'po-lines', poId] as const,
   receptions: (orgId?: string) => ['compras', 'receptions', orgId] as const,
   invoices: (orgId?: string) => ['compras', 'invoices', orgId] as const,
+  suppliersLite: (orgId?: string) => ['suppliers-lite', orgId] as const,
+}
+
+// ─── Suppliers (lite) ──────────────────────────────────────────────────────
+
+export interface SupplierLite {
+  id: string
+  name: string
+}
+
+/**
+ * Lightweight supplier list used by the filter dropdowns across the compras
+ * module. Cached aggressively (5 min) and shared via the `['suppliers-lite']`
+ * query key so multiple lists don't refetch the same data.
+ */
+export function useSuppliersLite() {
+  const { organization } = useAuth()
+  return useQuery<SupplierLite[]>({
+    queryKey: comprasKeys.suppliersLite(organization?.id),
+    enabled: !!organization?.id,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('suppliers')
+        .select('id, name')
+        .eq('organization_id', organization!.id)
+        .is('deleted_at', null)
+        .order('name')
+      if (error) throw error
+      return (data ?? []) as SupplierLite[]
+    },
+  })
 }
 
 // ─── Filters ───────────────────────────────────────────────────────────────
@@ -41,12 +73,26 @@ export const comprasKeys = {
 export interface RequisitionFilters {
   status?: RequisitionStatus | 'all'
   search?: string
+  /** ISO date (YYYY-MM-DD) — filters `request_date >= from`. */
+  from?: string
+  /** ISO date (YYYY-MM-DD) — filters `request_date <= to`. */
+  to?: string
+  /** Requisition priority — when set, `priority = priority`. */
+  priority?: 'low' | 'medium' | 'high' | 'urgent' | 'all'
 }
 
 export interface POFilters {
   status?: POStatus | 'all'
   supplier_id?: string
   search?: string
+  /** ISO date (YYYY-MM-DD) — filters `issue_date >= from`. */
+  from?: string
+  /** ISO date (YYYY-MM-DD) — filters `issue_date <= to`. */
+  to?: string
+  /** Minimum `total_mxn` (MXN). */
+  min_mxn?: number
+  /** Maximum `total_mxn` (MXN). */
+  max_mxn?: number
 }
 
 // ─── Requisitions ──────────────────────────────────────────────────────────
@@ -82,7 +128,10 @@ export function useRequisitions(filters: RequisitionFilters = {}) {
         .limit(200)
 
       if (filters.status && filters.status !== 'all') q = q.eq('status', filters.status)
+      if (filters.priority && filters.priority !== 'all') q = q.eq('priority', filters.priority)
       if (filters.search) q = q.ilike('folio', `%${filters.search}%`)
+      if (filters.from) q = q.gte('request_date', filters.from)
+      if (filters.to) q = q.lte('request_date', filters.to)
 
       const { data, error } = await q
       if (error) throw error
@@ -282,6 +331,10 @@ export function usePurchaseOrders(filters: POFilters = {}) {
       if (filters.status && filters.status !== 'all') q = q.eq('status', filters.status)
       if (filters.supplier_id) q = q.eq('supplier_id', filters.supplier_id)
       if (filters.search) q = q.ilike('folio', `%${filters.search}%`)
+      if (filters.from) q = q.gte('issue_date', filters.from)
+      if (filters.to) q = q.lte('issue_date', filters.to)
+      if (filters.min_mxn != null) q = q.gte('total_mxn', filters.min_mxn)
+      if (filters.max_mxn != null) q = q.lte('total_mxn', filters.max_mxn)
 
       const { data, error } = await q
       if (error) throw error

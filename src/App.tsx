@@ -57,6 +57,7 @@ const ComprasOrders          = lazy(() => import('@/pages/compras/orders-page'))
 const ComprasReceptions      = lazy(() => import('@/pages/compras/receptions-page'))
 const ComprasInvoices        = lazy(() => import('@/pages/compras/invoices-page'))
 const ComprasFacturaDetail   = lazy(() => import('@/pages/compras/facturas-detail-page'))
+const ComprasPagos           = lazy(() => import('@/pages/compras/pagos-page'))
 const ComprasPoDetail        = lazy(() => import('@/pages/compras/po-detail-page'))
 const ComprasSuppliers       = lazy(() => import('@/pages/compras/suppliers-page'))
 const ComprasSupplierDetail  = lazy(() => import('@/pages/compras/supplier-detail-page'))
@@ -200,6 +201,7 @@ export default function App() {
           <Route path="recepciones" element={<ComprasReceptions />} />
           <Route path="facturas" element={<ComprasInvoices />} />
           <Route path="facturas/:poId" element={<ComprasFacturaDetail />} />
+          <Route path="pagos" element={<ComprasPagos />} />
           <Route path="proveedores" element={<ComprasSuppliers />} />
           <Route path="proveedores/:id" element={<ComprasSupplierDetail />} />
         </Route>

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, Calendar, Warehouse as WarehouseIcon, ArrowDownToLine,
-  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2, PenLine, Send, RotateCcw,
+  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2, PenLine, Send, RotateCcw, Ban,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import { SignaturePad, type SignaturePadHandle } from '@/components/custom/signature-pad'
 import { supabase } from '@/lib/supabase'
 import { usePurchaseOrder } from '@/features/compras/hooks'
@@ -76,6 +77,8 @@ export default function PoDetailPage() {
   const [previewing, setPreviewing] = useState(true)
   const [signDialogOpen, setSignDialogOpen] = useState(false)
   const [confirmRevertOpen, setConfirmRevertOpen] = useState(false)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
   const signaturePadRef = useRef<SignaturePadHandle>(null)
   const { organization, user } = useAuth()
 
@@ -155,6 +158,23 @@ export default function PoDetailPage() {
     },
     onError: (e: unknown) => {
       const { title, description } = formatSupabaseError(e, 'No se pudo rechazar la firma')
+      toast.error(title, { description })
+    },
+  })
+
+  const cancelPo = useMutation({
+    mutationFn: async (reason: string) => {
+      const { error } = await db.rpc('cancel_po', { p_po_id: id, p_reason: reason })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('OC cancelada', { description: 'La OC quedó marcada como cancelada.' })
+      setCancelDialogOpen(false)
+      setCancelReason('')
+      invalidatePo()
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo cancelar la OC')
       toast.error(title, { description })
     },
   })
@@ -397,6 +417,19 @@ export default function PoDetailPage() {
               Registrar recepción
             </Button>
           )}
+
+          {/* Admin: cancelar OC (no aplica si ya cerró, recibió o canceló) */}
+          {isAdmin && !['cancelled', 'closed', 'received'].includes(po.status) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setCancelDialogOpen(true)}
+            >
+              <Ban className="size-4" />
+              Cancelar OC
+            </Button>
+          )}
         </div>
       </div>
 
@@ -625,6 +658,22 @@ export default function PoDetailPage() {
                   </div>
                 </div>
               )}
+              {po.status === 'cancelled' && po.cancelled_at && (
+                <div className="flex items-start gap-2">
+                  <XCircle className="size-3.5 text-destructive mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <dt className="text-[11px] text-muted-foreground">Cancelada</dt>
+                    <dd className="text-destructive font-medium">
+                      {format(new Date(po.cancelled_at), 'd MMM yyyy · HH:mm', { locale: es })}
+                    </dd>
+                    {po.cancellation_reason && (
+                      <dd className="text-[11px] italic text-muted-foreground mt-1 whitespace-pre-wrap break-words">
+                        {po.cancellation_reason}
+                      </dd>
+                    )}
+                  </div>
+                </div>
+              )}
             </dl>
           </section>
 
@@ -691,6 +740,63 @@ export default function PoDetailPage() {
                 ? <Loader2 className="size-4 animate-spin" />
                 : <PenLine className="size-4" />}
               Confirmar firma
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel OC dialog — admin only */}
+      <Dialog
+        open={cancelDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) setCancelReason('')
+          setCancelDialogOpen(open)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar OC {po.folio}</DialogTitle>
+            <DialogDescription>
+              La OC pasará a cancelada y no podrá modificarse. No se permite cancelar
+              si hay recepciones registradas o facturas conciliadas/pagadas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-2">
+            <label htmlFor="cancel-reason" className="text-xs font-medium text-foreground">
+              Motivo de cancelación
+            </label>
+            <Textarea
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Explica brevemente por qué se cancela la OC…"
+              rows={4}
+              disabled={cancelPo.isPending}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Requerido (mínimo 3 caracteres).
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCancelDialogOpen(false)}
+              disabled={cancelPo.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => cancelPo.mutate(cancelReason.trim())}
+              disabled={cancelPo.isPending || cancelReason.trim().length < 3}
+            >
+              {cancelPo.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <Ban className="size-4" />}
+              Confirmar
             </Button>
           </DialogFooter>
         </DialogContent>

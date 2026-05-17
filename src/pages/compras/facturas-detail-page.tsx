@@ -13,7 +13,8 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowLeft, Building2, Calendar, Paperclip, FileText, ExternalLink,
-  CheckCircle2, AlertOctagon, ShoppingCart, Receipt,
+  CheckCircle2, AlertOctagon, ShoppingCart, Receipt, CreditCard,
+  BadgeCheck,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -23,7 +24,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { usePermissions } from '@/hooks/use-permissions'
 import { formatSupabaseError } from '@/lib/errors'
 import {
-  useReconcileInvoice, useMarkInvoicePaid,
+  useReconcileInvoice,
 } from '@/features/compras/invoice-hooks'
 import type { InvoiceStatus, Currency, POStatus } from '@/lib/database.types'
 
@@ -37,6 +38,11 @@ import {
   INVOICE_STATUS_LABEL,
   INVOICE_STATUS_TONE,
 } from './invoices-page'
+import { RegistrarPagoDialog, PAYMENT_METHODS } from './registrar-pago-dialog'
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = Object.fromEntries(
+  PAYMENT_METHODS.map((m) => [m.value, m.label]),
+)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -66,6 +72,12 @@ interface PoDetail {
     cfdi_uuid: string | null
     discrepancies: unknown
     notes: string | null
+    paid_at: string | null
+    paid_by: string | null
+    payment_method: string | null
+    payment_reference: string | null
+    payment_proof_url: string | null
+    payment_notes: string | null
   }>
 }
 
@@ -77,10 +89,12 @@ export default function FacturasDetailPage() {
   const canWrite = can('purchase.create')
 
   const reconcile = useReconcileInvoice()
-  const markPaid  = useMarkInvoicePaid()
 
   const [adjuntarOpen, setAdjuntarOpen] = useState(false)
   const [reconcileTarget, setReconcileTarget] = useState<string | null>(null)
+  const [payTarget, setPayTarget] = useState<{
+    id: string; folio: string; total: number; currency: Currency
+  } | null>(null)
 
   const { data: po, isLoading } = useQuery<PoDetail | null>({
     queryKey: ['po-with-invoices-detail', { id: poId, orgId: organization?.id }],
@@ -94,7 +108,8 @@ export default function FacturasDetailPage() {
           supplier:suppliers(name, rfc),
           invoices:supplier_invoices(
             id, invoice_folio, issue_date, due_date, subtotal, tax, total, currency,
-            status, pdf_url, xml_url, cfdi_uuid, discrepancies, notes
+            status, pdf_url, xml_url, cfdi_uuid, discrepancies, notes,
+            paid_at, paid_by, payment_method, payment_reference, payment_proof_url, payment_notes
           )
         `)
         .eq('id', poId)
@@ -249,6 +264,56 @@ export default function FacturasDetailPage() {
                     </div>
                   )}
 
+                  {inv.status === 'paid' && (
+                    <div className="px-4 py-3 bg-success/10 border-b border-success/30 text-success">
+                      <div className="flex items-start gap-2">
+                        <BadgeCheck className="size-4 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0 text-xs">
+                          <div className="font-semibold text-sm">Pago registrado</div>
+                          <dl className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5">
+                            {inv.paid_at && (
+                              <div className="flex gap-1.5">
+                                <dt className="text-success/80">Fecha:</dt>
+                                <dd className="font-medium">
+                                  {format(new Date(inv.paid_at), "d MMM yyyy 'a las' HH:mm", { locale: es })}
+                                </dd>
+                              </div>
+                            )}
+                            {inv.payment_method && (
+                              <div className="flex gap-1.5">
+                                <dt className="text-success/80">Método:</dt>
+                                <dd className="font-medium">
+                                  {PAYMENT_METHOD_LABEL[inv.payment_method] ?? inv.payment_method}
+                                </dd>
+                              </div>
+                            )}
+                            {inv.payment_reference && (
+                              <div className="flex gap-1.5 sm:col-span-2">
+                                <dt className="text-success/80">Referencia:</dt>
+                                <dd className="font-mono font-medium truncate">{inv.payment_reference}</dd>
+                              </div>
+                            )}
+                            {inv.payment_notes && (
+                              <div className="flex gap-1.5 sm:col-span-2">
+                                <dt className="text-success/80">Notas:</dt>
+                                <dd className="font-medium">{inv.payment_notes}</dd>
+                              </div>
+                            )}
+                          </dl>
+                          {inv.payment_proof_url && (
+                            <a
+                              href={inv.payment_proof_url}
+                              target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 mt-2 h-7 px-2 text-xs rounded-md border border-success/40 bg-success/15 hover:bg-success/25 transition-colors"
+                            >
+                              <FileText className="size-3" /> Comprobante de pago <ExternalLink className="size-2.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="px-4 py-3 flex items-center gap-2 flex-wrap">
                     {inv.pdf_url && (
                       <a
@@ -285,12 +350,15 @@ export default function FacturasDetailPage() {
                     )}
                     {canWrite && inv.status === 'reconciled' && (
                       <Button
-                        size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 ml-auto"
-                        onClick={() => markPaid.mutate(inv.id, {
-                          onSuccess: () => toast.success('Marcada como pagada'),
+                        size="sm" className="h-7 px-2 text-xs gap-1 ml-auto"
+                        onClick={() => setPayTarget({
+                          id: inv.id,
+                          folio: inv.invoice_folio,
+                          total: inv.total ?? 0,
+                          currency: inv.currency,
                         })}
                       >
-                        Marcar pagada
+                        <CreditCard className="size-3" /> Registrar pago
                       </Button>
                     )}
                   </div>
@@ -416,6 +484,17 @@ export default function FacturasDetailPage() {
         onClose={() => setReconcileTarget(null)}
         isPending={reconcile.isPending}
       />
+
+      {payTarget && (
+        <RegistrarPagoDialog
+          open={!!payTarget}
+          invoiceId={payTarget.id}
+          invoiceFolio={payTarget.folio}
+          invoiceTotal={payTarget.total}
+          currency={payTarget.currency}
+          onClose={() => setPayTarget(null)}
+        />
+      )}
     </div>
   )
 }
