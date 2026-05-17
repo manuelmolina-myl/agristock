@@ -128,6 +128,24 @@ export default function QuoteComparatorPage() {
 
   const [newQuotOpen, setNewQuotOpen] = useState(false)
 
+  // Latest USD/MXN FX rate for normalizing cross-currency comparisons.
+  // Falls back to 18 if no FX history exists (a safe MX agro default).
+  const { data: latestFx } = useQuery<number>({
+    queryKey: ['fx-rate-latest'],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('fx_rates')
+        .select('rate')
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      return data?.rate ?? 18
+    },
+  })
+  const fxRate = latestFx ?? 18
+
   // Compute totals per quotation across its lines.
   const totals = useMemo(() => {
     const map = new Map<string, { subtotal: number; tax: number; total: number; currency: 'MXN' | 'USD' }>()
@@ -150,19 +168,30 @@ export default function QuoteComparatorPage() {
     return map
   }, [quotations, req])
 
-  // Find the cheapest quotation (in MXN-equivalent for crude comparison).
+  // Find the cheapest quotation by normalizing every total to MXN using
+  // the latest USD/MXN FX rate.  Previously this used a hardcoded factor
+  // of 17 and didn't surface the equivalent to the operator, which made
+  // mixed-currency comparisons confusing (e.g. US$3,584 looked smaller
+  // than $3,654 MXN because the raw numbers were close).
+  const totalsMxn = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const [id, t] of totals.entries()) {
+      const mxn = t.currency === 'USD' ? t.total * fxRate : t.total
+      m.set(id, mxn)
+    }
+    return m
+  }, [totals, fxRate])
+
   const cheapestId = useMemo(() => {
     let best: string | null = null
     let bestTotal = Infinity
-    for (const [id, t] of totals.entries()) {
-      // Treat USD as ~17 MXN for ranking; this is heuristic, the user picks.
-      const mxn = t.currency === 'USD' ? t.total * 17 : t.total
+    for (const [id, mxn] of totalsMxn.entries()) {
       if (mxn > 0 && mxn < bestTotal) {
         bestTotal = mxn; best = id
       }
     }
     return best
-  }, [totals])
+  }, [totalsMxn])
 
   const selectMutation = useMutation({
     mutationFn: async (quotationId: string) => {
@@ -476,6 +505,7 @@ export default function QuoteComparatorPage() {
                   const t = totals.get(q.id) ?? { subtotal: 0, tax: 0, total: 0, currency: 'MXN' as const }
                   const isSelected = q.status === 'selected'
                   const isCheapest = q.id === cheapestId && !selected
+                  const mxnEquiv = totalsMxn.get(q.id) ?? 0
                   return (
                     <td
                       key={q.id}
@@ -486,6 +516,12 @@ export default function QuoteComparatorPage() {
                       <div className="text-sm">{fmt(t.subtotal, t.currency)}</div>
                       <div className="text-sm text-muted-foreground mt-2">{fmt(t.tax, t.currency)}</div>
                       <div className="text-base font-semibold mt-2">{fmt(t.total, t.currency)}</div>
+                      {t.currency === 'USD' && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5 normal-case tracking-normal">
+                          ≈ {fmt(mxnEquiv, 'MXN')} MXN
+                          <span className="ml-1 opacity-70">@ {fxRate.toFixed(2)}</span>
+                        </div>
+                      )}
                     </td>
                   )
                 })}
