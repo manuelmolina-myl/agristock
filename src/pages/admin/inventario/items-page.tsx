@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 
 import { useItems, useCategories, useSoftDelete, useItemStock } from '@/hooks/use-supabase-query'
 import { useBasePath } from '@/hooks/use-base-path'
-import { useAuth } from '@/hooks/use-auth'
+import { usePermissions } from '@/hooks/use-permissions'
 import type { Item } from '@/lib/database.types'
 import { formatQuantity } from '@/lib/utils'
 
@@ -65,9 +65,9 @@ function getStockAlert(qty: number, minStock: number | null, reorderPoint: numbe
 function StockAlertBadge({ alert }: { alert: StockAlert }) {
   if (!alert) return null
   const config = {
-    sin_stock: { label: 'Sin stock', className: 'border-red-300 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 dark:border-red-800' },
-    critico:   { label: 'Crítico',   className: 'border-red-300 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 dark:border-red-800' },
-    bajo:      { label: 'Stock bajo', className: 'border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800' },
+    sin_stock: { label: 'Sin stock', className: 'border-destructive/30 bg-destructive/10 text-destructive' },
+    critico:   { label: 'Crítico',   className: 'border-destructive/30 bg-destructive/10 text-destructive' },
+    bajo:      { label: 'Stock bajo', className: 'border-warning/30 bg-warning/10 text-warning' },
   }
   const { label, className } = config[alert]
   return (
@@ -105,8 +105,10 @@ function TableSkeleton() {
 export function ItemsPage() {
   const navigate = useNavigate()
   const basePath = useBasePath()
-  const { profile } = useAuth()
-  const isAlmacenista = profile?.role === 'almacenista'
+  // Cost visibility migrated from legacy `profile.role === 'almacenista'` check
+  // to claim-based usePermissions().can('costs.view'). See 013_user_roles_table.sql.
+  const canViewCosts = usePermissions().can('costs.view')
+  const isAlmacenista = !canViewCosts
 
   const { data: items = [], isLoading } = useItems()
   const { data: categories = [] } = useCategories()
@@ -215,8 +217,8 @@ export function ItemsPage() {
           onClick={() => setAlertFilter((v) => !v)}
           className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors w-full text-left ${
             alertFilter
-              ? 'border-amber-400 bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700'
-              : 'border-amber-200 bg-amber-50/60 text-amber-700 hover:bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800/60'
+              ? 'border-warning/30 bg-warning/15 text-warning'
+              : 'border-warning/30 bg-warning/10 text-warning hover:bg-warning/15'
           }`}
         >
           <AlertTriangle className="size-4 shrink-0" />
@@ -224,9 +226,9 @@ export function ItemsPage() {
             {alertCounts.total} {alertCounts.total === 1 ? 'artículo requiere' : 'artículos requieren'} atención
           </span>
           <span className="flex items-center gap-1.5 ml-1 text-xs">
-            {alertCounts.sinStock > 0 && <span className="rounded-full bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 px-1.5 py-0.5 font-medium">{alertCounts.sinStock} sin stock</span>}
-            {alertCounts.critico > 0 && <span className="rounded-full bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 px-1.5 py-0.5 font-medium">{alertCounts.critico} crítico</span>}
-            {alertCounts.bajo > 0 && <span className="rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 px-1.5 py-0.5 font-medium">{alertCounts.bajo} bajo</span>}
+            {alertCounts.sinStock > 0 && <span className="rounded-full bg-destructive/10 text-destructive px-1.5 py-0.5 font-medium">{alertCounts.sinStock} sin stock</span>}
+            {alertCounts.critico > 0 && <span className="rounded-full bg-destructive/10 text-destructive px-1.5 py-0.5 font-medium">{alertCounts.critico} crítico</span>}
+            {alertCounts.bajo > 0 && <span className="rounded-full bg-warning/10 text-warning px-1.5 py-0.5 font-medium">{alertCounts.bajo} bajo</span>}
           </span>
           <span className="ml-auto text-xs opacity-70">{alertFilter ? 'Ver todos' : 'Filtrar →'}</span>
         </button>
@@ -332,7 +334,7 @@ export function ItemsPage() {
                     return (
                       <div className="flex items-center gap-1">
                         <StockAlertBadge alert={alert} />
-                        <span className={alert === 'sin_stock' || alert === 'critico' ? 'text-red-600 dark:text-red-400 font-medium' : alert === 'bajo' ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-foreground'}>
+                        <span className={alert === 'sin_stock' || alert === 'critico' ? 'text-destructive font-medium' : alert === 'bajo' ? 'text-warning font-medium' : 'text-foreground'}>
                           {formatQuantity(qty)}
                         </span>
                       </div>
@@ -441,7 +443,7 @@ export function ItemsPage() {
                         <div className="flex flex-col items-end gap-1">
                           <div className="flex items-center gap-1.5">
                             <StockAlertBadge alert={alert} />
-                            <span className={alert === 'sin_stock' || alert === 'critico' ? 'text-red-600 dark:text-red-400 font-medium' : alert === 'bajo' ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                            <span className={alert === 'sin_stock' || alert === 'critico' ? 'text-destructive font-medium' : alert === 'bajo' ? 'text-warning font-medium' : ''}>
                               {formatQuantity(qty)}
                             </span>
                           </div>

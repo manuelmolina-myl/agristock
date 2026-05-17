@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { ArrowLeft, ArrowRight, Check, Loader2, Pencil, ImagePlus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { formatSupabaseError } from '@/lib/errors'
 
 import {
   useItem,
@@ -107,8 +108,9 @@ function ImageUpload({ value, onChange, orgId }: ImageUploadProps) {
       if (error) throw error
       const { data: urlData } = supabase.storage.from('item-images').getPublicUrl(path)
       onChange(urlData.publicUrl)
-    } catch {
-      toast.error('Error al subir la imagen')
+    } catch (err) {
+      const { title, description } = formatSupabaseError(err, 'No se pudo subir la foto')
+      toast.error(title, { description })
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''
@@ -387,8 +389,8 @@ export function ItemFormPage() {
         navigate(`${basePath}/inventario/${(created as Item).id}`)
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error desconocido'
-      toast.error(`No se pudo guardar: ${message}`)
+      const { title, description } = formatSupabaseError(err, 'No se pudo guardar el ítem')
+      toast.error(title, { description })
     }
   }
 

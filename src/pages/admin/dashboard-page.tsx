@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -23,6 +23,7 @@ import {
 
 import { useBasePath } from '@/hooks/use-base-path'
 import { PageHeader } from '@/components/custom/page-header'
+import { KpiCard } from '@/components/custom/kpi-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { supabase } from '@/lib/supabase'
@@ -39,84 +40,6 @@ import type { AuditLog } from '@/lib/database.types'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 
-// ─── KPI Card ────────────────────────────────────────────────────────────────
-
-interface KpiCardProps {
-  label: string
-  value: React.ReactNode
-  icon: React.ReactNode
-  description?: string
-  iconClassName?: string
-  isLoading?: boolean
-  onClick?: () => void
-  trend?: { value: number; label: string }
-}
-
-function KpiCard({
-  label,
-  value,
-  icon,
-  description,
-  iconClassName,
-  isLoading,
-  onClick,
-  trend,
-}: KpiCardProps) {
-  return (
-    <Card
-      className={onClick ? 'cursor-pointer hover:border-primary/40 transition-colors' : ''}
-      onClick={onClick}
-    >
-      <CardHeader className="pb-0">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            {label}
-          </CardTitle>
-          <div
-            className={cn(
-              'flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground',
-              iconClassName,
-            )}
-          >
-            {icon}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-2">
-        {isLoading ? (
-          <>
-            <Skeleton className="h-8 w-28 mb-1" />
-            <Skeleton className="h-3 w-20" />
-          </>
-        ) : (
-          <>
-            <p className="font-heading text-xl sm:text-2xl font-semibold tabular-nums text-foreground leading-tight">
-              {value}
-            </p>
-            {description && (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {description}
-              </p>
-            )}
-            {trend && (
-              <div className={cn(
-                'mt-1 flex items-center gap-1 text-xs font-medium',
-                trend.value > 0 ? 'text-emerald-600 dark:text-emerald-400' : trend.value < 0 ? 'text-red-500 dark:text-red-400' : 'text-muted-foreground',
-              )}>
-                {trend.value > 0
-                  ? <TrendingUp className="size-3" />
-                  : trend.value < 0
-                  ? <TrendingDown className="size-3" />
-                  : null}
-                {trend.value > 0 ? '+' : ''}{trend.value.toFixed(0)}% {trend.label}
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
 
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 
@@ -352,9 +275,9 @@ function entityLabel(entity: string) {
 }
 
 function actionBadgeColor(action: string) {
-  if (action === 'INSERT') return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-  if (action === 'DELETE') return 'bg-red-500/15 text-red-600 dark:text-red-400'
-  return 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+  if (action === 'INSERT') return 'bg-success/15 text-success'
+  if (action === 'DELETE') return 'bg-destructive/15 text-destructive'
+  return 'bg-usd/15 text-usd'
 }
 
 function userInitial(email: string | null) {
@@ -453,7 +376,7 @@ export function AdminDashboardPage() {
           icon={<AlertTriangle className="size-4" />}
           iconClassName={
             (bajoReordenQ.data ?? 0) > 0
-              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+              ? 'bg-warning/15 text-warning'
               : undefined
           }
           description="Requieren atención"
@@ -495,7 +418,7 @@ export function AdminDashboardPage() {
               {gastoTrend && (
                 <div className={cn(
                   'flex items-center gap-1 text-xs font-medium shrink-0',
-                  gastoTrend.pct > 0 ? 'text-red-500 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
+                  gastoTrend.pct > 0 ? 'text-destructive' : 'text-success',
                 )}>
                   {gastoTrend.pct > 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
                   {gastoTrend.pct > 0 ? '+' : ''}{gastoTrend.pct.toFixed(0)}% vs sem. ant.

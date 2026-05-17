@@ -23,17 +23,17 @@ import { Skeleton } from '@/components/ui/skeleton'
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const STATUS_CLASSES: Record<SolicitudStatus, string> = {
-  pendiente: 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-400',
-  aprobada:  'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400',
-  rechazada: 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400',
-  entregada: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400',
+  pendiente: 'border-warning/30 bg-warning/10 text-warning',
+  aprobada:  'border-success/30 bg-success/10 text-success',
+  rechazada: 'border-destructive/30 bg-destructive/10 text-destructive',
+  entregada: 'border-usd/30 bg-usd/10 text-usd',
 }
 
 const URGENCY_CLASSES: Record<SolicitudUrgency, string> = {
-  baja:    'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
-  normal:  'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400',
+  baja:    'border-border bg-muted/30 text-muted-foreground',
+  normal:  'border-usd/30 bg-usd/10 text-usd',
   alta:    'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-400',
-  urgente: 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400',
+  urgente: 'border-destructive/30 bg-destructive/10 text-destructive',
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ export function SupervisorDashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Pendientes</CardTitle>
-            <Clock className="size-4 text-yellow-500" />
+            <Clock className="size-4 text-warning" />
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -104,7 +104,7 @@ export function SupervisorDashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Aprobadas (mes)</CardTitle>
-            <CheckCircle className="size-4 text-emerald-500" />
+            <CheckCircle className="size-4 text-success" />
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -117,7 +117,7 @@ export function SupervisorDashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Entregadas (mes)</CardTitle>
-            <PackageCheck className="size-4 text-blue-500" />
+            <PackageCheck className="size-4 text-usd" />
           </CardHeader>
           <CardContent>
             {isLoading ? (

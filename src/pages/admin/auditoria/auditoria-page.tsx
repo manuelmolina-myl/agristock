@@ -20,6 +20,7 @@ import { Separator } from '@/components/ui/separator'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
 import { formatFechaCorta, formatHora, formatRelativo, cn } from '@/lib/utils'
+import { auditOpColors, auditOpDotColors } from '@/lib/status-colors'
 import type { AuditLog } from '@/lib/database.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,17 +82,15 @@ function entityLabel(entity: string) {
 }
 
 function actionBadgeClass(action: string) {
-  if (action === 'INSERT')
-    return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20'
-  if (action === 'DELETE')
-    return 'bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/25 hover:bg-red-500/20'
-  return 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/25 hover:bg-blue-500/20'
+  if (action === 'INSERT') return auditOpColors.INSERT
+  if (action === 'DELETE') return auditOpColors.DELETE
+  return auditOpColors.UPDATE
 }
 
 function dotColor(action: string) {
-  if (action === 'INSERT') return 'bg-emerald-500'
-  if (action === 'DELETE') return 'bg-red-500'
-  return 'bg-blue-500'
+  if (action === 'INSERT') return auditOpDotColors.INSERT
+  if (action === 'DELETE') return auditOpDotColors.DELETE
+  return auditOpDotColors.UPDATE
 }
 
 function userInitial(email: string | null) {
@@ -153,14 +152,14 @@ function DiffViewer({ entry }: { entry: AuditLog }) {
               <th className="px-3 py-2 text-left font-medium text-muted-foreground w-1/3">
                 Campo
               </th>
-              <th className="px-3 py-2 text-left font-medium text-emerald-600 dark:text-emerald-400">
+              <th className="px-3 py-2 text-left font-medium text-success">
                 Valor creado
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {Object.entries(entry.after_data).map(([k, v]) => (
-              <tr key={k} className="bg-emerald-500/5">
+              <tr key={k} className="bg-success/10">
                 <td className="px-3 py-1.5 text-muted-foreground">{k}</td>
                 <td className="px-3 py-1.5 text-foreground whitespace-pre-wrap break-all">
                   + {renderValue(v)}
@@ -182,14 +181,14 @@ function DiffViewer({ entry }: { entry: AuditLog }) {
               <th className="px-3 py-2 text-left font-medium text-muted-foreground w-1/3">
                 Campo
               </th>
-              <th className="px-3 py-2 text-left font-medium text-red-600 dark:text-red-400">
+              <th className="px-3 py-2 text-left font-medium text-destructive">
                 Valor eliminado
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {Object.entries(entry.before_data).map(([k, v]) => (
-              <tr key={k} className="bg-red-500/5">
+              <tr key={k} className="bg-destructive/10">
                 <td className="px-3 py-1.5 text-muted-foreground">{k}</td>
                 <td className="px-3 py-1.5 text-foreground whitespace-pre-wrap break-all">
                   - {renderValue(v)}
@@ -218,10 +217,10 @@ function DiffViewer({ entry }: { entry: AuditLog }) {
             <th className="px-3 py-2 text-left font-medium text-muted-foreground w-1/4">
               Campo
             </th>
-            <th className="px-3 py-2 text-left font-medium text-red-600 dark:text-red-400 w-[37.5%]">
+            <th className="px-3 py-2 text-left font-medium text-destructive w-[37.5%]">
               Antes
             </th>
-            <th className="px-3 py-2 text-left font-medium text-emerald-600 dark:text-emerald-400 w-[37.5%]">
+            <th className="px-3 py-2 text-left font-medium text-success w-[37.5%]">
               Después
             </th>
           </tr>
@@ -232,15 +231,15 @@ function DiffViewer({ entry }: { entry: AuditLog }) {
             .map((r) => (
               <tr
                 key={r.key}
-                className="bg-amber-500/5"
+                className="bg-warning/10"
               >
                 <td className="px-3 py-1.5 text-muted-foreground font-semibold">
                   {r.key}
                 </td>
-                <td className="px-3 py-1.5 text-red-700 dark:text-red-400 whitespace-pre-wrap break-all">
+                <td className="px-3 py-1.5 text-destructive whitespace-pre-wrap break-all">
                   - {renderValue(r.before)}
                 </td>
-                <td className="px-3 py-1.5 text-emerald-700 dark:text-emerald-400 whitespace-pre-wrap break-all">
+                <td className="px-3 py-1.5 text-success whitespace-pre-wrap break-all">
                   + {renderValue(r.after)}
                 </td>
               </tr>

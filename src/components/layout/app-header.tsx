@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
 import { useTheme } from '@/hooks/use-theme'
 import { useBasePath } from '@/hooks/use-base-path'
-import { ROLE_LABELS, ROLE_ROUTES } from '@/lib/constants'
+import { ROLE_LABELS_NEW, ROLE_ROUTES_NEW } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -60,10 +60,10 @@ interface BreadcrumbEntry {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function useBreadcrumbs(): BreadcrumbEntry[] {
-  const { profile } = useAuth()
+  const { primaryRole } = useAuth()
   const { titles } = usePageTitle()
   const location = useLocation()
-  const basePath = profile?.role ? ROLE_ROUTES[profile.role] : ''
+  const basePath = primaryRole ? ROLE_ROUTES_NEW[primaryRole] : ''
   const baseLabel = 'AgriStock'
 
   const relative = location.pathname.replace(basePath, '').replace(/^\//, '')
@@ -166,7 +166,7 @@ function ThemeToggle() {
 // ─── User menu ────────────────────────────────────────────────────────────────
 
 function UserMenu() {
-  const { profile, signOut } = useAuth()
+  const { profile, primaryRole, signOut } = useAuth()
   const navigate = useNavigate()
 
   const initials = profile?.full_name
@@ -196,9 +196,9 @@ function UserMenu() {
         <DropdownMenuLabel>
           <div className="flex flex-col gap-0.5">
             <span className="font-medium text-foreground">{profile?.full_name ?? '—'}</span>
-            {profile?.role && (
+            {primaryRole && (
               <span className="text-xs font-normal text-muted-foreground">
-                {ROLE_LABELS[profile.role]}
+                {ROLE_LABELS_NEW[primaryRole]}
               </span>
             )}
           </div>
@@ -271,8 +271,9 @@ function NotificationBell() {
   const basePath = useBasePath()
 
   const role = profile?.role
-  const canSeeAlerts = role === 'admin' || role === 'super_admin' || role === 'gerente' || role === 'almacenista'
-  const canSeeSolicitudes = role === 'admin' || role === 'super_admin' || role === 'gerente'
+  // 4-role model: admin / compras / mantenimiento / almacenista
+  const canSeeAlerts      = role === 'admin' || role === 'compras' || role === 'almacenista'
+  const canSeeSolicitudes = role === 'admin' || role === 'compras'
 
   const { lowStock, solicitudes } = useNotifications(
     organization?.id,
@@ -287,15 +288,17 @@ function NotificationBell() {
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="relative" aria-label="Notificaciones">
-          <Bell className="size-4" />
-          {totalCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground leading-none">
-              {totalCount > 9 ? '9+' : totalCount}
-            </span>
-          )}
-        </Button>
+      <PopoverTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" className="relative" aria-label="Notificaciones" />
+        }
+      >
+        <Bell className="size-4" />
+        {totalCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground leading-none">
+            {totalCount > 9 ? '9+' : totalCount}
+          </span>
+        )}
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-80 p-0">
         <div className="flex items-center justify-between px-4 py-3 border-b">

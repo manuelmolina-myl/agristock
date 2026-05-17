@@ -919,7 +919,7 @@ export default function NuevaEntradaPage() {
                       const costWarning = Number(line.unit_cost_native) === 0
 
                       return (
-                        <TableRow key={idx} className={cn('border-b border-border/50 last:border-0', costWarning && 'bg-amber-50/40 dark:bg-amber-950/20')}>
+                        <TableRow key={idx} className={cn('border-b border-border/50 last:border-0', costWarning && 'bg-warning/10')}>
                           <TableCell className="px-4 py-2">
                             <div className="flex flex-col gap-0.5">
                               <span className="text-sm font-medium">{item?.name ?? '—'}</span>
@@ -938,7 +938,7 @@ export default function NuevaEntradaPage() {
                           </TableCell>
                           <TableCell className="px-4 py-2 text-center">
                             {(line as any).applies_iva ? (
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-emerald-700 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">16%</Badge>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-success border-success/30">16%</Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">—</span>
                             )}
@@ -959,7 +959,7 @@ export default function NuevaEntradaPage() {
                                 </span>
                               )}
                               {costWarning && (
-                                <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                                <div className="flex items-center gap-1 text-warning">
                                   <AlertTriangle className="h-3 w-3" />
                                   <span className="text-[10px]">Costo en cero</span>
                                 </div>
@@ -1004,11 +1004,11 @@ export default function NuevaEntradaPage() {
 
           {/* Warning placeholder */}
           {form.getValues('lines').some((l) => Number(l.unit_cost_native) === 0) && (
-            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3">
+              <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-amber-800 dark:text-amber-300">Revisión de costos</span>
-                <span className="text-xs text-amber-700 dark:text-amber-400">
+                <span className="text-sm font-medium text-warning">Revisión de costos</span>
+                <span className="text-xs text-warning">
                   Una o más partidas tienen costo unitario en cero. Verifica antes de registrar.
                 </span>
               </div>

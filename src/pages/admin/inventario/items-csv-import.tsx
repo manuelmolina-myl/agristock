@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
 import { useCategories, useUnits } from '@/hooks/use-supabase-query'
 import { cn } from '@/lib/utils'
+import { formatSupabaseError } from '@/lib/errors'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -225,8 +226,15 @@ export function ItemsCsvImport({ open, onOpenChange }: Props) {
       setRows([])
       setFileName(null)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al importar'
-      toast.error(msg.includes('unique') || msg.includes('duplicate') ? 'Algunos SKUs ya existen' : msg)
+      const rawMsg = (err && typeof err === 'object' && 'message' in err)
+        ? String((err as { message?: unknown }).message ?? '')
+        : ''
+      const isDuplicate = rawMsg.includes('unique') || rawMsg.includes('duplicate')
+      const { title, description } = formatSupabaseError(
+        err,
+        isDuplicate ? 'Algunos SKUs ya existen' : 'No se pudieron importar los artículos',
+      )
+      toast.error(title, { description })
     } finally {
       setImporting(false)
     }
@@ -285,12 +293,12 @@ export function ItemsCsvImport({ open, onOpenChange }: Props) {
           {/* Summary */}
           {rows.length > 0 && (
             <div className="flex items-center gap-3 text-sm">
-              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+              <span className="flex items-center gap-1.5 text-success font-medium">
                 <CheckCircle2 className="size-4" />
                 {validRows.length} válido{validRows.length !== 1 ? 's' : ''}
               </span>
               {errorRows.length > 0 && (
-                <span className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-medium">
+                <span className="flex items-center gap-1.5 text-destructive font-medium">
                   <XCircle className="size-4" />
                   {errorRows.length} con error{errorRows.length !== 1 ? 'es' : ''}
                 </span>
@@ -300,14 +308,14 @@ export function ItemsCsvImport({ open, onOpenChange }: Props) {
 
           {/* Error list */}
           {errorRows.length > 0 && (
-            <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/30 divide-y divide-red-100 dark:divide-red-900/40 max-h-48 overflow-y-auto">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 divide-y divide-destructive/20 max-h-48 overflow-y-auto">
               {errorRows.map((r) => (
                 <div key={r.rowNum} className="flex items-start gap-2 px-3 py-2 text-xs">
-                  <AlertCircle className="size-3.5 text-red-500 shrink-0 mt-0.5" />
+                  <AlertCircle className="size-3.5 text-destructive shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-medium text-red-700 dark:text-red-400">Fila {r.rowNum}</span>
-                    {r.sku && <span className="text-red-600/70 dark:text-red-400/70"> · {r.sku}</span>}
-                    <span className="text-red-600/80 dark:text-red-400/80">: {r.errors.join(', ')}</span>
+                    <span className="font-medium text-destructive">Fila {r.rowNum}</span>
+                    {r.sku && <span className="text-destructive/70"> · {r.sku}</span>}
+                    <span className="text-destructive/80">: {r.errors.join(', ')}</span>
                   </div>
                 </div>
               ))}

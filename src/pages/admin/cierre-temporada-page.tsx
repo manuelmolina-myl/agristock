@@ -214,9 +214,9 @@ function Step1Checklist({ manualChecks, onManualToggle, onNext }: Step1Props) {
                   isLoading ? (
                     <Loader2 className="size-5 animate-spin text-muted-foreground" />
                   ) : item.checked ? (
-                    <CheckCircle2 className="size-5 text-emerald-500" />
+                    <CheckCircle2 className="size-5 text-success" />
                   ) : (
-                    <AlertTriangle className="size-5 text-amber-500" />
+                    <AlertTriangle className="size-5 text-warning" />
                   )
                 ) : (
                   <Checkbox
@@ -242,7 +242,7 @@ function Step1Checklist({ manualChecks, onManualToggle, onNext }: Step1Props) {
                   <p
                     className={cn(
                       'mt-0.5 text-xs',
-                      item.checked ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400',
+                      item.checked ? 'text-muted-foreground' : 'text-warning',
                       item.checked && 'text-muted-foreground',
                     )}
                   >
@@ -276,14 +276,14 @@ function Step1Checklist({ manualChecks, onManualToggle, onNext }: Step1Props) {
                 {item.checked ? (
                   <Badge
                     variant="outline"
-                    className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+                    className="text-xs bg-success/10 text-success border-success/30"
                   >
                     Listo
                   </Badge>
                 ) : (
                   <Badge
                     variant="outline"
-                    className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+                    className="text-xs bg-warning/10 text-warning border-warning/30"
                   >
                     Pendiente
                   </Badge>
@@ -540,7 +540,7 @@ function Step3Confirmation({
           className={cn(
             'font-mono transition-colors',
             confirmText.length > 0 && !canConfirm && 'border-destructive focus-visible:ring-destructive',
-            canConfirm && 'border-emerald-500 focus-visible:ring-emerald-500',
+            canConfirm && 'border-success focus-visible:ring-success',
           )}
           autoComplete="off"
           spellCheck={false}

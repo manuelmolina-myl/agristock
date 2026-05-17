@@ -972,7 +972,7 @@ function ConsumoDieselReport({ orgName }: { orgName: string }) {
 // Report 6: Ítems sin Movimiento
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface ItemStockRow {
+interface SinMovItemRow {
   item_id: string
   quantity: number
   item: { id: string; name: string; sku: string; category?: { name: string } | null }
@@ -986,7 +986,7 @@ function SinMovimientoReport({ orgName }: { orgName: string }) {
   const [dateFrom, setDateFrom] = useState<string>('')
   const [dateTo, setDateTo]     = useState<string>(today)
 
-  const { data: allStock = [], isLoading: loadingStock } = useQuery<ItemStockRow[]>({
+  const { data: allStock = [], isLoading: loadingStock } = useQuery<SinMovItemRow[]>({
     queryKey: ['stock-all', activeSeason?.id],
     queryFn: async () => {
       const { data, error } = await db
@@ -994,7 +994,7 @@ function SinMovimientoReport({ orgName }: { orgName: string }) {
         .select('item_id, quantity, item:items!inner(id, name, sku, category:categories(name))')
         .eq('season_id', activeSeason?.id)
       if (error) throw error
-      return data as ItemStockRow[]
+      return data as SinMovItemRow[]
     },
     enabled: !!activeSeason?.id,
   })

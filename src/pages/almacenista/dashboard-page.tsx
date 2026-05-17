@@ -56,8 +56,8 @@ function MovimientoTypeBadge({ type }: { type: string }) {
       className={cn(
         'text-xs',
         isEntrada(type)
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400'
-          : 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-400',
+          ? 'border-success/30 bg-success/10 text-success'
+          : 'border-warning/30 bg-warning/10 text-warning',
       )}
     >
       {label}
@@ -67,9 +67,9 @@ function MovimientoTypeBadge({ type }: { type: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    draft:     { label: 'Borrador',  cls: 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400' },
-    posted:    { label: 'Publicado', cls: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400' },
-    cancelled: { label: 'Cancelado', cls: 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400' },
+    draft:     { label: 'Borrador',  cls: 'border-border bg-muted/30 text-muted-foreground' },
+    posted:    { label: 'Publicado', cls: 'border-usd/30 bg-usd/10 text-usd' },
+    cancelled: { label: 'Cancelado', cls: 'border-destructive/30 bg-destructive/10 text-destructive' },
   }
   const s = map[status] ?? { label: status, cls: '' }
   return (

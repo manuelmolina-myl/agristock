@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import type { ReactNode } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import type { Profile, Organization, Season, UserRole } from '@/lib/database.types'
+import type { Profile, Organization, Season, UserRoleEnum } from '@/lib/database.types'
 
 interface AuthState {
   user: User | null
@@ -10,11 +10,16 @@ interface AuthState {
   profile: Profile | null
   organization: Organization | null
   activeSeason: Season | null
+  // New role model (user_roles table — N:M).
+  // `roles` is the full set, sorted by privilege (super_admin first).
+  // `primaryRole` is roles[0] — what UIs should display when a single role is shown.
+  roles: UserRoleEnum[]
+  primaryRole: UserRoleEnum | null
   isLoading: boolean
 }
 
 interface AuthContextValue extends AuthState {
-  signIn: (email: string, password: string) => Promise<{ role: UserRole }>
+  signIn: (email: string, password: string) => Promise<{ role: UserRoleEnum; roles: UserRoleEnum[] }>
   signUp: (email: string, password: string, fullName: string, orgName: string) => Promise<void>
   signOut: () => Promise<void>
   setActiveSeason: (season: Season) => void
@@ -25,6 +30,17 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
+
+function normalizeRpcRoles(data: unknown): UserRoleEnum[] {
+  if (!Array.isArray(data)) return []
+  return (data as unknown[]).map((row) => {
+    if (typeof row === 'string') return row as UserRoleEnum
+    if (row && typeof row === 'object' && 'current_user_roles' in row) {
+      return (row as { current_user_roles: UserRoleEnum }).current_user_roles
+    }
+    return row as UserRoleEnum
+  })
+}
 
 async function fetchUserData(userId: string) {
   try {
@@ -52,10 +68,21 @@ async function fetchUserData(userId: string) {
       .eq('status', 'active')
       .maybeSingle()
 
+    // Fetch user_roles via SECURITY DEFINER RPC (013_user_roles_table.sql).
+    // Falls back to empty array on failure so legacy code path keeps working.
+    let roles: UserRoleEnum[] = []
+    try {
+      const { data: rolesData, error: rolesErr } = await db.rpc('current_user_roles')
+      if (!rolesErr) roles = normalizeRpcRoles(rolesData)
+    } catch (e) {
+      console.warn('current_user_roles RPC failed (will fall back to legacy role):', e)
+    }
+
     return {
       profile: profile as Profile,
       organization: (organization as Organization) ?? null,
       season: (season as Season) ?? null,
+      roles,
     }
   } catch (e) {
     console.error('fetchUserData error:', e)
@@ -70,6 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile: null,
     organization: null,
     activeSeason: null,
+    roles: [],
+    primaryRole: null,
     isLoading: true,
   })
   // Skip onAuthStateChange handler when signIn is managing state directly
@@ -90,6 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               profile: userData?.profile ?? null,
               organization: userData?.organization ?? null,
               activeSeason: userData?.season ?? null,
+              roles: userData?.roles ?? [],
+              primaryRole: userData?.roles[0] ?? null,
               isLoading: false,
             })
           } else {
@@ -102,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             profile: null,
             organization: null,
             activeSeason: null,
+            roles: [],
+            primaryRole: null,
             isLoading: false,
           })
         } else if (event === 'TOKEN_REFRESHED' && session) {
@@ -129,10 +162,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile: userData.profile,
         organization: userData.organization,
         activeSeason: userData.season,
+        roles: userData.roles,
+        primaryRole: userData.roles[0] ?? null,
         isLoading: false,
       })
 
-      return { role: userData.profile.role }
+      return { role: userData.profile.role, roles: userData.roles }
     } finally {
       // Small delay to let any pending SIGNED_IN events pass
       setTimeout(() => { signingIn.current = false }, 1000)
@@ -169,6 +204,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         organization: userData.organization,
         activeSeason: userData.season,
         profile: userData.profile,
+        roles: userData.roles,
+        primaryRole: userData.roles[0] ?? null,
       }))
     }
   }, [])

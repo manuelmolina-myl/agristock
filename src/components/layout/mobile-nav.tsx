@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Package,
   ArrowLeftRight,
-  BarChart3,
   MoreHorizontal,
   Fuel,
   ClipboardList,
@@ -15,7 +14,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
-import { ROLE_ROUTES } from '@/lib/constants'
+import { ROLE_ROUTES_NEW } from '@/lib/constants'
 
 interface MobileNavItem {
   label: string
@@ -26,39 +25,41 @@ interface MobileNavItem {
 }
 
 function useMobileNavItems(): MobileNavItem[] {
-  const { profile } = useAuth()
-  const base = profile?.role ? ROLE_ROUTES[profile.role] : '/'
-  const role = profile?.role
+  const { primaryRole } = useAuth()
+  const base = primaryRole ? ROLE_ROUTES_NEW[primaryRole] : '/'
 
-  switch (role) {
-    case 'supervisor':
-      return [
-        { label: 'Inicio',      to: base,                   icon: LayoutDashboard, exact: true },
-        { label: 'Solicitudes', to: `${base}/solicitudes`,  icon: ClipboardList },
-      ]
-    case 'almacenista':
-      return [
-        { label: 'Inicio',      to: base,                   icon: LayoutDashboard, exact: true },
-        { label: 'Inventario',  to: `${base}/inventario`,   icon: Package },
-        { label: 'Movimientos', to: `${base}/entradas`,     icon: ArrowLeftRight, isMovimientos: true },
-        { label: 'Diésel',      to: `${base}/diesel`,       icon: Fuel },
-      ]
-    case 'gerente':
-      return [
-        { label: 'Inicio',      to: base,                   icon: LayoutDashboard, exact: true },
-        { label: 'Inventario',  to: `${base}/inventario`,   icon: Package },
-        { label: 'Reportes',    to: `${base}/reportes`,     icon: BarChart3 },
-        { label: 'Solicitudes', to: `${base}/solicitudes`,  icon: ClipboardList },
-      ]
-    default: // admin / super_admin
-      return [
-        { label: 'Inicio',      to: base,                   icon: LayoutDashboard, exact: true },
-        { label: 'Inventario',  to: `${base}/inventario`,   icon: Package },
-        { label: 'Movimientos', to: `${base}/entradas`,     icon: ArrowLeftRight, isMovimientos: true },
-        { label: 'Reportes',    to: `${base}/reportes`,     icon: BarChart3 },
-        { label: 'Más',         to: `${base}/configuracion`, icon: MoreHorizontal },
-      ]
+  // Mobile nav per role (4-role model).  Each role's nav is its dominant module.
+  if (primaryRole === 'compras') {
+    return [
+      { label: 'Inicio',       to: '/compras',                icon: LayoutDashboard, exact: true },
+      { label: 'Solicitudes',  to: '/compras/requisiciones',  icon: ClipboardList },
+      { label: 'Órdenes',      to: '/compras/ordenes',        icon: ArrowLeftRight, isMovimientos: true },
+      { label: 'Recepciones',  to: '/compras/recepciones',    icon: Package },
+    ]
   }
+  if (primaryRole === 'mantenimiento') {
+    return [
+      { label: 'Inicio',     to: '/mantenimiento',          icon: LayoutDashboard, exact: true },
+      { label: 'Órdenes',    to: '/mantenimiento/ordenes',  icon: ArrowLeftRight, isMovimientos: true },
+      { label: 'Equipos',    to: '/mantenimiento/equipos',  icon: Fuel },
+    ]
+  }
+  if (primaryRole === 'almacenista') {
+    return [
+      { label: 'Inicio',      to: '/almacen',             icon: LayoutDashboard, exact: true },
+      { label: 'Inventario',  to: '/almacen/inventario',  icon: Package },
+      { label: 'Movimientos', to: '/almacen/entradas',    icon: ArrowLeftRight, isMovimientos: true },
+      { label: 'Diésel',      to: '/almacen/diesel',      icon: Fuel },
+    ]
+  }
+  // admin (or fallback) → full nav
+  return [
+    { label: 'Inicio',      to: base,                  icon: LayoutDashboard, exact: true },
+    { label: 'Almacén',     to: '/almacen',            icon: Package },
+    { label: 'Compras',     to: '/compras',            icon: ArrowLeftRight, isMovimientos: true },
+    { label: 'Mantto.',     to: '/mantenimiento',      icon: Fuel },
+    { label: 'Más',         to: '/configuracion',      icon: MoreHorizontal },
+  ]
 }
 
 // ─── Movimientos picker ───────────────────────────────────────────────────────
@@ -127,10 +128,10 @@ function MovimientosPicker({
 
 export function MobileNav() {
   const items = useMobileNavItems()
-  const { profile } = useAuth()
+  const { primaryRole } = useAuth()
   const location = useLocation()
   const [movOpen, setMovOpen] = useState(false)
-  const base = profile?.role ? ROLE_ROUTES[profile.role] : '/'
+  const base = primaryRole ? ROLE_ROUTES_NEW[primaryRole] : '/'
 
   const movPaths = [`${base}/entradas`, `${base}/salidas`, `${base}/traspasos`]
   const movActive = movPaths.some((p) => location.pathname.startsWith(p))

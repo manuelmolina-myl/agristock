@@ -8,6 +8,7 @@ import { Warehouse, Building2, Calendar, PackageOpen, ArrowRight, ArrowLeft, Che
 
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase'
+import { formatSupabaseError } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -319,7 +320,8 @@ export default function OnboardingPage() {
       toast.success('¡Todo listo!', { description: 'Tu cuenta está configurada. Bienvenido a AgriStock.' })
       navigate('/admin', { replace: true })
     } catch (err) {
-      toast.error('Error al guardar', { description: err instanceof Error ? err.message : 'Intenta de nuevo' })
+      const { title, description } = formatSupabaseError(err, 'No se pudo completar la configuración')
+      toast.error(title, { description })
     } finally {
       setSubmitting(false)
     }

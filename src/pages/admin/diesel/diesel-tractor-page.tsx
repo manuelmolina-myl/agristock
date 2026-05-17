@@ -31,6 +31,7 @@ import type { StockMovementLine, Equipment, Employee, Item, StockMovement } from
 import { formatQuantity, formatMoney, formatFechaCorta } from '@/lib/utils'
 
 import { PageHeader } from '@/components/custom/page-header'
+import { KpiCard } from '@/components/custom/kpi-card'
 import { EmptyState } from '@/components/custom/empty-state'
 import { MoneyDisplay } from '@/components/custom/money-display'
 
@@ -99,41 +100,6 @@ function monthLabel(key: string): string {
   const [year, month] = key.split('-')
   const d = new Date(Number(year), Number(month) - 1, 1)
   return format(d, 'MMM yy', { locale: es })
-}
-
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
-
-interface KpiCardProps {
-  icon: React.ReactNode
-  label: string
-  value: string
-  sub?: string
-  loading?: boolean
-}
-
-function KpiCard({ icon, label, value, sub, loading }: KpiCardProps) {
-  return (
-    <Card>
-      <CardContent className="pt-5 pb-4 px-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <p className="text-xs text-muted-foreground font-medium truncate">{label}</p>
-            {loading ? (
-              <Skeleton className="h-7 w-28 mt-0.5" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums leading-tight">{value}</p>
-            )}
-            {sub && !loading && (
-              <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
-            )}
-          </div>
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-            {icon}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
 }
 
 // ─── Historial Tab ─────────────────────────────────────────────────────────────

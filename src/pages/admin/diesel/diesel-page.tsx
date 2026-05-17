@@ -32,6 +32,7 @@ import { formatFechaCorta, formatHora, formatMoney, formatQuantity, cn } from '@
 import type { StockMovementLine, Equipment, Employee, Item, StockMovement } from '@/lib/database.types'
 
 import { PageHeader } from '@/components/custom/page-header'
+import { KpiCard } from '@/components/custom/kpi-card'
 import { MoneyDisplay } from '@/components/custom/money-display'
 import { EmptyState } from '@/components/custom/empty-state'
 import { SearchableSelect } from '@/components/shared/searchable-select'
@@ -108,43 +109,6 @@ function calcRendimiento(line: DieselLine): number | null {
   if (delta <= 0) return null
   return liters / delta
 }
-
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
-
-interface KpiCardProps {
-  icon: React.ReactNode
-  label: string
-  value: string
-  sub?: string
-  loading?: boolean
-}
-
-function KpiCard({ icon, label, value, sub, loading }: KpiCardProps) {
-  return (
-    <Card>
-      <CardContent className="pt-5 pb-4 px-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <p className="text-xs text-muted-foreground font-medium truncate">{label}</p>
-            {loading ? (
-              <Skeleton className="h-7 w-28 mt-0.5" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums leading-tight">{value}</p>
-            )}
-            {sub && !loading && (
-              <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
-            )}
-          </div>
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-            {icon}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ─── Table Skeleton ───────────────────────────────────────────────────────────
 
 function TableSkeleton({ canSeePrices }: { canSeePrices: boolean }) {
   return (

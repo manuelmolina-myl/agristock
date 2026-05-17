@@ -7,6 +7,7 @@ import { Plus, Calendar, CheckCircle, Clock, Archive, Lock } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase'
+import { formatSupabaseError } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -87,7 +88,8 @@ export function SeasonsTab() {
       reset()
       setOpen(false)
     } catch (err) {
-      toast.error('Error', { description: err instanceof Error ? err.message : 'Intenta de nuevo' })
+      const { title, description } = formatSupabaseError(err, 'No se pudo crear la temporada')
+      toast.error(title, { description })
     }
   }
 
@@ -102,7 +104,8 @@ export function SeasonsTab() {
       toast.success(`Temporada "${season.name}" activada`)
       qc.invalidateQueries({ queryKey: ['seasons-all'] })
     } catch (err) {
-      toast.error('Error', { description: err instanceof Error ? err.message : 'Intenta de nuevo' })
+      const { title, description } = formatSupabaseError(err, 'No se pudo activar la temporada')
+      toast.error(title, { description })
     }
   }
 
@@ -114,7 +117,8 @@ export function SeasonsTab() {
       toast.success(`Temporada "${season.name}" → ${STATUS_CONFIG[newStatus].label}`)
       qc.invalidateQueries({ queryKey: ['seasons-all'] })
     } catch (err) {
-      toast.error('Error', { description: err instanceof Error ? err.message : 'Intenta de nuevo' })
+      const { title, description } = formatSupabaseError(err, 'No se pudo cambiar el estado de la temporada')
+      toast.error(title, { description })
     }
   }
 
@@ -206,7 +210,7 @@ export function SeasonsTab() {
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button type="submit" form="season-form" disabled={isSubmitting}>
+            <Button type="button" onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
               {isSubmitting ? 'Creando…' : 'Crear temporada'}
             </Button>
           </DialogFooter>

@@ -64,104 +64,129 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* ─── Light theme ─── */
+/* ════════════════════════════════════════════════════════════════════════════
+   AgriStock — "Tierra cultivada" design system
+   Paleta inspirada en el campo mexicano: cáñamo y crema (lino sin teñir),
+   verde forest profundo (hojas maduras), terracotta del barro, ámbar dorado
+   (trigo y maíz al sol).  Sustituye al gris monocromo genérico de Tailwind
+   para darle calidez y carácter agrícola.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Light theme — "campo al mediodía" ─── */
 :root {
-    --background: #FAFAF9;
-    --foreground: #0A0A0B;
-    --card: #FFFFFF;
-    --card-foreground: #0A0A0B;
-    --popover: #FFFFFF;
-    --popover-foreground: #0A0A0B;
-    --primary: #16A34A;
-    --primary-foreground: #FFFFFF;
-    --secondary: #F4F4F5;
-    --secondary-foreground: #18181B;
-    --muted: #F4F4F5;
-    --muted-foreground: #71717A;
-    --accent: #F4F4F5;
-    --accent-foreground: #18181B;
-    --destructive: #DC2626;
-    --border: #E4E4E7;
-    --input: #E4E4E7;
-    --ring: #16A34A;
+    /* Backgrounds: cáñamo / lino crudo — cálido, no blanco quirófano */
+    --background: #F7F3EA;     /* lino-blanco */
+    --foreground: #1F1A13;     /* marrón oscuro, no negro plano */
+    --card: #FDFBF4;           /* crema más clara que el bg para flotar */
+    --card-foreground: #1F1A13;
+    --popover: #FDFBF4;
+    --popover-foreground: #1F1A13;
 
-    /* AgriStock custom */
-    --success: #16A34A;
-    --success-foreground: #FFFFFF;
-    --warning: #EAB308;
-    --warning-foreground: #422006;
-    --usd: #2563EB;
-    --usd-foreground: #FFFFFF;
-    --mxn: #16A34A;
-    --mxn-foreground: #FFFFFF;
-    --diesel: #F97316;
-    --diesel-foreground: #FFFFFF;
+    /* Acción principal: verde forest profundo (hojas maduras) */
+    --primary: #2F5D3F;
+    --primary-foreground: #F7F3EA;
 
-    --chart-1: #16A34A;
-    --chart-2: #2563EB;
-    --chart-3: #F97316;
-    --chart-4: #EAB308;
-    --chart-5: #8B5CF6;
+    /* Tonos auxiliares */
+    --secondary: #EDE5D1;      /* cáñamo medio */
+    --secondary-foreground: #2A2218;
+    --muted: #EFE7D3;          /* misma familia, ligeramente más oscuro */
+    --muted-foreground: #6B5E48;
+    --accent: #E7DCC0;          /* tierra clara — hover en sidebar/tablas */
+    --accent-foreground: #2A2218;
 
-    --radius: 0.5rem;
+    /* Destructivo: rojo terracotta intenso (no neón) */
+    --destructive: #A0312A;
 
-    --sidebar: #FAFAF9;
-    --sidebar-foreground: #0A0A0B;
-    --sidebar-primary: #16A34A;
-    --sidebar-primary-foreground: #FFFFFF;
-    --sidebar-accent: #F4F4F5;
-    --sidebar-accent-foreground: #18181B;
-    --sidebar-border: #E4E4E7;
-    --sidebar-ring: #16A34A;
+    /* Bordes y entradas */
+    --border: #DCD0B3;
+    --input: #DCD0B3;
+    --ring: #2F5D3F;
+
+    /* AgriStock semánticos — siempre temperatura del campo */
+    --success: #4A7C59;             /* verde sage */
+    --success-foreground: #F7F3EA;
+    --warning: #C8901C;             /* ámbar dorado — trigo maduro */
+    --warning-foreground: #2A1F08;
+    --usd: #355F8C;                 /* azul desaturado / cielo norteño */
+    --usd-foreground: #F7F3EA;
+    --mxn: #2F5D3F;                 /* verde forest */
+    --mxn-foreground: #F7F3EA;
+    --diesel: #C25A26;              /* terracotta oxidado */
+    --diesel-foreground: #FDFBF4;
+
+    /* Charts — gradación coherente con la paleta */
+    --chart-1: #2F5D3F;       /* forest */
+    --chart-2: #C8901C;       /* dorado */
+    --chart-3: #A0312A;       /* terracotta intenso */
+    --chart-4: #355F8C;       /* azul cielo */
+    --chart-5: #6B5E48;       /* tierra */
+
+    /* Radius: ligeramente más generoso (8px) pero contenido */
+    --radius: 0.625rem;
+
+    /* Sidebar — un punto más cálido que el bg para diferenciar */
+    --sidebar: #F1EAD8;
+    --sidebar-foreground: #1F1A13;
+    --sidebar-primary: #2F5D3F;
+    --sidebar-primary-foreground: #F7F3EA;
+    --sidebar-accent: #E7DCC0;
+    --sidebar-accent-foreground: #2A2218;
+    --sidebar-border: #DCD0B3;
+    --sidebar-ring: #2F5D3F;
 }
 
-/* ─── Dark theme ─── */
+/* ─── Dark theme — "campo al anochecer" ─── */
 .dark {
-    --background: #0A0A0B;
-    --foreground: #FAFAF9;
-    --card: #18181B;
-    --card-foreground: #FAFAF9;
-    --popover: #18181B;
-    --popover-foreground: #FAFAF9;
-    --primary: #22C55E;
-    --primary-foreground: #052E16;
-    --secondary: #27272A;
-    --secondary-foreground: #FAFAF9;
-    --muted: #27272A;
-    --muted-foreground: #A1A1AA;
-    --accent: #27272A;
-    --accent-foreground: #FAFAF9;
-    --destructive: #EF4444;
-    --border: #27272A;
-    --input: #27272A;
-    --ring: #22C55E;
+    /* Backgrounds: marrón muy oscuro (suelo recién arado de noche) */
+    --background: #14110B;
+    --foreground: #F0E9D6;
+    --card: #1D1A12;
+    --card-foreground: #F0E9D6;
+    --popover: #1D1A12;
+    --popover-foreground: #F0E9D6;
 
-    /* AgriStock custom */
-    --success: #22C55E;
-    --success-foreground: #052E16;
-    --warning: #FACC15;
-    --warning-foreground: #422006;
-    --usd: #3B82F6;
-    --usd-foreground: #FFFFFF;
-    --mxn: #22C55E;
-    --mxn-foreground: #052E16;
-    --diesel: #FB923C;
-    --diesel-foreground: #431407;
+    /* Acción principal: verde sage iluminado (verde con luz lunar) */
+    --primary: #7BA889;
+    --primary-foreground: #14110B;
 
-    --chart-1: #22C55E;
-    --chart-2: #3B82F6;
-    --chart-3: #FB923C;
-    --chart-4: #FACC15;
-    --chart-5: #A78BFA;
+    --secondary: #28241A;
+    --secondary-foreground: #F0E9D6;
+    --muted: #28241A;
+    --muted-foreground: #B5A88C;
+    --accent: #2F2A1F;
+    --accent-foreground: #F0E9D6;
 
-    --sidebar: #0A0A0B;
-    --sidebar-foreground: #FAFAF9;
-    --sidebar-primary: #22C55E;
-    --sidebar-primary-foreground: #052E16;
-    --sidebar-accent: #27272A;
-    --sidebar-accent-foreground: #FAFAF9;
-    --sidebar-border: #27272A;
-    --sidebar-ring: #22C55E;
+    --destructive: #D85A53;
+
+    --border: #2D281E;
+    --input: #2D281E;
+    --ring: #7BA889;
+
+    --success: #6FA37D;
+    --success-foreground: #0F1F15;
+    --warning: #E0AB42;
+    --warning-foreground: #2A1F08;
+    --usd: #6B95C1;
+    --usd-foreground: #14110B;
+    --mxn: #7BA889;
+    --mxn-foreground: #0F1F15;
+    --diesel: #D87742;
+    --diesel-foreground: #1D1208;
+
+    --chart-1: #7BA889;
+    --chart-2: #E0AB42;
+    --chart-3: #D85A53;
+    --chart-4: #6B95C1;
+    --chart-5: #B5A88C;
+
+    --sidebar: #18140D;
+    --sidebar-foreground: #F0E9D6;
+    --sidebar-primary: #7BA889;
+    --sidebar-primary-foreground: #14110B;
+    --sidebar-accent: #28241A;
+    --sidebar-accent-foreground: #F0E9D6;
+    --sidebar-border: #2D281E;
+    --sidebar-ring: #7BA889;
 }
 
 @layer base {

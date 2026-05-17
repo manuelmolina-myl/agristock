@@ -4,11 +4,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { Plus, Mail, UserCheck, UserX, Shield } from 'lucide-react'
+import { RoleManagerDialog } from './role-manager-dialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase'
-import { ROLE_LABELS } from '@/lib/constants'
-import type { UserRole } from '@/lib/database.types'
+import { ROLE_LABELS_NEW } from '@/lib/constants'
+import { formatSupabaseError } from '@/lib/errors'
+import type { UserRoleEnum } from '@/lib/database.types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -39,23 +41,26 @@ const db = supabase as any
 const inviteSchema = z.object({
   email:     z.string().email('Email inválido'),
   full_name: z.string().min(2, 'Nombre muy corto'),
-  role:      z.enum(['admin', 'almacenista', 'supervisor']),
+  role:      z.enum(['admin', 'compras', 'mantenimiento', 'almacenista']),
 })
 
 type InviteValues = z.infer<typeof inviteSchema>
 
-const INVITABLE_ROLES: { value: InviteValues['role']; label: string }[] = [
-  { value: 'admin',       label: ROLE_LABELS.admin },
-  { value: 'almacenista', label: ROLE_LABELS.almacenista },
-  { value: 'supervisor',  label: ROLE_LABELS.supervisor },
+// The invite stores its `role` in user_meta_data; trigger 010 inserts it
+// into profiles.role; trigger 018 syncs that into user_roles via the
+// new sync_profile_role_to_user_roles function (migration 026).
+const INVITABLE_ROLES: { value: InviteValues['role']; label: string; hint: string }[] = [
+  { value: 'admin',         label: 'Administrador',  hint: 'Acceso total — aprueba todo, gestiona usuarios y catálogos.' },
+  { value: 'compras',       label: 'Compras',        hint: 'Solicitudes, cotizaciones, OCs, facturas y proveedores.' },
+  { value: 'mantenimiento', label: 'Mantenimiento',  hint: 'Órdenes de trabajo, equipos, refacciones y planes preventivos.' },
+  { value: 'almacenista',   label: 'Almacenista',    hint: 'Inventario, entradas, salidas, traspasos y diésel.' },
 ]
 
-const ROLE_COLORS: Partial<Record<UserRole, string>> = {
-  super_admin: 'bg-purple-500/10 text-purple-700 dark:text-purple-400',
-  admin:       'bg-blue-500/10 text-blue-700 dark:text-blue-400',
-  gerente:     'bg-blue-500/10 text-blue-700 dark:text-blue-400',
-  almacenista: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-  supervisor:  'bg-orange-500/10 text-orange-700 dark:text-orange-400',
+const ROLE_COLORS: Record<UserRoleEnum, string> = {
+  admin:         'bg-purple-500/10 text-purple-700 dark:text-purple-400',
+  compras:       'bg-blue-500/10 text-blue-700 dark:text-blue-400',
+  mantenimiento: 'bg-orange-500/10 text-orange-700 dark:text-orange-400',
+  almacenista:   'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
 }
 
 export function UsersTab() {
@@ -63,6 +68,7 @@ export function UsersTab() {
   const qc = useQueryClient()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<Profile | null>(null)
+  const [rolesTarget, setRolesTarget] = useState<Profile | null>(null)
 
   const { data: profiles = [], isLoading } = useQuery<Profile[]>({
     queryKey: ['profiles-all', organization?.id],
@@ -117,7 +123,8 @@ export function UsersTab() {
           duration: 6000,
         })
       } else {
-        toast.error('Error al invitar', { description: msg || 'Intenta de nuevo' })
+        const { title, description } = formatSupabaseError(err, 'No se pudo invitar al usuario')
+        toast.error(title, { description })
       }
     }
   }
@@ -129,7 +136,8 @@ export function UsersTab() {
       toast.success(newActive ? `${p.full_name} reactivado` : `${p.full_name} desactivado`)
       qc.invalidateQueries({ queryKey: ['profiles-all'] })
     } catch (err) {
-      toast.error('Error', { description: err instanceof Error ? err.message : 'Intenta de nuevo' })
+      const { title, description } = formatSupabaseError(err, 'No se pudo actualizar el usuario')
+      toast.error(title, { description })
     } finally {
       setDeactivateTarget(null)
     }
@@ -155,7 +163,7 @@ export function UsersTab() {
         <div className="flex flex-col divide-y rounded-lg border border-border overflow-hidden">
           {profiles.map((p) => {
             const isCurrentUser = p.id === currentProfile?.id
-            const colorClass    = ROLE_COLORS[p.role as UserRole] ?? 'bg-muted text-muted-foreground'
+            const colorClass    = ROLE_COLORS[p.role as UserRoleEnum] ?? 'bg-muted text-muted-foreground'
             return (
               <div
                 key={p.id}
@@ -180,7 +188,7 @@ export function UsersTab() {
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${colorClass}`}>
                       <Shield className="size-2.5" />
-                      {ROLE_LABELS[p.role as UserRole] ?? p.role}
+                      {ROLE_LABELS_NEW[p.role as UserRoleEnum] ?? p.role}
                     </span>
                   </div>
                 </div>
@@ -188,6 +196,16 @@ export function UsersTab() {
                 {/* Actions */}
                 {!isCurrentUser && (
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      title="Gestionar roles individuales"
+                      onClick={() => setRolesTarget(p)}
+                    >
+                      <Shield className="size-3.5" />
+                      <span className="hidden sm:inline">Roles</span>
+                    </Button>
                     {p.is_active ? (
                       <Button
                         size="sm"
@@ -202,7 +220,7 @@ export function UsersTab() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-600"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-success"
                         title="Reactivar usuario"
                         onClick={() => handleToggleActive(p, true)}
                       >
@@ -250,13 +268,24 @@ export function UsersTab() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Hint for the selected role */}
+            {(() => {
+              const sel = INVITABLE_ROLES.find((r) => r.value === roleValue)
+              return sel ? (
+                <div className="rounded-lg bg-accent/40 border border-border p-3 text-xs text-foreground">
+                  <p className="font-medium text-foreground mb-0.5">{sel.label}</p>
+                  <p className="text-muted-foreground">{sel.hint}</p>
+                </div>
+              ) : null
+            })()}
             <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
               El usuario recibirá un correo con un enlace para establecer su contraseña y acceder a AgriStock.
+              Puedes ajustar roles individuales (solo Compras, solo Mantenimiento) después de que ingrese.
             </div>
           </form>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setInviteOpen(false); reset() }}>Cancelar</Button>
-            <Button type="submit" form="invite-form" disabled={isSubmitting} className="gap-1.5">
+            <Button type="button" onClick={handleSubmit(onInvite)} disabled={isSubmitting} className="gap-1.5">
               <Mail className="size-4" />
               {isSubmitting ? 'Enviando…' : 'Enviar invitación'}
             </Button>
@@ -265,6 +294,12 @@ export function UsersTab() {
       </Dialog>
 
       {/* Deactivate confirmation */}
+      <RoleManagerDialog
+        open={!!rolesTarget}
+        profile={rolesTarget}
+        onClose={() => setRolesTarget(null)}
+      />
+
       <AlertDialog open={!!deactivateTarget} onOpenChange={(o) => !o && setDeactivateTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

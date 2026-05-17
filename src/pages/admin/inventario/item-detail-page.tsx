@@ -105,7 +105,7 @@ function PriceHistoryTooltip({
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-xs shadow-md">
       <p className="text-muted-foreground mb-1">{label}</p>
-      <p className="font-semibold">{formatMoney(payload[0].value, currency)}</p>
+      <p className="font-semibold">{formatMoney(payload[0].value, currency as 'MXN' | 'USD')}</p>
       {currency !== 'MXN' && payload[1] && (
         <p className="text-muted-foreground">{formatMoney(payload[1].value, 'MXN')} MXN</p>
       )}

@@ -3,6 +3,7 @@ import { MailCheck, ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { formatSupabaseError } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 
 export default function VerifyEmailPage() {
@@ -18,7 +19,8 @@ export default function VerifyEmailPage() {
       if (error) throw error
       toast.success('Correo reenviado', { description: `Revisa tu bandeja de entrada en ${email}` })
     } catch (err) {
-      toast.error('Error', { description: err instanceof Error ? err.message : 'No se pudo reenviar' })
+      const { title, description } = formatSupabaseError(err, 'No se pudo reenviar el correo')
+      toast.error(title, { description })
     } finally {
       setResending(false)
     }

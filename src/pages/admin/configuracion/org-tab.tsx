@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Save, Upload, Building2 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase'
+import { formatSupabaseError } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -94,7 +95,8 @@ export function OrgTab() {
       await refreshOrganization()
       toast.success('Organización actualizada')
     } catch (err) {
-      toast.error('Error al guardar', { description: err instanceof Error ? err.message : 'Intenta de nuevo' })
+      const { title, description } = formatSupabaseError(err, 'No se pudo guardar la organización')
+      toast.error(title, { description })
     }
   }
 
@@ -122,7 +124,8 @@ export function OrgTab() {
       await refreshOrganization()
       toast.success('Logo actualizado')
     } catch (err) {
-      toast.error('Error al subir logo', { description: err instanceof Error ? err.message : 'Intenta de nuevo' })
+      const { title, description } = formatSupabaseError(err, 'No se pudo subir el logo')
+      toast.error(title, { description })
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -210,7 +213,7 @@ export function OrgTab() {
 
         <div className="sm:col-span-2 flex flex-col gap-1.5">
           <Label>Zona horaria</Label>
-          <Select value={timezone} onValueChange={(v) => setValue('timezone', v, { shouldDirty: true })}>
+          <Select value={timezone ?? ''} onValueChange={(v) => setValue('timezone', v ?? '', { shouldDirty: true })}>
             <SelectTrigger className="h-9">
               <SelectValue />
             </SelectTrigger>

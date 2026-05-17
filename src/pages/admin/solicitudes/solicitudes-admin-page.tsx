@@ -13,6 +13,10 @@ import {
   SOLICITUD_URGENCY_LABELS,
   DESTINATION_TYPE_LABELS,
 } from '@/lib/constants'
+import {
+  solicitudStatusColors,
+  solicitudUrgencyColors,
+} from '@/lib/status-colors'
 import type { SolicitudStatus, SolicitudUrgency } from '@/lib/database.types'
 
 import { PageHeader } from '@/components/custom/page-header'
@@ -42,22 +46,6 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const STATUS_CLASSES: Record<SolicitudStatus, string> = {
-  pendiente: 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-400',
-  aprobada:  'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400',
-  rechazada: 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400',
-  entregada: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400',
-}
-
-const URGENCY_CLASSES: Record<SolicitudUrgency, string> = {
-  baja:    'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
-  normal:  'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400',
-  alta:    'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-400',
-  urgente: 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400',
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -256,10 +244,10 @@ export function SolicitudesAdminPage() {
                       · {formatRelativo(s.created_at)}
                     </p>
                   </div>
-                  <Badge variant="outline" className={cn('text-xs', URGENCY_CLASSES[s.urgency])}>
+                  <Badge variant="outline" className={cn('text-xs', solicitudUrgencyColors[s.urgency])}>
                     {SOLICITUD_URGENCY_LABELS[s.urgency]}
                   </Badge>
-                  <Badge variant="outline" className={cn('text-xs', STATUS_CLASSES[s.status])}>
+                  <Badge variant="outline" className={cn('text-xs', solicitudStatusColors[s.status])}>
                     {SOLICITUD_STATUS_LABELS[s.status]}
                   </Badge>
                 </CardContent>
@@ -277,7 +265,7 @@ export function SolicitudesAdminPage() {
           </span>
           <Button
             size="sm"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="bg-success text-success-foreground hover:bg-success/90"
             onClick={() => setBulkAction('aprobar')}
           >
             <CheckCheck className="mr-1.5 size-3.5" />

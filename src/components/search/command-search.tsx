@@ -39,7 +39,7 @@ interface SearchItem {
 // ─── Static navigation entries ────────────────────────────────────────────────
 
 function useNavItems(basePath: string) {
-  const role = useAuth().profile?.role
+  const { primaryRole } = useAuth()
 
   const items = [
     { label: 'Dashboard',   path: basePath,                     icon: LayoutDashboard },
@@ -55,9 +55,17 @@ function useNavItems(basePath: string) {
     { label: 'Configuración', path: `${basePath}/configuracion`, icon: Settings },
   ]
 
-  // Filter based on role
-  if (role === 'supervisor') return items.filter((i) => ['Dashboard', 'Solicitudes'].includes(i.label))
-  if (role === 'almacenista') return items.filter((i) => !['Reportes', 'Auditoría', 'Configuración'].includes(i.label))
+  // Restrict by role (4-role model).
+  if (primaryRole === 'compras') {
+    return items.filter((i) => ['Dashboard', 'Inventario'].includes(i.label))
+  }
+  if (primaryRole === 'mantenimiento') {
+    return items.filter((i) => ['Dashboard', 'Equipos'].includes(i.label))
+  }
+  if (primaryRole === 'almacenista') {
+    return items.filter((i) => !['Reportes', 'Auditoría', 'Configuración'].includes(i.label))
+  }
+  // admin: everything.
   return items
 }
 

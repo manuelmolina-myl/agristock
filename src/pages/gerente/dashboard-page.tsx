@@ -2,7 +2,6 @@
  * Gerente dashboard — re-uses the same logic as AdminDashboardPage
  * but with a different title/description.
  */
-import React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   DollarSign,
@@ -23,6 +22,7 @@ import {
 } from 'recharts'
 
 import { PageHeader } from '@/components/custom/page-header'
+import { KpiCard } from '@/components/custom/kpi-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { supabase } from '@/lib/supabase'
@@ -38,67 +38,6 @@ import type { AuditLog } from '@/lib/database.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
-
-// ─── KPI Card ────────────────────────────────────────────────────────────────
-
-interface KpiCardProps {
-  label: string
-  value: React.ReactNode
-  icon: React.ReactNode
-  description?: string
-  iconClassName?: string
-  isLoading?: boolean
-}
-
-function KpiCard({
-  label,
-  value,
-  icon,
-  description,
-  iconClassName,
-  isLoading,
-}: KpiCardProps) {
-  return (
-    <Card>
-      <CardHeader className="pb-0">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            {label}
-          </CardTitle>
-          <div
-            className={cn(
-              'flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground',
-              iconClassName,
-            )}
-          >
-            {icon}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-2">
-        {isLoading ? (
-          <>
-            <Skeleton className="h-8 w-28 mb-1" />
-            <Skeleton className="h-3 w-20" />
-          </>
-        ) : (
-          <>
-            <p className="font-heading text-2xl font-semibold tabular-nums text-foreground">
-              {value}
-            </p>
-            {description && (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {description}
-              </p>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-// ─── Hooks ───────────────────────────────────────────────────────────────────
 
 function useValorInventario(orgId: string | undefined, seasonId: string | undefined) {
   return useQuery<number>({

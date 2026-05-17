@@ -19,6 +19,7 @@ import { useItems, useCropLots, useEquipment, useEmployees } from '@/hooks/use-s
 import { supabase } from '@/lib/supabase'
 import { DESTINATION_TYPE_LABELS, SOLICITUD_URGENCY_LABELS } from '@/lib/constants'
 import { cn, formatQuantity } from '@/lib/utils'
+import { formatSupabaseError } from '@/lib/errors'
 type SolicitudDestinationType = 'crop_lot' | 'equipment' | 'employee' | 'maintenance' | 'other'
 
 import { PageHeader } from '@/components/custom/page-header'
@@ -190,8 +191,8 @@ export function SupervisorNuevaSolicitudPage() {
       toast.success('Solicitud creada correctamente')
       navigate(`${basePath}/solicitudes/${sol.id}`)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error desconocido'
-      toast.error(`Error al crear la solicitud: ${msg}`)
+      const { title, description } = formatSupabaseError(err, 'No se pudo crear la solicitud')
+      toast.error(title, { description })
     } finally {
       setIsSubmitting(false)
     }

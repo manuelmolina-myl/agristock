@@ -1,8 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
-import { ROLE_ROUTES } from '@/lib/constants'
-import type { UserRole } from '@/lib/database.types'
+import { ROLE_ROUTES_NEW } from '@/lib/constants'
+import type { UserRoleEnum } from '@/lib/database.types'
 
 // Layout
 const AppLayout = lazy(() => import('@/components/layout/app-layout'))
@@ -44,6 +44,31 @@ const AuditoriaPage = lazy(() => import('@/pages/admin/auditoria/auditoria-page'
 const ReportesPage = lazy(() => import('@/pages/admin/reportes/reportes-page'))
 const ReportViewerPage = lazy(() => import('@/pages/admin/reportes/report-viewer-page'))
 const CierreTemporadaPage = lazy(() => import('@/pages/admin/cierre-temporada-page'))
+const ComprasPage = lazy(() => import('@/pages/admin/compras/compras-page'))
+const MantenimientoPage = lazy(() => import('@/pages/admin/mantenimiento/mantenimiento-page'))
+
+// Compras module (top-level, restructured)
+const ComprasDashboard       = lazy(() => import('@/pages/compras/compras-dashboard'))
+const ComprasRequisitions    = lazy(() => import('@/pages/compras/requisitions-page'))
+const ComprasRequisitionDet  = lazy(() => import('@/pages/compras/requisition-detail-page'))
+const ComprasQuotations      = lazy(() => import('@/pages/compras/quotations-page'))
+const ComprasOrders          = lazy(() => import('@/pages/compras/orders-page'))
+const ComprasReceptions      = lazy(() => import('@/pages/compras/receptions-page'))
+const ComprasInvoices        = lazy(() => import('@/pages/compras/invoices-page'))
+const ComprasPoDetail        = lazy(() => import('@/pages/compras/po-detail-page'))
+const ComprasSuppliers       = lazy(() => import('@/pages/compras/suppliers-page'))
+const ComprasQuoteCompare    = lazy(() => import('@/pages/compras/quote-comparator-page'))
+
+// Mantenimiento module (top-level)
+const MantenimientoDashboard = lazy(() => import('@/pages/mantenimiento-mod/mantenimiento-dashboard'))
+const MantenimientoOrdenes   = lazy(() => import('@/pages/mantenimiento-mod/work-orders-page'))
+const MantenimientoWoDetail  = lazy(() => import('@/pages/mantenimiento-mod/wo-detail-page'))
+const MantenimientoEquipment = lazy(() => import('@/pages/mantenimiento-mod/equipment-page'))
+const MantenimientoEquipDet  = lazy(() => import('@/pages/mantenimiento-mod/equipment-detail-page'))
+const MantenimientoPlans     = lazy(() => import('@/pages/mantenimiento-mod/preventive-plans-page'))
+
+// Almacén module (top-level)
+const AlmacenDashboard = lazy(() => import('@/pages/almacen/almacen-dashboard'))
 
 // Almacenista
 const AlmacenistaDashboard = lazy(() => import('@/pages/almacenista/dashboard-page'))
@@ -73,19 +98,19 @@ function LoadingFallback() {
 }
 
 function DashboardRedirect() {
-  const { profile, isLoading } = useAuth()
+  const { profile, primaryRole, isLoading } = useAuth()
   if (isLoading) return <LoadingFallback />
   if (!profile) return <Navigate to="/login" replace />
-  const route = ROLE_ROUTES[profile.role as UserRole]
+  const route = primaryRole ? (ROLE_ROUTES_NEW[primaryRole] ?? '/admin') : '/admin'
   return <Navigate to={route} replace />
 }
 
-function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRole[]; children: React.ReactNode }) {
-  const { user, profile, organization, isLoading } = useAuth()
+function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRoleEnum[]; children: React.ReactNode }) {
+  const { user, profile, organization, roles, primaryRole, isLoading } = useAuth()
   if (isLoading) return <LoadingFallback />
   if (!user || !profile) return <Navigate to="/login" replace />
-  if (!allowedRoles.includes(profile.role as UserRole)) {
-    const route = ROLE_ROUTES[profile.role as UserRole]
+  if (!allowedRoles.some((r) => roles.includes(r))) {
+    const route = primaryRole ? (ROLE_ROUTES_NEW[primaryRole] ?? '/login') : '/login'
     return <Navigate to={route} replace />
   }
   // Onboarding guard: redirect new users who haven't finished setup
@@ -111,11 +136,108 @@ export default function App() {
         {/* Onboarding (requires auth, but before org setup) */}
         <Route path="/onboarding" element={<OnboardingPage />} />
 
+        {/* ─── Compras module (top-level) ────────────────────────────── */}
+        <Route
+          path="/compras"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'compras']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<ComprasDashboard />} />
+          <Route path="requisiciones" element={<ComprasRequisitions />} />
+          <Route path="requisiciones/:id" element={<ComprasRequisitionDet />} />
+          <Route path="cotizaciones" element={<ComprasQuotations />} />
+          <Route path="cotizaciones/comparar" element={<ComprasQuoteCompare />} />
+          <Route path="ordenes" element={<ComprasOrders />} />
+          <Route path="ordenes/:id" element={<ComprasPoDetail />} />
+          <Route path="recepciones" element={<ComprasReceptions />} />
+          <Route path="facturas" element={<ComprasInvoices />} />
+          <Route path="proveedores" element={<ComprasSuppliers />} />
+        </Route>
+
+        {/* ─── Mantenimiento module (top-level) ──────────────────────── */}
+        <Route
+          path="/mantenimiento"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'mantenimiento']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<MantenimientoDashboard />} />
+          <Route path="ordenes" element={<MantenimientoOrdenes />} />
+          <Route path="ordenes/:id" element={<MantenimientoWoDetail />} />
+          <Route path="equipos" element={<MantenimientoEquipment />} />
+          <Route path="equipos/:id" element={<MantenimientoEquipDet />} />
+          <Route path="planes" element={<MantenimientoPlans />} />
+        </Route>
+
+        {/* ─── Almacén module (top-level) ────────────────────────────── */}
+        <Route
+          path="/almacen"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'almacenista', 'compras']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<AlmacenDashboard />} />
+          <Route path="inventario" element={<ItemsPage />} />
+          <Route path="inventario/nuevo" element={<ItemFormPage />} />
+          <Route path="inventario/:id" element={<ItemDetailPage />} />
+          <Route path="inventario/:id/editar" element={<ItemFormPage />} />
+          <Route path="entradas" element={<EntradasPage />} />
+          <Route path="entradas/nueva" element={<NuevaEntradaPage />} />
+          <Route path="entradas/:id" element={<EntradaDetailPage />} />
+          <Route path="salidas" element={<SalidasPage />} />
+          <Route path="salidas/nueva" element={<NuevaSalidaPage />} />
+          <Route path="salidas/:id" element={<SalidaDetailPage />} />
+          <Route path="traspasos" element={<TraspasosPage />} />
+          <Route path="traspasos/nuevo" element={<NuevoTraspasoPage />} />
+          <Route path="traspasos/:id" element={<TraspasoDetailPage />} />
+          <Route path="diesel" element={<DieselPage />} />
+          <Route path="diesel/cargar" element={<CargaDieselPage />} />
+          <Route path="diesel/tractor/:id" element={<DieselTractorPage />} />
+          <Route path="diesel/:id" element={<DieselDetailPage />} />
+          <Route path="lotes" element={<LotesPage />} />
+          <Route path="lotes/:id" element={<LoteDetailPage />} />
+        </Route>
+
+        {/* ─── Configuración module (top-level) ──────────────────────── */}
+        <Route
+          path="/configuracion"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<CatalogosPage />} />
+          <Route path="tipo-cambio" element={<FxRatesPage />} />
+          <Route path="auditoria" element={<AuditoriaPage />} />
+          <Route path="cierre-temporada" element={<CierreTemporadaPage />} />
+        </Route>
+
+        {/* ─── Reportes (top-level) ──────────────────────────────────── */}
+        <Route
+          path="/reportes"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'compras', 'mantenimiento']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<ReportesPage />} />
+          <Route path=":slug" element={<ReportViewerPage />} />
+        </Route>
+
         {/* Admin routes */}
         <Route
           path="/admin"
           element={
-            <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'compras', 'mantenimiento']}>
               <AppLayout />
             </ProtectedRoute>
           }
@@ -150,13 +272,16 @@ export default function App() {
           <Route path="cierre-temporada" element={<CierreTemporadaPage />} />
           <Route path="solicitudes" element={<SolicitudesAdminPage />} />
           <Route path="solicitudes/:id" element={<SolicitudReviewPage />} />
+          <Route path="compras" element={<ComprasPage />} />
+          <Route path="mantenimiento" element={<MantenimientoPage />} />
+          <Route path="mantenimiento/:id" element={<MantenimientoPage />} />
         </Route>
 
         {/* Almacenista routes */}
         <Route
           path="/almacenista"
           element={
-            <ProtectedRoute allowedRoles={['almacenista']}>
+            <ProtectedRoute allowedRoles={['almacenista', 'admin']}>
               <AppLayout />
             </ProtectedRoute>
           }
@@ -184,7 +309,7 @@ export default function App() {
         <Route
           path="/supervisor"
           element={
-            <ProtectedRoute allowedRoles={['supervisor']}>
+            <ProtectedRoute allowedRoles={['compras', 'mantenimiento', 'admin']}>
               <AppLayout />
             </ProtectedRoute>
           }
@@ -199,7 +324,7 @@ export default function App() {
         <Route
           path="/gerente"
           element={
-            <ProtectedRoute allowedRoles={['gerente']}>
+            <ProtectedRoute allowedRoles={['admin']}>
               <AppLayout />
             </ProtectedRoute>
           }

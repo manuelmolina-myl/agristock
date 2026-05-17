@@ -1,5 +1,7 @@
-import type { UserRole } from './database.types'
+import type { UserRole, UserRoleEnum } from './database.types'
 
+// Legacy labels keyed by profiles.role. Kept for back-compat while components
+// migrate to ROLE_LABELS_NEW. Removed once 020 drops profiles.role.
 export const ROLE_LABELS: Record<UserRole, string> = {
   super_admin: 'Super Admin',
   admin: 'Administrador',
@@ -14,6 +16,30 @@ export const ROLE_ROUTES: Record<UserRole, string> = {
   gerente: '/gerente',
   almacenista: '/almacenista',
   supervisor: '/supervisor',
+}
+
+// Labels keyed by UserRoleEnum (4-role model, migrations 024-026).
+export const ROLE_LABELS_NEW: Record<UserRoleEnum, string> = {
+  admin:         'Administrador',
+  compras:       'Compras',
+  mantenimiento: 'Mantenimiento',
+  almacenista:   'Almacenista',
+}
+
+// Short labels used inside compact UIs (sidebar collapsed, mobile chips).
+export const ROLE_LABELS_SHORT: Record<UserRoleEnum, string> = {
+  admin:         'Admin',
+  compras:       'Compras',
+  mantenimiento: 'Mantto.',
+  almacenista:   'Almacén',
+}
+
+// Routes by primary role — login drops the user in their main module.
+export const ROLE_ROUTES_NEW: Record<UserRoleEnum, string> = {
+  admin:         '/almacen',
+  compras:       '/compras',
+  mantenimiento: '/mantenimiento',
+  almacenista:   '/almacen',
 }
 
 export const MOVEMENT_TYPE_LABELS: Record<string, string> = {

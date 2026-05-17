@@ -8,6 +8,7 @@ import { Warehouse, Moon, Sun, Eye, EyeOff, ArrowLeft } from 'lucide-react'
 
 import { useAuth } from '@/hooks/use-auth'
 import { useTheme } from '@/hooks/use-theme'
+import { formatSupabaseError } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,8 +44,8 @@ export default function SignupPage() {
       await signUp(values.email, values.password, values.full_name, values.org_name)
       navigate('/verify-email', { state: { email: values.email } })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al crear la cuenta'
-      toast.error('Error', { description: message })
+      const { title, description } = formatSupabaseError(err, 'No se pudo crear la cuenta')
+      toast.error(title, { description })
     }
   }
 

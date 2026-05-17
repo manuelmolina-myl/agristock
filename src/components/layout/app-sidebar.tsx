@@ -12,15 +12,22 @@ import {
   ShieldCheck,
   Settings,
   ClipboardList,
+  ShoppingCart,
+  Wrench,
   Warehouse,
+  FileText,
+  Receipt,
+  Building2,
+  CalendarClock,
+  History,
   DollarSign,
   Lock,
   LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
-import { ROLE_LABELS, ROLE_ROUTES } from '@/lib/constants'
-import type { UserRole } from '@/lib/database.types'
+import { ROLE_LABELS_NEW } from '@/lib/constants'
+import type { UserRoleEnum } from '@/lib/database.types'
 import {
   Sidebar,
   SidebarContent,
@@ -50,90 +57,75 @@ interface NavSection {
   items: NavItem[]
 }
 
-// ─── Navigation definitions per role ─────────────────────────────────────────
+// ─── Module-based navigation ─────────────────────────────────────────────────
+// Each module is a self-contained workspace.  A user sees the modules their
+// roles grant access to.  Items inside a module use absolute paths so the
+// sidebar works regardless of where the user is in the tree.
 
-const ADMIN_NAV: NavSection[] = [
+interface ModuleSection extends NavSection {
+  /** Roles that can see (and access) this module's group of links. */
+  allowedRoles: UserRoleEnum[]
+}
+
+const MODULES: ModuleSection[] = [
   {
-    heading: 'Operación',
+    heading: 'Almacén',
+    allowedRoles: ['admin', 'almacenista', 'compras'],
     items: [
-      { label: 'Dashboard',   to: '',              icon: LayoutDashboard },
-      { label: 'Inventario',  to: '/inventario',   icon: Package },
-      { label: 'Entradas',    to: '/entradas',     icon: ArrowDownToLine },
-      { label: 'Salidas',     to: '/salidas',      icon: ArrowUpFromLine },
-      { label: 'Traspasos',   to: '/traspasos',    icon: ArrowLeftRight },
-      { label: 'Diésel',      to: '/diesel',       icon: Fuel },
-      { label: 'Solicitudes', to: '/solicitudes',  icon: ClipboardList },
+      { label: 'Dashboard',   to: '/almacen',             icon: LayoutDashboard },
+      { label: 'Inventario',  to: '/almacen/inventario',  icon: Package },
+      { label: 'Entradas',    to: '/almacen/entradas',    icon: ArrowDownToLine },
+      { label: 'Salidas',     to: '/almacen/salidas',     icon: ArrowUpFromLine },
+      { label: 'Traspasos',   to: '/almacen/traspasos',   icon: ArrowLeftRight },
+      { label: 'Diésel',      to: '/almacen/diesel',      icon: Fuel },
+      { label: 'Lotes',       to: '/almacen/lotes',       icon: MapPin },
     ],
   },
   {
-    heading: 'Análisis',
+    heading: 'Compras',
+    allowedRoles: ['admin', 'compras'],
     items: [
-      { label: 'Lotes',       to: '/lotes',        icon: MapPin },
-      { label: 'Equipos',     to: '/equipos',      icon: Tractor },
-      { label: 'Reportes',    to: '/reportes',     icon: BarChart3 },
+      { label: 'Dashboard',     to: '/compras',                icon: LayoutDashboard },
+      { label: 'Solicitudes',   to: '/compras/requisiciones',  icon: ClipboardList },
+      { label: 'Cotizaciones',  to: '/compras/cotizaciones',   icon: FileText },
+      { label: 'Órdenes',       to: '/compras/ordenes',        icon: ShoppingCart },
+      { label: 'Recepciones',   to: '/compras/recepciones',    icon: ArrowDownToLine },
+      { label: 'Facturas',      to: '/compras/facturas',       icon: Receipt },
+      { label: 'Proveedores',   to: '/compras/proveedores',    icon: Building2 },
     ],
   },
   {
-    heading: 'Sistema',
+    heading: 'Mantenimiento',
+    allowedRoles: ['admin', 'mantenimiento'],
     items: [
-      { label: 'Tipo de cambio', to: '/tipo-cambio',   icon: DollarSign },
-      { label: 'Auditoría',      to: '/auditoria',     icon: ShieldCheck },
-      { label: 'Cierre temporada', to: '/cierre-temporada', icon: Lock },
-      { label: 'Configuración',  to: '/configuracion', icon: Settings },
+      { label: 'Dashboard',         to: '/mantenimiento',           icon: LayoutDashboard },
+      { label: 'Órdenes de trabajo', to: '/mantenimiento/ordenes',  icon: Wrench },
+      { label: 'Equipos',           to: '/mantenimiento/equipos',   icon: Tractor },
+      { label: 'Planes preventivos', to: '/mantenimiento/planes',   icon: CalendarClock },
+      { label: 'Historial',         to: '/mantenimiento/historial', icon: History },
+    ],
+  },
+  {
+    heading: 'Reportes',
+    allowedRoles: ['admin', 'compras', 'mantenimiento'],
+    items: [
+      { label: 'Reportes', to: '/reportes', icon: BarChart3 },
+    ],
+  },
+  {
+    heading: 'Configuración',
+    allowedRoles: ['admin'],
+    items: [
+      { label: 'Organización',   to: '/configuracion',             icon: Settings },
+      { label: 'Tipo de cambio', to: '/configuracion/tipo-cambio', icon: DollarSign },
+      { label: 'Auditoría',      to: '/configuracion/auditoria',   icon: ShieldCheck },
+      { label: 'Cierre temporada', to: '/configuracion/cierre-temporada', icon: Lock },
     ],
   },
 ]
 
-const ALMACENISTA_NAV: NavSection[] = [
-  {
-    heading: 'Operación',
-    items: [
-      { label: 'Dashboard',   to: '',             icon: LayoutDashboard },
-      { label: 'Inventario',  to: '/inventario',  icon: Package },
-      { label: 'Entradas',    to: '/entradas',    icon: ArrowDownToLine },
-      { label: 'Salidas',     to: '/salidas',     icon: ArrowUpFromLine },
-      { label: 'Traspasos',   to: '/traspasos',   icon: ArrowLeftRight },
-      { label: 'Diésel',      to: '/diesel',      icon: Fuel },
-    ],
-  },
-]
-
-const SUPERVISOR_NAV: NavSection[] = [
-  {
-    heading: 'Operación',
-    items: [
-      { label: 'Dashboard',    to: '',              icon: LayoutDashboard },
-      { label: 'Solicitudes',  to: '/solicitudes',  icon: ClipboardList },
-    ],
-  },
-]
-
-const GERENTE_NAV: NavSection[] = [
-  {
-    heading: 'Operación',
-    items: [
-      { label: 'Dashboard',    to: '',              icon: LayoutDashboard },
-      { label: 'Inventario',   to: '/inventario',   icon: Package },
-      { label: 'Entradas',     to: '/entradas',     icon: ArrowDownToLine },
-      { label: 'Salidas',      to: '/salidas',      icon: ArrowUpFromLine },
-      { label: 'Solicitudes',  to: '/solicitudes',  icon: ClipboardList },
-    ],
-  },
-  {
-    heading: 'Análisis',
-    items: [
-      { label: 'Reportes',     to: '/reportes',     icon: BarChart3 },
-    ],
-  },
-]
-
-function navSectionsForRole(role: UserRole | undefined): NavSection[] {
-  if (!role) return []
-  if (role === 'super_admin' || role === 'admin') return ADMIN_NAV
-  if (role === 'almacenista') return ALMACENISTA_NAV
-  if (role === 'supervisor') return SUPERVISOR_NAV
-  if (role === 'gerente') return GERENTE_NAV
-  return ADMIN_NAV // fallback
+function visibleModulesForRoles(roles: UserRoleEnum[]): ModuleSection[] {
+  return MODULES.filter((m) => m.allowedRoles.some((r) => roles.includes(r)))
 }
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
@@ -147,13 +139,21 @@ function Logo() {
       'flex items-center gap-2.5 px-2 py-1 select-none',
       collapsed && 'justify-center'
     )}>
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-        <Warehouse className="size-4" />
+      {/* Tile uses forest-green primary; a thin amber underline ties to the
+          'trigo maduro' accent used in PageHeader */}
+      <div className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+        <Warehouse className="size-4" strokeWidth={2} />
+        <span aria-hidden className="absolute -bottom-0.5 left-1.5 right-1.5 h-[1.5px] rounded-full bg-warning/70" />
       </div>
       {!collapsed && (
-        <span className="font-heading text-[15px] font-semibold tracking-tight text-foreground">
-          AgriStock
-        </span>
+        <div className="flex flex-col leading-none">
+          <span className="font-heading text-[15px] font-semibold tracking-[-0.01em] text-foreground">
+            AgriStock
+          </span>
+          <span className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/80 mt-0.5">
+            Campo · Almacén
+          </span>
+        </div>
       )}
     </div>
   )
@@ -162,7 +162,7 @@ function Logo() {
 // ─── User footer ──────────────────────────────────────────────────────────────
 
 function UserFooter() {
-  const { profile, signOut } = useAuth()
+  const { profile, primaryRole, signOut } = useAuth()
   const { state } = useSidebar()
   const navigate = useNavigate()
   const collapsed = state === 'collapsed'
@@ -207,7 +207,7 @@ function UserFooter() {
             {profile?.full_name ?? '—'}
           </p>
           <p className="truncate text-[11px] text-sidebar-foreground/60 leading-tight">
-            {profile?.role ? ROLE_LABELS[profile.role] : ''}
+            {primaryRole ? ROLE_LABELS_NEW[primaryRole] : ''}
           </p>
         </div>
       </div>
@@ -225,21 +225,27 @@ function UserFooter() {
 
 // ─── Sidebar nav item ─────────────────────────────────────────────────────────
 
-function NavMenuItem({ item, baseRoute }: { item: NavItem; baseRoute: string }) {
+function NavMenuItem({ item, isDashboard }: { item: NavItem; isDashboard: boolean }) {
   const location = useLocation()
   const { state, isMobile, setOpenMobile } = useSidebar()
   const collapsed = state === 'collapsed'
-  const fullTo = `${baseRoute}${item.to}`
 
-  // Exact match for base route, prefix match for sub-routes
-  const isActive = item.to === ''
-    ? location.pathname === baseRoute || location.pathname === `${baseRoute}/`
-    : location.pathname.startsWith(fullTo)
+  // For dashboard (module landing), require exact match so deeper routes
+  // don't keep the dashboard highlighted.  Other items use prefix match.
+  const isActive = isDashboard
+    ? location.pathname === item.to || location.pathname === `${item.to}/`
+    : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        render={<NavLink to={fullTo} end={item.to === ''} onClick={() => { if (isMobile) setOpenMobile(false) }} />}
+        render={
+          <NavLink
+            to={item.to}
+            end={isDashboard}
+            onClick={() => { if (isMobile) setOpenMobile(false) }}
+          />
+        }
         isActive={isActive}
         tooltip={collapsed ? item.label : undefined}
       >
@@ -253,10 +259,8 @@ function NavMenuItem({ item, baseRoute }: { item: NavItem; baseRoute: string }) 
 // ─── AppSidebar ───────────────────────────────────────────────────────────────
 
 export function AppSidebar() {
-  const { profile } = useAuth()
-  const role = profile?.role
-  const sections = navSectionsForRole(role)
-  const baseRoute = role ? ROLE_ROUTES[role] : '/'
+  const { roles } = useAuth()
+  const modules = visibleModulesForRoles(roles)
 
   return (
     <Sidebar collapsible="icon">
@@ -265,13 +269,17 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="py-2">
-        {sections.map(section => (
-          <SidebarGroup key={section.heading}>
-            <SidebarGroupLabel>{section.heading}</SidebarGroupLabel>
+        {modules.map((module) => (
+          <SidebarGroup key={module.heading}>
+            <SidebarGroupLabel>{module.heading}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {section.items.map(item => (
-                  <NavMenuItem key={item.to} item={item} baseRoute={baseRoute} />
+                {module.items.map((item, idx) => (
+                  <NavMenuItem
+                    key={item.to}
+                    item={item}
+                    isDashboard={idx === 0}
+                  />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>

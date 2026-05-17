@@ -8,8 +8,9 @@ import { useState } from 'react'
 
 import { useAuth } from '@/hooks/use-auth'
 import { useTheme } from '@/hooks/use-theme'
-import { ROLE_ROUTES } from '@/lib/constants'
-import type { UserRole } from '@/lib/database.types'
+import { ROLE_ROUTES_NEW } from '@/lib/constants'
+import type { UserRoleEnum } from '@/lib/database.types'
+import { formatSupabaseError } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,11 +23,11 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>
 
-const DEMO_USERS: { label: string; role: UserRole; email: string }[] = [
-  { label: 'Admin',       role: 'admin',       email: 'admin@agristock.mx' },
-  { label: 'Gerente',     role: 'gerente',     email: 'gerente@agristock.mx' },
-  { label: 'Almacenista', role: 'almacenista', email: 'almacen@agristock.mx' },
-  { label: 'Supervisor',  role: 'supervisor',  email: 'supervisor@agristock.mx' },
+const DEMO_USERS: { label: string; role: UserRoleEnum; email: string }[] = [
+  { label: 'Admin',         role: 'admin',         email: 'admin@agristock.mx' },
+  { label: 'Compras',       role: 'compras',       email: 'compras@agristock.mx' },
+  { label: 'Mantenimiento', role: 'mantenimiento', email: 'mantenimiento@agristock.mx' },
+  { label: 'Almacenista',   role: 'almacenista',   email: 'almacen@agristock.mx' },
 ]
 
 export function LoginPage() {
@@ -47,12 +48,11 @@ export function LoginPage() {
   const onSubmit = async (values: LoginFormValues) => {
     try {
       const { role } = await signIn(values.email, values.password)
-      const route = ROLE_ROUTES[role]
+      const route = ROLE_ROUTES_NEW[role] ?? '/almacen'
       navigate(route, { replace: true })
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Credenciales incorrectas'
-      toast.error('Error al iniciar sesión', { description: message })
+      const { title, description } = formatSupabaseError(err, 'Error al iniciar sesión')
+      toast.error(title, { description })
     }
   }
 

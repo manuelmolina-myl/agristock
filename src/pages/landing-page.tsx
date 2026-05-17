@@ -1,8 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { useTheme } from '@/hooks/use-theme'
-import { ROLE_ROUTES } from '@/lib/constants'
-import type { UserRole } from '@/lib/database.types'
+import { ROLE_ROUTES_NEW } from '@/lib/constants'
 import {
   Warehouse,
   ArrowRight,
@@ -24,7 +23,7 @@ import {
 import { cn } from '@/lib/utils'
 
 function Nav() {
-  const { profile } = useAuth()
+  const { profile, primaryRole } = useAuth()
   const { resolvedTheme, toggleTheme } = useTheme()
 
   return (
@@ -48,7 +47,7 @@ function Nav() {
 
           {profile ? (
             <Link
-              to={ROLE_ROUTES[profile.role as UserRole]}
+              to={primaryRole ? (ROLE_ROUTES_NEW[primaryRole] ?? '/admin') : '/admin'}
               className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               Ir al panel
@@ -102,15 +101,15 @@ const FEATURES = [
     icon: BarChart3,
     title: '12 reportes ejecutivos',
     description: 'Kardex, existencias valuadas, consumo por lote, rotacion de inventario. Exporta a PDF y Excel en un clic.',
-    color: 'text-blue-500',
-    bg: 'bg-blue-500/10',
+    color: 'text-usd',
+    bg: 'bg-usd/10',
   },
   {
     icon: Shield,
     title: 'Auditoria completa',
     description: 'Cada movimiento queda registrado con usuario, timestamp y diff antes/despues. Trazabilidad total.',
-    color: 'text-amber-500',
-    bg: 'bg-amber-500/10',
+    color: 'text-warning',
+    bg: 'bg-warning/10',
   },
 ]
 
@@ -314,13 +313,13 @@ export function LandingPage() {
                 role: 'Gerente',
                 desc: 'Ve todo, aprueba salidas grandes, accede a reportes financieros.',
                 features: ['Dashboard ejecutivo', 'Reportes financieros', 'Aprobacion de salidas', 'Costos completos'],
-                color: 'border-blue-500/30 bg-blue-500/5',
+                color: 'border-usd/30 bg-usd/5',
               },
               {
                 role: 'Almacenista',
                 desc: 'Registra entradas y salidas. Ve costos solo al recibir material.',
                 features: ['Entradas y salidas', 'Stock en tiempo real', 'Carga de diesel', 'Costos solo en entradas'],
-                color: 'border-amber-500/30 bg-amber-500/5',
+                color: 'border-warning/30 bg-warning/5',
               },
               {
                 role: 'Supervisor',

@@ -1,8 +1,8 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '@/hooks/use-auth'
-import { ROLE_ROUTES } from '@/lib/constants'
-import type { UserRole } from '@/lib/database.types'
+import { ROLE_ROUTES_NEW } from '@/lib/constants'
+import type { UserRoleEnum } from '@/lib/database.types'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // ─── Full-screen loading skeleton ────────────────────────────────────────────
@@ -46,12 +46,17 @@ function LoadingSkeleton() {
 // ─── ProtectedRoute ───────────────────────────────────────────────────────────
 
 interface ProtectedRouteProps {
-  allowedRoles?: UserRole[]
+  /**
+   * Roles permitted to access this route. The user matches if ANY of their
+   * granted roles (from user_roles) is in this list. Backed by the new
+   * UserRoleEnum from 013_user_roles_table.sql.
+   */
+  allowedRoles?: UserRoleEnum[]
   children?: ReactNode
 }
 
 export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) {
-  const { user, profile, isLoading } = useAuth()
+  const { user, profile, roles, primaryRole, isLoading } = useAuth()
 
   // Still initialising auth
   if (isLoading) {
@@ -64,8 +69,8 @@ export function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) 
   }
 
   // Authenticated but wrong role → redirect to their correct route
-  if (allowedRoles && !allowedRoles.includes(profile.role)) {
-    const correctRoute = ROLE_ROUTES[profile.role] ?? '/login'
+  if (allowedRoles && !allowedRoles.some((r) => roles.includes(r))) {
+    const correctRoute = primaryRole ? (ROLE_ROUTES_NEW[primaryRole] ?? '/login') : '/login'
     return <Navigate to={correctRoute} replace />
   }
 

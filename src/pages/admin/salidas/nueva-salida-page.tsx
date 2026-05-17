@@ -625,7 +625,7 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
               key={field.id}
               className={cn(
                 'rounded-lg border bg-card p-4 flex flex-col gap-3',
-                overStock && 'border-orange-400 dark:border-orange-500'
+                overStock && 'border-warning/60'
               )}
             >
               {/* Row 1: ítem — full width */}
@@ -715,9 +715,9 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
 
               {/* Over-stock warning */}
               {overStock && (
-                <div className="flex items-start gap-2 rounded-md border border-orange-400 bg-orange-50 dark:bg-orange-950/20 py-2 px-3">
-                  <AlertCircle className="size-3.5 text-orange-500 mt-0.5 shrink-0" />
-                  <p className="text-xs text-orange-700 dark:text-orange-400">
+                <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 py-2 px-3">
+                  <AlertCircle className="size-3.5 text-warning mt-0.5 shrink-0" />
+                  <p className="text-xs text-warning">
                     Cantidad supera el stock disponible ({formatQuantity(available ?? 0)}).
                     Se registrará un saldo negativo.
                   </p>
@@ -726,8 +726,8 @@ function Step2Partidas({ step1, defaultValues, onNext, onBack, fxRate: latestFxR
 
               {/* Diesel extras */}
               {isDiesel && (
-                <div className="rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-300 dark:border-yellow-800 p-3 flex flex-col gap-3">
-                  <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400 flex items-center gap-1">
+                <div className="rounded-md bg-warning/10 border border-warning/30 p-3 flex flex-col gap-3">
+                  <p className="text-xs font-medium text-warning flex items-center gap-1">
                     <Fuel className="size-3.5" /> Datos de diesel
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
