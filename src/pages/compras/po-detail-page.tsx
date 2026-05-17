@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, Calendar, Warehouse as WarehouseIcon, ArrowDownToLine,
-  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2, Eye,
+  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -12,7 +12,6 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { supabase } from '@/lib/supabase'
 import { usePurchaseOrder } from '@/features/compras/hooks'
 import { usePermissions } from '@/hooks/use-permissions'
@@ -55,8 +54,9 @@ export default function PoDetailPage() {
   const { data: po, isLoading } = usePurchaseOrder(id)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
-  const [previewing, setPreviewing] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(true)
   const { organization, user } = useAuth()
 
   const creatorName = user?.user_metadata?.full_name ?? user?.email ?? undefined
@@ -75,30 +75,66 @@ export default function PoDetailPage() {
     }
   }
 
-  async function handlePreviewPdf() {
-    if (!po || !organization) return
-    setPreviewing(true)
-    try {
-      const { previewPoPDF } = await import('@/lib/generate-po-pdf')
-      // Revoke any previous URL before generating a new one to avoid memory
-      // leaks if the user previews → edits → previews again.
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-      const url = await previewPoPDF({ po, organization, createdByName: creatorName })
-      setPreviewUrl(url)
-    } catch (err) {
-      const { title, description } = formatSupabaseError(err, 'No se pudo generar la vista previa')
-      toast.error(title, { description })
-    } finally {
-      setPreviewing(false)
-    }
-  }
+  // Auto-generate the preview blob URL whenever the PO data changes.
+  // Re-fires on po.id, line edits, status changes, or org logo updates so
+  // the embedded iframe always reflects the latest persisted state.
+  // The fingerprint key prevents redundant re-renders for unrelated state.
+  const previewKey = useMemo(() => {
+    if (!po) return ''
+    return JSON.stringify({
+      id: po.id,
+      status: po.status,
+      issue_date: po.issue_date,
+      lines: po.lines?.map((l) => [l.id, l.quantity, l.unit_cost, l.currency, l.received_quantity]),
+      total: po.total_mxn,
+      logo: organization?.logo_url,
+    })
+  }, [po, organization?.logo_url])
 
-  // Revoke the blob URL on unmount so the browser can GC the PDF bytes.
+  useEffect(() => {
+    if (!po || !organization) return
+    let cancelled = false
+    let createdUrl: string | null = null
+    setPreviewing(true)
+    setPreviewError(null)
+
+    ;(async () => {
+      try {
+        const { previewPoPDF } = await import('@/lib/generate-po-pdf')
+        const url = await previewPoPDF({ po, organization, createdByName: creatorName })
+        if (cancelled) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        createdUrl = url
+        setPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev)
+          return url
+        })
+      } catch (err) {
+        if (!cancelled) {
+          const { description } = formatSupabaseError(err, 'No se pudo generar la vista previa')
+          setPreviewError(description)
+        }
+      } finally {
+        if (!cancelled) setPreviewing(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey])
+
+  // Final cleanup on unmount in case the latest blob URL outlives the page.
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl)
     }
-  }, [previewUrl])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Existing receptions for this PO (for the timeline).
   const { data: receptions = [] } = useQuery({
@@ -184,18 +220,6 @@ export default function PoDetailPage() {
             variant="outline"
             size="sm"
             className="gap-1.5"
-            onClick={handlePreviewPdf}
-            disabled={previewing}
-          >
-            {previewing
-              ? <Loader2 className="size-4 animate-spin" />
-              : <Eye className="size-4" />}
-            {previewing ? 'Generando…' : 'Vista previa'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
             onClick={handleDownloadPdf}
             disabled={downloadingPdf}
           >
@@ -212,6 +236,40 @@ export default function PoDetailPage() {
         )}
         </div>
       </div>
+
+      {/* PDF preview — siempre visible mientras estás en la OC */}
+      <section className="rounded-xl border border-border bg-card overflow-hidden">
+        <header className="px-4 py-3 border-b flex items-center justify-between gap-2">
+          <h2 className="font-heading text-sm font-semibold tracking-[-0.01em]">
+            Vista previa del documento
+          </h2>
+          {previewing && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Generando…
+            </span>
+          )}
+        </header>
+        <div className="relative bg-muted/30">
+          {previewError ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">
+              <p className="text-destructive font-medium mb-1">No se pudo generar la vista previa</p>
+              <p>{previewError}</p>
+            </div>
+          ) : previewUrl ? (
+            <iframe
+              src={previewUrl}
+              title={`Vista previa de OC ${po.folio}`}
+              className="w-full h-[70vh] min-h-[480px] bg-card"
+            />
+          ) : (
+            <div className="h-[70vh] min-h-[480px] flex items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin mr-2" />
+              Cargando vista previa…
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
         {/* Left — lines + reception history */}
@@ -386,43 +444,6 @@ export default function PoDetailPage() {
         />
       )}
 
-      {/* PDF preview — iframe sirve el blob URL del PDF generado */}
-      <Dialog
-        open={!!previewUrl}
-        onOpenChange={(open) => {
-          if (!open) {
-            if (previewUrl) URL.revokeObjectURL(previewUrl)
-            setPreviewUrl(null)
-          }
-        }}
-      >
-        <DialogContent className="!max-w-4xl h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
-          <DialogHeader className="px-4 py-3 border-b flex flex-row items-center justify-between">
-            <DialogTitle className="text-sm font-semibold">
-              Vista previa — {po.folio}
-            </DialogTitle>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              onClick={handleDownloadPdf}
-              disabled={downloadingPdf}
-            >
-              {downloadingPdf
-                ? <Loader2 className="size-3.5 animate-spin" />
-                : <FileDown className="size-3.5" />}
-              Descargar
-            </Button>
-          </DialogHeader>
-          {previewUrl && (
-            <iframe
-              src={previewUrl}
-              title={`Vista previa de OC ${po.folio}`}
-              className="flex-1 w-full bg-muted/30"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
