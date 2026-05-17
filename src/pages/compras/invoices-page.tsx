@@ -96,7 +96,7 @@ interface POWithInvoices {
 type Filter = 'all' | 'missing' | 'with_invoice'
 
 export default function InvoicesPage() {
-  const [filter, setFilter] = useState<Filter>('missing')
+  const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
   const [adjuntarPo, setAdjuntarPo] = useState<POWithInvoices | null>(null)
   const [viewPo, setViewPo] = useState<POWithInvoices | null>(null)
@@ -130,22 +130,27 @@ export default function InvoicesPage() {
         .order('issue_date', { ascending: false })
         .limit(200)
       if (error) throw error
-      return (data ?? []) as POWithInvoices[]
+      // PostgREST can return `null` for empty 1:N embeds — normaliza a [] para
+      // que po.invoices.length etc. nunca crashe.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return ((data ?? []) as any[]).map((row) => ({
+        ...row,
+        invoices: row.invoices ?? [],
+      })) as POWithInvoices[]
     },
   })
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return pos.filter((po) => {
-      // Filter by invoice presence
-      if (filter === 'missing' && po.invoices.length > 0) return false
-      if (filter === 'with_invoice' && po.invoices.length === 0) return false
-      // Search
+      const invs = po.invoices ?? []
+      if (filter === 'missing' && invs.length > 0) return false
+      if (filter === 'with_invoice' && invs.length === 0) return false
       if (q) {
         const haystack = [
           po.folio,
           po.supplier?.name ?? '',
-          ...po.invoices.map((i) => `${i.invoice_folio} ${i.cfdi_uuid ?? ''}`),
+          ...invs.map((i) => `${i.invoice_folio} ${i.cfdi_uuid ?? ''}`),
         ].join(' ').toLowerCase()
         if (!haystack.includes(q)) return false
       }
@@ -155,8 +160,8 @@ export default function InvoicesPage() {
 
   const counts = useMemo(() => ({
     all: pos.length,
-    missing: pos.filter((p) => p.invoices.length === 0).length,
-    with_invoice: pos.filter((p) => p.invoices.length > 0).length,
+    missing: pos.filter((p) => (p.invoices ?? []).length === 0).length,
+    with_invoice: pos.filter((p) => (p.invoices ?? []).length > 0).length,
   }), [pos])
 
   return (
@@ -205,13 +210,14 @@ export default function InvoicesPage() {
       ) : (
         <div className="flex flex-col gap-2">
           {filtered.map((po) => {
-            const hasInvoice = po.invoices.length > 0
-            const totalInvoiced = po.invoices.reduce((s, i) => s + (i.total ?? 0), 0)
-            const hasDiscrepancy = po.invoices.some((i) => i.status === 'discrepancy')
+            const invs = po.invoices ?? []
+            const hasInvoice = invs.length > 0
+            const totalInvoiced = invs.reduce((s, i) => s + (i.total ?? 0), 0)
+            const hasDiscrepancy = invs.some((i) => i.status === 'discrepancy')
             const railTone = !hasInvoice ? 'bg-warning'
               : hasDiscrepancy ? 'bg-destructive'
-              : po.invoices.every((i) => i.status === 'paid') ? 'bg-success'
-              : po.invoices.every((i) => ['reconciled', 'paid'].includes(i.status)) ? 'bg-usd'
+              : invs.every((i) => i.status === 'paid') ? 'bg-success'
+              : invs.every((i) => ['reconciled', 'paid'].includes(i.status)) ? 'bg-usd'
               : 'bg-border'
 
             return (
@@ -234,7 +240,7 @@ export default function InvoicesPage() {
                         {hasInvoice && !hasDiscrepancy && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-success/15 text-success">
                             <CheckCircle2 className="size-2.5" />
-                            {po.invoices.length} factura{po.invoices.length === 1 ? '' : 's'}
+                            {invs.length} factura{invs.length === 1 ? '' : 's'}
                           </span>
                         )}
                         {hasDiscrepancy && (
@@ -273,7 +279,7 @@ export default function InvoicesPage() {
                           onClick={() => setViewPo(po)}
                         >
                           <FileText className="size-3" />
-                          Ver facturas ({po.invoices.length})
+                          Ver facturas ({invs.length})
                         </Button>
                         {canWrite && (
                           <Button
@@ -329,7 +335,7 @@ export default function InvoicesPage() {
               <DialogTitle>Facturas de OC {viewPo.folio}</DialogTitle>
             </DialogHeader>
             <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pt-2">
-              {viewPo.invoices.map((inv) => {
+              {(viewPo.invoices ?? []).map((inv) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const discrep = inv.discrepancies as any
                 const diff    = discrep?.diff as number | undefined
