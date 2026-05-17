@@ -1,14 +1,15 @@
 import { useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import {
-  Search, Receipt, AlertOctagon, CheckCircle2, ExternalLink,
-  Loader2, FileText, Paperclip, X as XIcon, ShoppingCart,
+  Search, Receipt, AlertOctagon, CheckCircle2,
+  Loader2, Paperclip, X as XIcon, ShoppingCart, ChevronRight,
 } from 'lucide-react'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 import { PageHeader } from '@/components/custom/page-header'
@@ -28,21 +29,18 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
 import { formatSupabaseError } from '@/lib/errors'
-import { usePermissions } from '@/hooks/use-permissions'
-import {
-  useCreateInvoice, useReconcileInvoice, useMarkInvoicePaid,
-} from '@/features/compras/invoice-hooks'
+import { useCreateInvoice } from '@/features/compras/invoice-hooks'
 import type { InvoiceStatus, Currency, POStatus } from '@/lib/database.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 
-const STATUS_LABEL: Record<InvoiceStatus, string> = {
+export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
   pending: 'Pendiente', reconciled: 'Conciliada', paid: 'Pagada',
   cancelled: 'Cancelada', discrepancy: 'Discrepancia',
 }
 
-const STATUS_TONE: Record<InvoiceStatus, string> = {
+export const INVOICE_STATUS_TONE: Record<InvoiceStatus, string> = {
   pending:     'bg-muted text-muted-foreground',
   reconciled:  'bg-usd/15 text-usd',
   paid:        'bg-success/15 text-success',
@@ -98,14 +96,8 @@ type Filter = 'all' | 'missing' | 'with_invoice'
 export default function InvoicesPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
-  const [adjuntarPo, setAdjuntarPo] = useState<POWithInvoices | null>(null)
-  const [viewPo, setViewPo] = useState<POWithInvoices | null>(null)
-  const [reconcileTarget, setReconcileTarget] = useState<string | null>(null)
   const { organization } = useAuth()
-  const { can } = usePermissions()
-  const reconcile = useReconcileInvoice()
-  const markPaid  = useMarkInvoicePaid()
-  const canWrite  = can('purchase.create')
+  const navigate = useNavigate()
 
   // Lista de OCs (firmadas en adelante) con sus facturas asociadas.
   // Facturas comes BEFORE recepciones — esta es la vista principal del módulo.
@@ -221,9 +213,11 @@ export default function InvoicesPage() {
               : 'bg-border'
 
             return (
-              <div
+              <button
                 key={po.id}
-                className="rounded-xl border border-border bg-card overflow-hidden flex"
+                type="button"
+                onClick={() => navigate(`/compras/facturas/${po.id}`)}
+                className="rounded-xl border border-border bg-card overflow-hidden flex text-left transition-colors hover:bg-muted/30 hover:border-foreground/20 cursor-pointer"
               >
                 <span aria-hidden className={`w-1 shrink-0 ${railTone}`} />
                 <div className="flex-1 min-w-0 p-4">
@@ -256,190 +250,28 @@ export default function InvoicesPage() {
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <div className="text-base font-semibold font-mono tabular-nums">
-                        ${(po.total_mxn ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                    <div className="text-right shrink-0 flex items-start gap-2">
+                      <div>
+                        <div className="text-base font-semibold font-mono tabular-nums">
+                          ${(po.total_mxn ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          MXN · OC total
+                          {hasInvoice && (
+                            <> · facturado <span className="font-mono">${totalInvoiced.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        MXN · OC total
-                        {hasInvoice && (
-                          <> · facturado <span className="font-mono">${totalInvoiced.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></>
-                        )}
-                      </div>
+                      <ChevronRight className="size-4 text-muted-foreground mt-0.5 shrink-0" />
                     </div>
                   </div>
-
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    {hasInvoice ? (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2 text-xs gap-1"
-                          onClick={() => setViewPo(po)}
-                        >
-                          <FileText className="size-3" />
-                          Ver facturas ({invs.length})
-                        </Button>
-                        {canWrite && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
-                            onClick={() => setAdjuntarPo(po)}
-                          >
-                            <Paperclip className="size-3" />
-                            Adjuntar otra
-                          </Button>
-                        )}
-                      </>
-                    ) : canWrite ? (
-                      <Button
-                        size="sm"
-                        className="h-7 px-2 text-xs gap-1 ml-auto"
-                        onClick={() => setAdjuntarPo(po)}
-                      >
-                        <Paperclip className="size-3" />
-                        Adjuntar factura
-                      </Button>
-                    ) : null}
-                  </div>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>
       )}
 
-      {/* Attach invoice dialog */}
-      {adjuntarPo && (
-        <CreateInvoiceDialog
-          open={!!adjuntarPo}
-          poContext={{
-            id: adjuntarPo.id,
-            folio: adjuntarPo.folio,
-            supplier_id: adjuntarPo.supplier_id,
-            supplier_name: adjuntarPo.supplier?.name ?? '—',
-            total_mxn: adjuntarPo.total_mxn,
-            total_usd: adjuntarPo.total_usd,
-          }}
-          onClose={() => setAdjuntarPo(null)}
-        />
-      )}
-
-      {/* View invoices for a PO */}
-      {viewPo && (
-        <Dialog open={!!viewPo} onOpenChange={(o) => !o && setViewPo(null)}>
-          <DialogContent className="!max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Facturas de OC {viewPo.folio}</DialogTitle>
-            </DialogHeader>
-            <ul className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pt-2">
-              {(viewPo.invoices ?? []).map((inv) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const discrep = inv.discrepancies as any
-                const diff    = discrep?.diff as number | undefined
-                return (
-                  <li key={inv.id} className="rounded-md border border-border bg-card p-3">
-                    <div className="flex items-start justify-between gap-2 flex-wrap">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono text-sm font-medium">{inv.invoice_folio}</span>
-                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_TONE[inv.status]}`}>
-                            {STATUS_LABEL[inv.status]}
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          Emitida {format(new Date(inv.issue_date), 'd MMM yyyy', { locale: es })}
-                          {inv.due_date && ` · vence ${formatDistanceToNow(new Date(inv.due_date), { addSuffix: true, locale: es })}`}
-                        </div>
-                        {inv.cfdi_uuid && (
-                          <div className="font-mono text-[10px] text-muted-foreground mt-0.5">
-                            CFDI {inv.cfdi_uuid}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold font-mono tabular-nums text-sm">
-                          {inv.currency === 'USD' ? 'US$' : '$'}
-                          {(inv.total ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">{inv.currency}</div>
-                      </div>
-                    </div>
-                    {inv.status === 'discrepancy' && diff != null && (
-                      <div className="mt-2 rounded bg-destructive/10 border border-destructive/20 px-2 py-1 text-[11px] text-destructive">
-                        Diferencia ${Math.abs(diff).toLocaleString('es-MX', { minimumFractionDigits: 2 })} vs OC.
-                      </div>
-                    )}
-                    <div className="mt-2 flex items-center gap-2 flex-wrap">
-                      {inv.pdf_url && (
-                        <a
-                          href={inv.pdf_url} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded border border-input hover:bg-accent transition-colors"
-                        >
-                          <FileText className="size-2.5" /> PDF <ExternalLink className="size-2.5" />
-                        </a>
-                      )}
-                      {inv.xml_url && (
-                        <a
-                          href={inv.xml_url} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded border border-input hover:bg-accent transition-colors"
-                        >
-                          XML <ExternalLink className="size-2.5" />
-                        </a>
-                      )}
-                      {canWrite && inv.status === 'pending' && (
-                        <Button size="sm" className="h-6 px-2 text-[11px] gap-1 ml-auto"
-                          onClick={() => setReconcileTarget(inv.id)}
-                          disabled={reconcile.isPending}
-                        >
-                          <CheckCircle2 className="size-2.5" /> Conciliar
-                        </Button>
-                      )}
-                      {canWrite && inv.status === 'discrepancy' && (
-                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] ml-auto"
-                          onClick={() => setReconcileTarget(inv.id)}
-                        >
-                          Conciliar igual
-                        </Button>
-                      )}
-                      {canWrite && inv.status === 'reconciled' && (
-                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] ml-auto"
-                          onClick={() => markPaid.mutate(inv.id, {
-                            onSuccess: () => toast.success('Marcada como pagada'),
-                          })}
-                        >
-                          Marcar pagada
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      <ConfirmReconcileDialog
-        open={!!reconcileTarget}
-        onConfirm={(note) => {
-          if (!reconcileTarget) return
-          reconcile.mutate({ id: reconcileTarget, note }, {
-            onSuccess: () => {
-              toast.success('Factura conciliada')
-              setReconcileTarget(null)
-            },
-            onError: (e) => {
-              const { title, description } = formatSupabaseError(e, 'No se pudo conciliar')
-              toast.error(title, { description })
-            },
-          })
-        }}
-        onClose={() => setReconcileTarget(null)}
-        isPending={reconcile.isPending}
-      />
     </div>
   )
 }
@@ -460,7 +292,7 @@ interface CreateProps {
   }
 }
 
-function CreateInvoiceDialog({ open, onClose, poContext }: CreateProps) {
+export function CreateInvoiceDialog({ open, onClose, poContext }: CreateProps) {
   const create = useCreateInvoice()
   const { organization } = useAuth()
   const [pdfFile, setPdfFile] = useState<File | null>(null)
@@ -770,7 +602,7 @@ function CreateInvoiceDialog({ open, onClose, poContext }: CreateProps) {
 
 // ─── Confirm reconcile dialog ───────────────────────────────────────────────
 
-function ConfirmReconcileDialog({
+export function ConfirmReconcileDialog({
   open, onConfirm, onClose, isPending,
 }: {
   open: boolean

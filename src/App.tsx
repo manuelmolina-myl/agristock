@@ -56,8 +56,10 @@ const ComprasQuotations      = lazy(() => import('@/pages/compras/quotations-pag
 const ComprasOrders          = lazy(() => import('@/pages/compras/orders-page'))
 const ComprasReceptions      = lazy(() => import('@/pages/compras/receptions-page'))
 const ComprasInvoices        = lazy(() => import('@/pages/compras/invoices-page'))
+const ComprasFacturaDetail   = lazy(() => import('@/pages/compras/facturas-detail-page'))
 const ComprasPoDetail        = lazy(() => import('@/pages/compras/po-detail-page'))
 const ComprasSuppliers       = lazy(() => import('@/pages/compras/suppliers-page'))
+const ComprasSupplierDetail  = lazy(() => import('@/pages/compras/supplier-detail-page'))
 const ComprasQuoteCompare    = lazy(() => import('@/pages/compras/quote-comparator-page'))
 
 // Mantenimiento module (top-level)
@@ -197,7 +199,9 @@ export default function App() {
           <Route path="ordenes/:id" element={<ComprasPoDetail />} />
           <Route path="recepciones" element={<ComprasReceptions />} />
           <Route path="facturas" element={<ComprasInvoices />} />
+          <Route path="facturas/:poId" element={<ComprasFacturaDetail />} />
           <Route path="proveedores" element={<ComprasSuppliers />} />
+          <Route path="proveedores/:id" element={<ComprasSupplierDetail />} />
         </Route>
 
         {/* ─── Mantenimiento module (top-level) ──────────────────────── */}

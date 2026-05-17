@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useForm } from 'react-hook-form'
@@ -66,6 +67,7 @@ interface SupplierWithStats extends Supplier {
 }
 
 export default function SuppliersPage() {
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const { organization } = useAuth()
   const { can } = usePermissions()
@@ -217,7 +219,16 @@ export default function SuppliersPage() {
           {rows.map((s) => (
             <div
               key={s.id}
-              className="rounded-xl border border-border bg-card overflow-hidden hover:border-foreground/20 transition-colors group"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/compras/proveedores/${s.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  navigate(`/compras/proveedores/${s.id}`)
+                }
+              }}
+              className="rounded-xl border border-border bg-card overflow-hidden hover:border-foreground/20 hover:bg-muted/20 transition-colors group cursor-pointer text-left"
             >
               <div className="p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -243,7 +254,10 @@ export default function SuppliersPage() {
                   </div>
 
                   {canWrite && (
-                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div
+                      className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Button
                         variant="ghost" size="icon-sm"
                         onClick={() => setEditTarget(s)}
