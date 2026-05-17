@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, Calendar, Warehouse as WarehouseIcon, ArrowDownToLine,
-  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2,
+  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2, Eye,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { supabase } from '@/lib/supabase'
 import { usePurchaseOrder } from '@/features/compras/hooks'
 import { usePermissions } from '@/hooks/use-permissions'
@@ -54,18 +55,18 @@ export default function PoDetailPage() {
   const { data: po, isLoading } = usePurchaseOrder(id)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const { organization, user } = useAuth()
+
+  const creatorName = user?.user_metadata?.full_name ?? user?.email ?? undefined
 
   async function handleDownloadPdf() {
     if (!po || !organization) return
     setDownloadingPdf(true)
     try {
       const { generatePoPDF } = await import('@/lib/generate-po-pdf')
-      await generatePoPDF({
-        po,
-        organization,
-        createdByName: user?.user_metadata?.full_name ?? user?.email ?? undefined,
-      })
+      await generatePoPDF({ po, organization, createdByName: creatorName })
     } catch (err) {
       const { title, description } = formatSupabaseError(err, 'No se pudo generar el PDF')
       toast.error(title, { description })
@@ -73,6 +74,31 @@ export default function PoDetailPage() {
       setDownloadingPdf(false)
     }
   }
+
+  async function handlePreviewPdf() {
+    if (!po || !organization) return
+    setPreviewing(true)
+    try {
+      const { previewPoPDF } = await import('@/lib/generate-po-pdf')
+      // Revoke any previous URL before generating a new one to avoid memory
+      // leaks if the user previews → edits → previews again.
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      const url = await previewPoPDF({ po, organization, createdByName: creatorName })
+      setPreviewUrl(url)
+    } catch (err) {
+      const { title, description } = formatSupabaseError(err, 'No se pudo generar la vista previa')
+      toast.error(title, { description })
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
+  // Revoke the blob URL on unmount so the browser can GC the PDF bytes.
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
 
   // Existing receptions for this PO (for the timeline).
   const { data: receptions = [] } = useQuery({
@@ -154,6 +180,18 @@ export default function PoDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={handlePreviewPdf}
+            disabled={previewing}
+          >
+            {previewing
+              ? <Loader2 className="size-4 animate-spin" />
+              : <Eye className="size-4" />}
+            {previewing ? 'Generando…' : 'Vista previa'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -347,6 +385,44 @@ export default function PoDetailPage() {
           onClose={() => setWizardOpen(false)}
         />
       )}
+
+      {/* PDF preview — iframe sirve el blob URL del PDF generado */}
+      <Dialog
+        open={!!previewUrl}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (previewUrl) URL.revokeObjectURL(previewUrl)
+            setPreviewUrl(null)
+          }
+        }}
+      >
+        <DialogContent className="!max-w-4xl h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-4 py-3 border-b flex flex-row items-center justify-between">
+            <DialogTitle className="text-sm font-semibold">
+              Vista previa — {po.folio}
+            </DialogTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf}
+            >
+              {downloadingPdf
+                ? <Loader2 className="size-3.5 animate-spin" />
+                : <FileDown className="size-3.5" />}
+              Descargar
+            </Button>
+          </DialogHeader>
+          {previewUrl && (
+            <iframe
+              src={previewUrl}
+              title={`Vista previa de OC ${po.folio}`}
+              className="flex-1 w-full bg-muted/30"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

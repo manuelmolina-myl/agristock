@@ -55,7 +55,9 @@ const STATUS_LABEL: Record<string, string> = {
   closed:              'CERRADA',
 }
 
-export async function generatePoPDF(opts: GeneratePoPDFOptions): Promise<void> {
+/** Build the jsPDF doc for the PO.  Reused by `generatePoPDF` (download) and
+ *  `previewPoPDF` (returns a blob URL for in-page iframe preview). */
+async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
   const { po, organization, createdByName } = opts
 
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
@@ -359,7 +361,22 @@ export async function generatePoPDF(opts: GeneratePoPDFOptions): Promise<void> {
     doc.text(`Página ${p} de ${totalPages}`, pageW - margin, footY, { align: 'right' })
   }
 
-  doc.save(`OC-${po.folio}.pdf`)
+  return doc
+}
+
+/** Build the PO PDF and trigger a browser download.  Filename: `OC-<folio>.pdf`. */
+export async function generatePoPDF(opts: GeneratePoPDFOptions): Promise<void> {
+  const doc = await buildPoPdfDoc(opts)
+  doc.save(`OC-${opts.po.folio}.pdf`)
+}
+
+/** Build the PO PDF and return a Blob URL suitable for `<iframe src=...>`.
+ *  Caller is responsible for revoking the URL with `URL.revokeObjectURL`
+ *  when the preview is dismissed to free the blob. */
+export async function previewPoPDF(opts: GeneratePoPDFOptions): Promise<string> {
+  const doc = await buildPoPdfDoc(opts)
+  const blob = doc.output('blob')
+  return URL.createObjectURL(blob)
 }
 
 export default generatePoPDF
