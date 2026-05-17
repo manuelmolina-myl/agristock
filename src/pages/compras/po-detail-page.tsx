@@ -3,10 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, Calendar, Warehouse as WarehouseIcon, ArrowDownToLine,
-  AlertCircle, CheckCircle2, Clock, XCircle,
+  AlertCircle, CheckCircle2, Clock, XCircle, FileDown, Loader2,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +15,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { supabase } from '@/lib/supabase'
 import { usePurchaseOrder } from '@/features/compras/hooks'
 import { usePermissions } from '@/hooks/use-permissions'
+import { useAuth } from '@/hooks/use-auth'
+import { formatSupabaseError } from '@/lib/errors'
 import type { POStatus } from '@/lib/database.types'
 
 import { ReceptionWizard } from './reception-wizard'
@@ -50,6 +53,26 @@ export default function PoDetailPage() {
 
   const { data: po, isLoading } = usePurchaseOrder(id)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const { organization, user } = useAuth()
+
+  async function handleDownloadPdf() {
+    if (!po || !organization) return
+    setDownloadingPdf(true)
+    try {
+      const { generatePoPDF } = await import('@/lib/generate-po-pdf')
+      await generatePoPDF({
+        po,
+        organization,
+        createdByName: user?.user_metadata?.full_name ?? user?.email ?? undefined,
+      })
+    } catch (err) {
+      const { title, description } = formatSupabaseError(err, 'No se pudo generar el PDF')
+      toast.error(title, { description })
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
 
   // Existing receptions for this PO (for the timeline).
   const { data: receptions = [] } = useQuery({
@@ -130,12 +153,26 @@ export default function PoDetailPage() {
           </div>
         </div>
 
-        {canReceive && (
-          <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setWizardOpen(true)}>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+          >
+            {downloadingPdf
+              ? <Loader2 className="size-4 animate-spin" />
+              : <FileDown className="size-4" />}
+            {downloadingPdf ? 'Generando…' : 'Descargar PDF'}
+          </Button>
+          {canReceive && (
+          <Button size="sm" className="gap-1.5" onClick={() => setWizardOpen(true)}>
             <ArrowDownToLine className="size-4" />
             Registrar recepción
           </Button>
         )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
