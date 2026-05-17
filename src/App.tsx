@@ -70,9 +70,11 @@ const MantenimientoWoDetail  = lazy(() => import('@/pages/mantenimiento-mod/wo-d
 const MantenimientoEquipment = lazy(() => import('@/pages/mantenimiento-mod/equipment-page'))
 const MantenimientoEquipDet  = lazy(() => import('@/pages/mantenimiento-mod/equipment-detail-page'))
 const MantenimientoPlans     = lazy(() => import('@/pages/mantenimiento-mod/preventive-plans-page'))
+const MantenimientoHistorial = lazy(() => import('@/pages/mantenimiento-mod/historial-page'))
 const MantenimientoCalendar  = lazy(() => import('@/pages/mantenimiento-mod/pm-calendar-page'))
 const MantenimientoSolicitudes    = lazy(() => import('@/pages/mantenimiento-mod/service-requests-page'))
 const MantenimientoSolicitudDet   = lazy(() => import('@/pages/mantenimiento-mod/service-request-detail-page'))
+const MantenimientoCrew           = lazy(() => import('@/pages/mantenimiento-mod/crew-page'))
 
 // Almacén module (top-level)
 const AlmacenDashboard = lazy(() => import('@/pages/almacen/almacen-dashboard'))
@@ -239,6 +241,8 @@ export default function App() {
           <Route path="equipos" element={<MantenimientoEquipment />} />
           <Route path="equipos/:id" element={<MantenimientoEquipDet />} />
           <Route path="planes" element={<MantenimientoPlans />} />
+          <Route path="historial" element={<MantenimientoHistorial />} />
+          <Route path="equipo" element={<MantenimientoCrew />} />
         </Route>
         {/* Calendario PM: además de mantenimiento/admin, almacenista puede
             consultar para anticipar refacciones requeridas. */}

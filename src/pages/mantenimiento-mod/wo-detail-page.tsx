@@ -1254,13 +1254,57 @@ function AssignDialog({ open, woId, currentTechnicianId, onClose, onSave, isPend
   const [scheduledDate, setScheduledDate] = useState('')
   const [estimatedHours, setEstimatedHours] = useState('')
 
-  const { data: technicians = [] } = useQuery<Array<{ id: string; full_name: string }>>({
+  const { data: technicians = [] } = useQuery<Array<{ id: string; full_name: string; skills: string[] | null; active_wo_count: number | null }>>({
     queryKey: ['employees-techs'],
     enabled: open,
     queryFn: async () => {
-      const { data, error } = await db.from('employees').select('id, full_name').order('full_name')
-      if (error) throw error
-      return data
+      // Prefer the technician_workload view (provides skills + load).  If it
+      // fails (older DB or RLS), fall back to a plain employees query so the
+      // dialog still works.
+      try {
+        const { data, error } = await db
+          .from('technician_workload')
+          .select('employee_id, full_name, skills, is_technician, active_wo_count')
+          .order('active_wo_count', { ascending: true, nullsFirst: true })
+        if (error) throw error
+        const rows = (data ?? []) as Array<{
+          employee_id: string
+          full_name: string
+          skills: string[] | null
+          is_technician: boolean | null
+          active_wo_count: number | null
+        }>
+        const techs = rows
+          .filter((r) => r.is_technician)
+          .map((r) => ({
+            id: r.employee_id,
+            full_name: r.full_name,
+            skills: r.skills,
+            active_wo_count: r.active_wo_count,
+          }))
+        // If the org hasn't flagged any techs yet, show everyone so the dialog
+        // doesn't appear broken; pure alphabetical order.
+        if (techs.length === 0) {
+          return rows
+            .map((r) => ({
+              id: r.employee_id,
+              full_name: r.full_name,
+              skills: r.skills,
+              active_wo_count: r.active_wo_count,
+            }))
+            .sort((a, b) => a.full_name.localeCompare(b.full_name))
+        }
+        return techs
+      } catch {
+        const { data, error } = await db.from('employees').select('id, full_name').order('full_name')
+        if (error) throw error
+        return (data ?? []).map((r: { id: string; full_name: string }) => ({
+          id: r.id,
+          full_name: r.full_name,
+          skills: null,
+          active_wo_count: null,
+        }))
+      }
     },
   })
 
@@ -1274,7 +1318,26 @@ function AssignDialog({ open, woId, currentTechnicianId, onClose, onSave, isPend
             <Select value={technicianId} onValueChange={(v) => setTechnicianId(v ?? '')}>
               <SelectTrigger className="h-9"><SelectValue placeholder="Selecciona" /></SelectTrigger>
               <SelectContent>
-                {technicians.map((t) => <SelectItem key={t.id} value={t.id}>{t.full_name}</SelectItem>)}
+                {technicians.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{t.full_name}</span>
+                      {typeof t.active_wo_count === 'number' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium tabular-nums">
+                          {t.active_wo_count} OT
+                        </span>
+                      )}
+                      {(t.skills ?? []).slice(0, 3).map((s) => (
+                        <span
+                          key={s}
+                          className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

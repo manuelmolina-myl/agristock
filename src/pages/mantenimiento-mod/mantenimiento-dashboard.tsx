@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Wrench, AlertOctagon, CheckCircle2, TrendingDown,
   Tractor, ArrowRight, CalendarClock, Plus, AlertTriangle,
   Inbox, Gauge, Activity, Wallet, Timer, FileWarning,
+  Sparkles, Loader2,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -11,9 +13,15 @@ import { PageHeader } from '@/components/custom/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { KpiCard, type KpiTone } from '@/components/custom/kpi-card'
-import { useQuery } from '@tanstack/react-query'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
+import { usePermissions } from '@/hooks/use-permissions'
 import { formatSupabaseError } from '@/lib/errors'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,6 +90,19 @@ interface UpcomingPmRow {
   scheduled_date: string
   status: string
   equipment: { code: string; name: string } | null
+}
+
+interface DuePmRow {
+  plan_id: string
+  plan_name: string
+  equipment_id: string
+  equipment_code: string
+  equipment_name: string
+  trigger_type: 'calendar' | 'hours' | 'kilometers' | 'cycles' | string
+  current_value: number | null
+  next_execution: number | null
+  due_by: string | null
+  has_open_wo: boolean
 }
 
 // ───────────────────────── Hooks ─────────────────────────────────────────────
@@ -232,6 +253,20 @@ function useUpcomingPMs(limit = 10) {
   })
 }
 
+function useDuePMs() {
+  const { organization } = useAuth()
+  return useQuery<DuePmRow[]>({
+    queryKey: ['pms-due', organization?.id],
+    enabled: !!organization?.id,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await db.rpc('list_due_pms')
+      if (error) throw error
+      return (data ?? []) as DuePmRow[]
+    },
+  })
+}
+
 // ───────────────────────── Helpers ───────────────────────────────────────────
 
 const URGENCY_LABEL: Record<Urgency, string> = {
@@ -259,17 +294,83 @@ function daysFromToday(dateStr: string): number {
   return Math.round((d.getTime() - today.getTime()) / 86_400_000)
 }
 
+const TRIGGER_LABEL: Record<string, string> = {
+  calendar: 'calendario',
+  hours: 'horas',
+  kilometers: 'km',
+  cycles: 'ciclos',
+}
+
+function describePmTrigger(row: DuePmRow): string {
+  if (row.trigger_type === 'calendar' && row.due_by) {
+    const days = daysFromToday(row.due_by)
+    if (days === 0) return 'calendario: vence hoy'
+    if (days === 1) return 'calendario: mañana'
+    if (days < 0) return `calendario: ${Math.abs(days)} día(s) tarde`
+    return `calendario: en ${days} días`
+  }
+  const label = TRIGGER_LABEL[row.trigger_type] ?? row.trigger_type
+  const cur = row.current_value
+  const next = row.next_execution
+  if (cur != null && next != null) {
+    return `${label}: ${Number(cur).toLocaleString('es-MX')} / próximo ${Number(next).toLocaleString('es-MX')}`
+  }
+  if (next != null) return `${label}: próximo ${Number(next).toLocaleString('es-MX')}`
+  return label
+}
+
 // ───────────────────────── Component ─────────────────────────────────────────
 
 export default function MantenimientoDashboard() {
   const navigate = useNavigate()
   const { organization } = useAuth()
+  const { hasAnyRole } = usePermissions()
+  const qc = useQueryClient()
+  const canGeneratePMs = hasAnyRole(['admin', 'mantenimiento'])
+  const [generateOpen, setGenerateOpen] = useState(false)
 
   const { data: kpis, isLoading: loadingKpis, error: kpisError } = useMaintenanceKpis()
   const { data: requests = [], isLoading: loadingRequests } = usePendingServiceRequests(10)
   const { data: overdue = [], isLoading: loadingOverdue } = useOverdueWorkOrders(10)
   const { data: topFailures = [], isLoading: loadingFailures } = useTopFailingEquipment(5)
   const { data: upcomingPMs = [], isLoading: loadingPMs } = useUpcomingPMs(10)
+  const { data: duePMs = [], isLoading: loadingDuePMs } = useDuePMs()
+
+  const generateMutation = useMutation<{ generated_count: number; plan_ids: string[] }, unknown>({
+    mutationFn: async () => {
+      const { data, error } = await db.rpc('generate_due_pms', { p_dry_run: false })
+      if (error) throw error
+      const row = Array.isArray(data) ? data[0] : data
+      return {
+        generated_count: row?.generated_count ?? 0,
+        plan_ids: row?.plan_ids ?? [],
+      }
+    },
+    onSuccess: (res) => {
+      const n = res.generated_count ?? 0
+      if (n > 0) {
+        toast.success(`${n} OT${n === 1 ? '' : 's'} generada${n === 1 ? '' : 's'}`, {
+          description: 'Las OTs preventivas se crearon en estado Programada.',
+        })
+      } else {
+        toast.info('No se generaron OTs nuevas', {
+          description: 'No hay planes vencidos pendientes o ya tienen OT abierta.',
+        })
+      }
+      qc.invalidateQueries({ queryKey: ['pms-due', organization?.id] })
+      qc.invalidateQueries({ queryKey: ['cmms'] })
+      qc.invalidateQueries({ queryKey: ['mantto-dashboard-kpis', organization?.id] })
+      qc.invalidateQueries({ queryKey: ['mantto-upcoming-pms', organization?.id] })
+      setGenerateOpen(false)
+      if (n > 0) navigate('/mantenimiento/ordenes')
+    },
+    onError: (e) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudieron generar las OTs')
+      toast.error(title, { description })
+    },
+  })
+
+  const pendingDueCount = duePMs.filter((r) => !r.has_open_wo).length
 
   if (!organization?.id) {
     return (
@@ -555,6 +656,80 @@ export default function MantenimientoDashboard() {
         </section>
       </div>
 
+      {/* ─── PMs por generar ───────────────────────────────────────────── */}
+      <section className="rounded-xl border border-border bg-card">
+        <header className="flex items-center justify-between gap-3 px-4 py-3 border-b flex-wrap">
+          <div className="flex items-center gap-2">
+            <Sparkles className="size-4 text-muted-foreground" strokeWidth={1.75} />
+            <h3 className="text-sm font-semibold">PMs por generar</h3>
+            {duePMs.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-warning/15 text-warning text-[10px] font-semibold tabular-nums">
+                {duePMs.length}
+              </span>
+            )}
+          </div>
+          {canGeneratePMs && pendingDueCount > 0 && (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setGenerateOpen(true)}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <Sparkles className="size-4" />}
+              Generar OTs preventivas
+            </Button>
+          )}
+        </header>
+        <div className="divide-y">
+          {loadingDuePMs ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="px-4 py-3"><Skeleton className="h-5 w-full" /></div>
+            ))
+          ) : duePMs.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+              <CheckCircle2 className="size-5 text-success/70" strokeWidth={1.75} />
+              Todo al día. Sin planes vencidos.
+            </div>
+          ) : (
+            <>
+              {duePMs.slice(0, 5).map((row) => (
+                <div
+                  key={`${row.plan_id}-${row.equipment_id}`}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium truncate">{row.plan_name}</span>
+                      {row.has_open_wo && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                          Ya tiene OT abierta
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                      {row.equipment_code} — {row.equipment_name}
+                      <span className="mx-1">·</span>
+                      <span className="text-warning">{describePmTrigger(row)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {duePMs.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/mantenimiento/planes')}
+                  className="w-full flex items-center justify-center gap-1 px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                >
+                  Ver todos ({duePMs.length}) <ArrowRight className="size-3" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
       {/* ─── Upcoming PMs (próximos 30 días) ────────────────────────────── */}
       <section className="rounded-xl border border-border bg-card">
         <header className="flex items-center justify-between px-4 py-3 border-b">
@@ -622,6 +797,28 @@ export default function MantenimientoDashboard() {
           )}
         </div>
       </section>
+
+      <AlertDialog open={generateOpen} onOpenChange={(o) => { if (!o) setGenerateOpen(false) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Generar OTs preventivas</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se crearán {pendingDueCount} OT{pendingDueCount === 1 ? '' : 's'} preventiva{pendingDueCount === 1 ? '' : 's'} con estado Programada. Las que ya tengan OT abierta se omiten.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={generateMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); generateMutation.mutate() }}
+              disabled={generateMutation.isPending}
+              className="gap-1.5"
+            >
+              {generateMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+              Generar {pendingDueCount} OT{pendingDueCount === 1 ? '' : 's'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
