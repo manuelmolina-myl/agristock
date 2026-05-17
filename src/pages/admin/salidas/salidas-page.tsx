@@ -225,7 +225,7 @@ export function SalidasPage() {
         receivedByName = emp?.full_name
       }
 
-      generateValePDF({
+      await generateValePDF({
         movement: mov,
         organization: organization!,
         deliveredByName,

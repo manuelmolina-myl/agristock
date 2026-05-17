@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -8,19 +8,15 @@ import {
   TrendingDown,
   AlertTriangle,
 } from 'lucide-react'
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ReferenceLine,
-  ResponsiveContainer,
-} from 'recharts'
 import { format } from 'date-fns'
+
+// Lazy-load Recharts wrappers so the heavy chart chunk only loads when needed
+const TractorRendimientoLineChart = lazy(
+  () => import('@/components/charts/tractor-rendimiento-line-chart'),
+)
+const TractorConsumoMensualBarChart = lazy(
+  () => import('@/components/charts/tractor-consumo-mensual-bar-chart'),
+)
 import { es } from 'date-fns/locale'
 
 import { supabase } from '@/lib/supabase'
@@ -317,78 +313,9 @@ function RendimientoTab({ lines, avgRendimiento }: RendimientoTabProps) {
       <Card>
         <CardContent className="pt-5 pb-2 px-4">
           <p className="text-sm font-medium mb-4">Rendimiento por carga (L/h)</p>
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-              <XAxis
-                dataKey="fecha"
-                tick={{ fontSize: 11 }}
-                className="text-muted-foreground"
-              />
-              <YAxis
-                tick={{ fontSize: 11 }}
-                className="text-muted-foreground"
-                width={45}
-              />
-              <Tooltip
-                contentStyle={{
-                  fontSize: 12,
-                  borderRadius: 8,
-                  border: '1px solid hsl(var(--border))',
-                  background: 'hsl(var(--card))',
-                  color: 'hsl(var(--foreground))',
-                }}
-                formatter={((v: number) => [`${formatQuantity(v, 2)} L/h`, 'Rendimiento']) as any}
-              />
-              {avgRendimiento != null && (
-                <ReferenceLine
-                  y={avgRendimiento}
-                  stroke="hsl(var(--muted-foreground))"
-                  strokeDasharray="6 3"
-                  label={{
-                    value: `Prom. ${formatQuantity(avgRendimiento, 2)}`,
-                    position: 'insideTopRight',
-                    fontSize: 11,
-                    fill: 'hsl(var(--muted-foreground))',
-                  }}
-                />
-              )}
-              <Line
-                type="monotone"
-                dataKey="rendimiento"
-                stroke="hsl(var(--primary))"
-                strokeWidth={2}
-                dot={(props) => {
-                  const { cx, cy, payload } = props
-                  if (payload.anomalo) {
-                    return (
-                      <circle
-                        key={`dot-${cx}-${cy}`}
-                        cx={cx}
-                        cy={cy}
-                        r={5}
-                        fill="hsl(43 96% 56%)"
-                        stroke="white"
-                        strokeWidth={1.5}
-                      />
-                    )
-                  }
-                  return (
-                    <circle
-                      key={`dot-${cx}-${cy}`}
-                      cx={cx}
-                      cy={cy}
-                      r={3}
-                      fill="hsl(var(--primary))"
-                      stroke="white"
-                      strokeWidth={1}
-                    />
-                  )
-                }}
-                activeDot={{ r: 5 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <Suspense fallback={<Skeleton className="h-72 w-full" />}>
+            <TractorRendimientoLineChart data={chartData} avgRendimiento={avgRendimiento} />
+          </Suspense>
         </CardContent>
       </Card>
 
@@ -439,35 +366,9 @@ function ConsumoMensualTab({ lines, canSeePrices }: ConsumoMensualTabProps) {
       <Card>
         <CardContent className="pt-5 pb-2 px-4">
           <p className="text-sm font-medium mb-4">Consumo mensual (litros)</p>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-              <XAxis
-                dataKey="mes"
-                tick={{ fontSize: 11 }}
-                className="text-muted-foreground"
-              />
-              <YAxis
-                tick={{ fontSize: 11 }}
-                className="text-muted-foreground"
-                width={45}
-              />
-              <Tooltip
-                contentStyle={{
-                  fontSize: 12,
-                  borderRadius: 8,
-                  border: '1px solid hsl(var(--border))',
-                  background: 'hsl(var(--card))',
-                  color: 'hsl(var(--foreground))',
-                }}
-                formatter={((v: number, name: string) => {
-                  if (name === 'litros') return [`${formatQuantity(v, 1)} L`, 'Litros']
-                  return [formatMoney(v, 'MXN'), 'Costo']
-                }) as any}
-              />
-              <Bar dataKey="litros" fill="hsl(142 71% 45%)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <Suspense fallback={<Skeleton className="h-72 w-full" />}>
+            <TractorConsumoMensualBarChart data={chartData} />
+          </Suspense>
         </CardContent>
       </Card>
 

@@ -165,7 +165,7 @@ export default function SalidaDetailPage() {
         const { data: emp } = await db.from('employees').select('full_name').eq('id', mov.received_by_employee_id).single()
         receivedByName = emp?.full_name
       }
-      generateValePDF({ movement: mov as any, organization, deliveredByName, receivedByName, canSeePrices })
+      await generateValePDF({ movement: mov as any, organization, deliveredByName, receivedByName, canSeePrices })
     } catch {
       toast.error('Error al generar el PDF')
     }

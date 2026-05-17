@@ -2,6 +2,7 @@
  * Gerente dashboard — re-uses the same logic as AdminDashboardPage
  * but with a different title/description.
  */
+import { lazy, Suspense } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   DollarSign,
@@ -11,15 +12,6 @@ import {
   TrendingDown,
   Activity,
 } from 'lucide-react'
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
 
 import { PageHeader } from '@/components/custom/page-header'
 import { KpiCard } from '@/components/custom/kpi-card'
@@ -31,10 +23,14 @@ import {
   formatMoney,
   formatQuantity,
   formatRelativo,
-  formatFechaCorta,
   cn,
 } from '@/lib/utils'
 import type { AuditLog } from '@/lib/database.types'
+
+// Lazy-load Recharts wrapper so the heavy chart chunk isn't pulled in until needed
+const DailySpendAreaChart = lazy(
+  () => import('@/components/charts/daily-spend-area-chart'),
+)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -266,26 +262,6 @@ function userInitial(email: string | null) {
   return email[0].toUpperCase()
 }
 
-function ChartTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean
-  payload?: Array<{ value: number }>
-  label?: string
-}) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md">
-      <p className="text-muted-foreground mb-1">{label}</p>
-      <p className="font-semibold text-foreground">
-        {formatMoney(payload[0].value)}
-      </p>
-    </div>
-  )
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function GerenteDashboardPage() {
@@ -362,47 +338,15 @@ export function GerenteDashboardPage() {
                 <p className="text-sm text-muted-foreground">Sin movimientos registrados</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={210}>
-                <AreaChart
+              <Suspense fallback={<Skeleton className="h-52 w-full" />}>
+                <DailySpendAreaChart
                   data={gastoQ.data}
-                  margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="gastoGradientGerente" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                    tickFormatter={(v: string) => formatFechaCorta(v)}
-                    tickLine={false}
-                    axisLine={false}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                    tickFormatter={(v: number) =>
-                      v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
-                    }
-                    tickLine={false}
-                    axisLine={false}
-                    width={50}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    fill="url(#gastoGradientGerente)"
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+                  height={210}
+                  fontSize={11}
+                  yAxisWidth={50}
+                  gradientId="gastoGradientGerente"
+                />
+              </Suspense>
             )}
           </CardContent>
         </Card>

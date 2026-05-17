@@ -184,7 +184,7 @@ export default function EntradasPage() {
         receivedByName = emp?.full_name
       }
 
-      generateEntradaPDF({
+      await generateEntradaPDF({
         movement: mov,
         organization: organization!,
         supplierName: mov.supplier?.name,

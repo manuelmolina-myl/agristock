@@ -2,8 +2,6 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
 import { ArrowLeft, Download, FileSpreadsheet, Clock } from 'lucide-react'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 
 import { useAuth } from '@/hooks/use-auth'
@@ -68,7 +66,7 @@ const REPORT_META: Record<string, ReportMeta> = {
 
 // ─── PDF helper ───────────────────────────────────────────────────────────────
 
-function generatePdf(
+async function generatePdf(
   orgName: string,
   reportTitle: string,
   filtersLabel: string,
@@ -76,6 +74,12 @@ function generatePdf(
   body: (string | number)[][][],
   footRow?: (string | number)[]
 ) {
+  // Lazy-load jsPDF + autoTable so this heavy chunk only loads on PDF export
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
+
   const doc = new jsPDF({ orientation: 'landscape' })
   const dateStr = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
@@ -156,7 +160,7 @@ function KardexReport({ orgName }: { orgName: string }) {
   const [dateTo, setDateTo]     = useState<string>(today)
 
   const { data: lines = [], isLoading } = useQuery({
-    queryKey: ['kardex', itemId, dateFrom, dateTo, activeSeason?.id],
+    queryKey: ['kardex', { itemId, dateFrom, dateTo, seasonId: activeSeason?.id }],
     queryFn: async () => {
       if (itemId === 'all') return []
       let q = db
@@ -493,7 +497,7 @@ function EntradasProveedorReport({ orgName }: { orgName: string }) {
   const [dateTo, setDateTo]         = useState<string>(today)
 
   const { data: movements = [], isLoading } = useQuery<StockMovementRaw[]>({
-    queryKey: ['entradas_proveedor', activeSeason?.id, supplierId, dateFrom, dateTo],
+    queryKey: ['entradas_proveedor', { seasonId: activeSeason?.id, supplierId, dateFrom, dateTo }],
     queryFn: async () => {
       let q = db
         .from('stock_movements')
@@ -669,7 +673,7 @@ function SalidasLoteReport({ orgName }: { orgName: string }) {
   const [dateTo, setDateTo]     = useState<string>(today)
 
   const { data: lines = [], isLoading } = useQuery<MovementLineRaw[]>({
-    queryKey: ['salidas_lote', activeSeason?.id, dateFrom, dateTo],
+    queryKey: ['salidas_lote', { seasonId: activeSeason?.id, dateFrom, dateTo }],
     queryFn: async () => {
       let q = db
         .from('stock_movement_lines')
@@ -840,7 +844,7 @@ function ConsumoDieselReport({ orgName }: { orgName: string }) {
   const [dateTo, setDateTo]     = useState<string>(today)
 
   const { data: lines = [], isLoading } = useQuery<DieselLine[]>({
-    queryKey: ['consumo-diesel-report', activeSeason?.id, dateFrom, dateTo],
+    queryKey: ['consumo-diesel-report', { seasonId: activeSeason?.id, dateFrom, dateTo }],
     queryFn: async () => {
       // Step 1: get diesel item IDs for this org
       const { data: dieselItems } = await db
@@ -1000,7 +1004,7 @@ function SinMovimientoReport({ orgName }: { orgName: string }) {
   })
 
   const { data: movedIds = [], isLoading: loadingMoved } = useQuery<MovedItemId[]>({
-    queryKey: ['moved-items', activeSeason?.id, dateFrom, dateTo, organization?.id],
+    queryKey: ['moved-items', { seasonId: activeSeason?.id, dateFrom, dateTo, orgId: organization?.id }],
     queryFn: async () => {
       let q = db
         .from('stock_movement_lines')
@@ -1118,7 +1122,7 @@ function VariacionPreciosReport({ orgName }: { orgName: string }) {
   const [dateTo, setDateTo]     = useState<string>(today)
 
   const { data: lines = [], isLoading } = useQuery<PriceVariationLine[]>({
-    queryKey: ['variacion-precios', itemId, dateFrom, dateTo, activeSeason?.id],
+    queryKey: ['variacion-precios', { itemId, dateFrom, dateTo, seasonId: activeSeason?.id }],
     queryFn: async () => {
       if (itemId === 'all') return []
       let q = db

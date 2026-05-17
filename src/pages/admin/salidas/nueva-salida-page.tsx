@@ -1218,7 +1218,7 @@ export function NuevaSalidaPage() {
           }
           const deliveredBy = allEmployees.find((e) => e.id === step1Data.delivered_by_employee_id)
           const receivedBy = allEmployees.find((e) => e.id === step1Data.received_by_employee_id)
-          generateValePDF({
+          await generateValePDF({
             movement: movWithLines,
             organization,
             deliveredByName: deliveredBy?.full_name,

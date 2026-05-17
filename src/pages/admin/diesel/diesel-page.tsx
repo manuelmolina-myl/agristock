@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, useMemo } from 'react'
+import { lazy, Suspense, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBasePath, useCanSeePrices } from '@/hooks/use-base-path'
 import {
@@ -12,18 +12,15 @@ import {
   XCircle,
   AlertTriangle,
 } from 'lucide-react'
-import {
-  BarChart,
-  Bar,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
 import { toast } from 'sonner'
+
+// Lazy-load Recharts wrappers so the heavy chart chunk only loads when needed
+const ConsumoBarChart = lazy(
+  () => import('@/components/charts/diesel-consumo-bar-chart'),
+)
+const TendenciaAreaChart = lazy(
+  () => import('@/components/charts/diesel-tendencia-area-chart'),
+)
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
@@ -143,95 +140,16 @@ function AnomalyBadge() {
   )
 }
 
-// ─── Chart: Consumo por tractor ────────────────────────────────────────────────
+// ─── Chart data shape ──────────────────────────────────────────────────────────
 
 interface EquipBarData {
   name: string
   liters: number
 }
 
-function ConsumoBarChart({ data }: { data: EquipBarData[] }) {
-  if (data.length === 0) {
-    return (
-      <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-        Sin datos para graficar
-      </div>
-    )
-  }
-  return (
-    <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-border" />
-        <XAxis
-          type="number"
-          tick={{ fontSize: 11 }}
-          tickFormatter={(v) => `${formatQuantity(v, 0)}`}
-          className="text-muted-foreground"
-        />
-        <YAxis
-          type="category"
-          dataKey="name"
-          width={90}
-          tick={{ fontSize: 11 }}
-          className="text-muted-foreground"
-        />
-        <Tooltip
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          formatter={(value: any) => [`${formatQuantity(Number(value), 1)} L`, 'Litros']}
-          contentStyle={{ fontSize: 12 }}
-        />
-        <Bar dataKey="liters" fill="#16a34a" radius={[0, 3, 3, 0]} maxBarSize={20} />
-      </BarChart>
-    </ResponsiveContainer>
-  )
-}
-
-// ─── Chart: Tendencia de consumo ───────────────────────────────────────────────
-
 interface TrendData {
   date: string
   liters: number
-}
-
-function TendenciaAreaChart({ data }: { data: TrendData[] }) {
-  if (data.length === 0) {
-    return (
-      <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-        Sin datos para graficar
-      </div>
-    )
-  }
-  return (
-    <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={data} margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        <XAxis
-          dataKey="date"
-          tick={{ fontSize: 11 }}
-          className="text-muted-foreground"
-        />
-        <YAxis
-          tick={{ fontSize: 11 }}
-          tickFormatter={(v: number) => `${formatQuantity(v, 0)}`}
-          className="text-muted-foreground"
-        />
-        <Tooltip
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          formatter={(value: any) => [`${formatQuantity(Number(value), 1)} L`, 'Litros']}
-          contentStyle={{ fontSize: 12 }}
-        />
-        <Area
-          type="monotone"
-          dataKey="liters"
-          stroke="#16a34a"
-          strokeWidth={2}
-          fill="#16a34a"
-          fillOpacity={0.15}
-          dot={data.length <= 14 ? { r: 3, fill: '#16a34a' } : false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  )
 }
 
 // ─── Mobile Card ──────────────────────────────────────────────────────────────
@@ -673,7 +591,9 @@ export function DieselPage() {
               <CardTitle className="text-sm font-medium">Consumo por tractor</CardTitle>
             </CardHeader>
             <CardContent className="px-5 pb-4">
-              <ConsumoBarChart data={barData} />
+              <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+                <ConsumoBarChart data={barData} />
+              </Suspense>
             </CardContent>
           </Card>
 
@@ -682,7 +602,9 @@ export function DieselPage() {
               <CardTitle className="text-sm font-medium">Tendencia de consumo</CardTitle>
             </CardHeader>
             <CardContent className="px-5 pb-4">
-              <TendenciaAreaChart data={trendData} />
+              <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+                <TendenciaAreaChart data={trendData} />
+              </Suspense>
             </CardContent>
           </Card>
         </div>

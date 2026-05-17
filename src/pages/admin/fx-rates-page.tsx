@@ -1,19 +1,15 @@
-import { useState, useMemo } from 'react'
+import { lazy, Suspense, useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { Plus, TrendingUp } from 'lucide-react'
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
 import { useFxRates, useCreate } from '@/hooks/use-supabase-query'
+
+// Lazy-load Recharts wrapper so the heavy chart chunk only loads when needed
+const FxRateLineChart = lazy(
+  () => import('@/components/charts/fx-rate-line-chart'),
+)
 import type { FxRate } from '@/lib/database.types'
 import { DataTable } from '@/components/shared/data-table'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -61,29 +57,6 @@ const SOURCE_CLASSES: Record<FxRate['source'], string> = {
     'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
   manual:
     'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800',
-}
-
-// ─── Chart tooltip ────────────────────────────────────────────────────────────
-
-interface TooltipProps {
-  active?: boolean
-  payload?: Array<{ value: number }>
-  label?: string
-}
-
-function ChartTooltip({ active, payload, label }: TooltipProps) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-md border border-border bg-popover px-3 py-2 shadow-md text-xs text-popover-foreground">
-      <p className="font-medium">{label}</p>
-      <p className="text-muted-foreground">
-        TC:{' '}
-        <span className="font-semibold text-foreground tabular-nums">
-          {payload[0].value.toFixed(4)}
-        </span>
-      </p>
-    </div>
-  )
 }
 
 // ─── Column helper ────────────────────────────────────────────────────────────
@@ -219,42 +192,15 @@ export function FxRatesPage() {
                   {isLoading ? 'Cargando…' : 'Sin datos suficientes para la gráfica.'}
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart
-                    data={chartData}
-                    margin={{ top: 4, right: 4, bottom: 4, left: 0 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                      tickLine={false}
-                      axisLine={false}
-                      interval="preserveStartEnd"
-                    />
-                    <YAxis
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                      tickLine={false}
-                      axisLine={false}
-                      domain={['auto', 'auto']}
-                      tickFormatter={(v) => v.toFixed(2)}
-                      width={44}
-                    />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Line
-                      type="monotone"
-                      dataKey="rate"
-                      stroke="#16A34A"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4, fill: '#16A34A' }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                <Suspense
+                  fallback={
+                    <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                      Cargando…
+                    </div>
+                  }
+                >
+                  <FxRateLineChart data={chartData} />
+                </Suspense>
               )}
             </CardContent>
           </Card>

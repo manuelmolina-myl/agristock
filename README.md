@@ -1,73 +1,76 @@
-# React + TypeScript + Vite
+# AgriStock
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AgriStock is a multi-tenant SaaS for Mexican agricultural operations: inventory, fuel (diesel), purchasing, maintenance (CMMS), and reporting in a single PWA. UI is Spanish; code, schema, and docs are in English.
 
-Currently, two official plugins are available:
+**Live:** https://agristock-seven.vercel.app
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Quick start
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+git clone <repo-url> agristock
+cd agristock
+npm install
+cp .env.example .env.local   # fill in the values below
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+App runs at `http://localhost:5173`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Required environment variables
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+In `.env.local`:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+(Values come from the Supabase project linked to this repo.)
+
+## Useful commands
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server with HMR |
+| `npm run build` | Type-check (`tsc -b`) + production bundle + PWA assets |
+| `npm run typecheck` | TypeScript only, no bundle |
+| `npm run lint` | ESLint |
+| `npm run preview` | Serve the built `dist/` locally |
+| `npx supabase db push --linked` | Apply pending migrations to the linked Supabase project |
+| `vercel --prod --yes` | Manual production deploy (normally automatic on `main`) |
+
+## Modules
+
+- **Almacén** (`/almacen`) — inventory items, entries, exits, transfers between warehouses, diesel dispensing, lots.
+- **Compras** (`/compras`) — requisitions, quotations & comparator, purchase orders, receptions, supplier invoices, supplier catalog.
+- **Mantenimiento** (`/mantenimiento`) — work orders, equipment registry, preventive maintenance plans.
+- **Configuración** (`/configuracion`) — catalogs, FX rates, audit log, season closeout.
+- **Reportes** (`/reportes`) — built-in reports with PDF / XLSX export.
+
+Roles (org-scoped, multi-role per user, stored in `user_roles`): `admin`, `almacenista`, `compras`, `mantenimiento`.
+
+## Deployment
+
+- **Frontend:** push to `main` → Vercel auto-deploys via GitHub integration. Manual deploys via `vercel --prod --yes`.
+- **Database:** Supabase migrations live in `supabase/migrations/` (sequential, forward-only). Apply with `npx supabase db push --linked`. Not automated — run manually from the CLI against the linked project.
+
+## Project structure
+
 ```
+src/
+  components/
+    ui/         # primitives (Base UI + shadcn-style)
+    custom/     # app-specific (KpiCard, PageHeader, MoneyDisplay, ...)
+    layout/     # AppLayout, sidebar, header, mobile-nav
+  hooks/        # use-auth, use-permissions, ...
+  lib/          # database.types, errors, status-colors, constants
+  pages/        # one folder per route group
+supabase/
+  migrations/   # 001 … 034
+```
+
+## AI-assistant context
+
+If you're using Claude Code or another AI assistant in this repo, read `CLAUDE.md` at the repo root — it documents conventions, gotchas, and the architecture decisions that aren't obvious from the source alone.
+
+## Tech stack
+
+React 19 · TypeScript · Vite · Tailwind v4 · `@base-ui/react` · TanStack Query v5 · React Hook Form + Zod · Supabase (Postgres + Auth + Storage) · PWA · Vercel.

@@ -1,0 +1,74 @@
+-- ============================================================================
+-- 034_drop_legacy_columns.sql
+-- Cleanup of legacy columns superseded by the role + supplier currency refactors.
+--
+-- Each candidate column was audited against:
+--   1. Code references in `src/` (TS/TSX) — excluding the hand-maintained
+--      `src/lib/database.types.ts` only when the type would be dropped together.
+--   2. Migration references (CREATE TABLE / DROP COLUMN / RENAME) under
+--      `supabase/migrations/` up to 033.
+--   3. Views / policies / triggers that still depend on the column.
+--
+-- Only one of the four candidates is dropped here. The other three remain in
+-- active use; see the "SKIPPED" block at the bottom of this file for evidence.
+-- ============================================================================
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- 1. organizations.approval_threshold_mxn  →  organizations.settings JSONB
+-- ──────────────────────────────────────────────────────────────────────────
+-- Superseded by `organizations.settings -> 'approval_thresholds'`, a nested
+-- structure with per-operation (purchase / stock_exit / work_order) and
+-- per-role escalation tiers. Introduced in migration 014_organization_settings
+-- (which already marked the legacy column as DEPRECATED via COLUMN comment),
+-- consumed by the `public.required_approval_role(uuid, text, numeric)` RPC.
+--
+-- No TS/TSX code in `src/` reads or writes `approval_threshold_mxn`; the only
+-- remaining references are inside migration 014 itself (the migration that
+-- backfilled `settings` from it) and `supabase/reset.sql` (the bootstrap
+-- snapshot). No views, policies, or triggers depend on it.
+alter table public.organizations
+  drop column if exists approval_threshold_mxn;
+
+
+-- ============================================================================
+-- SKIPPED (still referenced in code) — kept in the schema for now:
+--
+--   profiles.role
+--     Status: superseded by `user_roles` (multi-role per user, scoped &
+--     revocable; migrations 024-026), but the legacy single-role column is
+--     still read by:
+--       - src/hooks/use-auth.tsx:170          (returned from signIn())
+--       - src/components/layout/app-header.tsx:273  (notification gating)
+--       - src/pages/admin/configuracion/users-tab.tsx:166,191 (badge + label)
+--       - src/pages/admin/inventario/items-page.tsx:108 (legacy cost-view check,
+--         comment-only — kept as historical reference)
+--       - src/lib/database.types.ts:386 (Profile.role field on hand-maintained
+--         interface used by the queries above)
+--     Action: drop in a follow-up migration after refactoring use-auth.tsx,
+--     app-header.tsx and users-tab.tsx to read from user_roles / usePermissions.
+--
+--   equipment.type
+--     Status: still the canonical equipment-classification column. The task
+--     brief expected an `equipment_type_id` FK to `equipment_types` catalog,
+--     but no such column or catalog exists in migrations 001-033, and the UI
+--     still renders `tractor.type` directly:
+--       - src/pages/admin/diesel/diesel-tractor-page.tsx:621
+--       - src/lib/database.types.ts:480 (Equipment.type field)
+--     Action: do NOT drop. Build the `equipment_types` catalog + FK first,
+--     then migrate UI to it, then drop in a follow-up migration.
+--
+--   suppliers.default_currency
+--     Status: migration 027_supplier_currencies_multi explicitly kept this
+--     column as the *preferred* currency alongside the new `currencies` array
+--     ("usado para mostrar el precio canónico del item y elegir la moneda por
+--     defecto al crear cotizaciones"). A trigger
+--     (`fn_supplier_default_currency_check`) keeps `default_currency`
+--     consistent with `currencies`. UI usage:
+--       - src/pages/compras/suppliers-page.tsx (zod schema, badges, defaults)
+--       - src/pages/compras/quote-comparator-page.tsx (preselected currency)
+--       - src/pages/admin/catalogos/suppliers-tab.tsx (table + form)
+--       - src/lib/database.types.ts:458 (Supplier.default_currency field)
+--     Action: do NOT drop. `default_currency` is not "superseded by" the
+--     array — it is the canonical "preferred" within the array. Treat this
+--     candidate as out of scope: keep both columns.
+-- ============================================================================

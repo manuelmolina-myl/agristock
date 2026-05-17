@@ -134,7 +134,7 @@ export default function EntradaDetailPage() {
         const { data: emp } = await db.from('employees').select('full_name').eq('id', mov.received_by_employee_id).single()
         receivedByName = emp?.full_name
       }
-      generateEntradaPDF({ movement: mov as any, organization, supplierName: mov.supplier?.name, receivedByName })
+      await generateEntradaPDF({ movement: mov as any, organization, supplierName: mov.supplier?.name, receivedByName })
     } catch {
       toast.error('Error al generar el PDF')
     }

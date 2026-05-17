@@ -1,15 +1,18 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-
 import type { StockMovement, StockMovementLine, Organization } from '@/lib/database.types'
 import { formatFechaCorta, formatQuantity } from '@/lib/utils'
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export function generateTraspasoPDF(
+export async function generateTraspasoPDF(
   movement: StockMovement & { lines: StockMovementLine[] },
   organization: Organization
-): void {
+): Promise<void> {
+  // Lazy-load jsPDF + autoTable so this heavy chunk only loads on PDF export
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
   const pageW   = doc.internal.pageSize.getWidth()

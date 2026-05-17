@@ -20,7 +20,7 @@ export interface InvoiceListRow extends SupplierInvoice {
 export function useSupplierInvoicesList(filters: { status?: InvoiceStatus | 'all' } = {}) {
   const { organization } = useAuth()
   return useQuery<InvoiceListRow[]>({
-    queryKey: ['supplier-invoices-list', organization?.id, filters],
+    queryKey: ['supplier-invoices-list', { orgId: organization?.id, ...filters }],
     enabled: !!organization?.id,
     staleTime: 30_000,
     queryFn: async () => {

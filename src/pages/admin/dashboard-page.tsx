@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -11,15 +11,6 @@ import {
   ClipboardList,
   TrendingUp,
 } from 'lucide-react'
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
 
 import { useBasePath } from '@/hooks/use-base-path'
 import { PageHeader } from '@/components/custom/page-header'
@@ -32,10 +23,14 @@ import {
   formatMoney,
   formatQuantity,
   formatRelativo,
-  formatFechaCorta,
   cn,
 } from '@/lib/utils'
 import type { AuditLog } from '@/lib/database.types'
+
+// Lazy-load Recharts wrapper so the heavy chart chunk isn't pulled in until needed
+const DailySpendAreaChart = lazy(
+  () => import('@/components/charts/daily-spend-area-chart'),
+)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -285,28 +280,6 @@ function userInitial(email: string | null) {
   return email[0].toUpperCase()
 }
 
-// ─── Custom tooltip for chart ─────────────────────────────────────────────────
-
-function ChartTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean
-  payload?: Array<{ value: number }>
-  label?: string
-}) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md">
-      <p className="text-muted-foreground mb-1">{label}</p>
-      <p className="font-semibold text-foreground">
-        {formatMoney(payload[0].value)}
-      </p>
-    </div>
-  )
-}
-
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export function AdminDashboardPage() {
@@ -434,47 +407,12 @@ export function AdminDashboardPage() {
                 <p className="text-sm text-muted-foreground">Sin movimientos registrados</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart
+              <Suspense fallback={<Skeleton className="h-44 w-full" />}>
+                <DailySpendAreaChart
                   data={gastoQ.data}
-                  margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="gastoGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    tickFormatter={(v: string) => formatFechaCorta(v)}
-                    tickLine={false}
-                    axisLine={false}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    tickFormatter={(v: number) =>
-                      v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
-                    }
-                    tickLine={false}
-                    axisLine={false}
-                    width={42}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    fill="url(#gastoGradient)"
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+                  gradientId="gastoGradientAdmin"
+                />
+              </Suspense>
             )}
           </CardContent>
         </Card>

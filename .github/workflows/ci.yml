@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: lint + build + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Lint is advisory for now — there are 108 pre-existing errors (mostly
+      # react-hooks/purity warnings against legacy pages).  We surface them in
+      # CI logs but don't fail the build until those are cleaned up.  Flip
+      # `continue-on-error` to false once the backlog is zero.
+      - name: Lint (advisory)
+        run: npm run lint --if-present
+        continue-on-error: true
+
+      # `npm run build` runs `tsc -b && vite build`, so typecheck is covered.
+      - name: Build (typecheck + production bundle)
+        run: npm run build
+
+      - name: Unit tests (vitest)
+        run: npm test
+
+  db-tests:
+    name: pgTAP (optional)
+    runs-on: ubuntu-latest
+    # The pgTAP harness needs Postgres + the pgtap extension installed locally.
+    # We don't block PRs on it yet — `continue-on-error: true` makes this an
+    # advisory job so the rest of CI lands without DB infra in place.
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pgTAP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client postgresql-15-pgtap pgtap
+
+      - name: Enable pgTAP extension
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -c 'create extension if not exists pgtap;'
+
+      - name: Run pgTAP tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for f in supabase/tests/*.sql; do
+            echo "== $f =="
+            psql -h localhost -U postgres -d postgres -f "$f"
+          done

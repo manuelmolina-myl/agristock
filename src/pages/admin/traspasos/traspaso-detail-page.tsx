@@ -120,7 +120,7 @@ export default function TraspasoDetailPage() {
   async function handlePrint() {
     if (!mov || !organization) return
     try {
-      generateTraspasoPDF(mov as any, organization)
+      await generateTraspasoPDF(mov as any, organization)
     } catch {
       toast.error('Error al generar el PDF')
     }

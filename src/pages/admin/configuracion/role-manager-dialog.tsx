@@ -59,7 +59,7 @@ export function RoleManagerDialog({ open, profile, onClose }: Props) {
   const canManage = can('users.manage')
 
   const { data: rows = [], isLoading } = useQuery<UserRoleRow[]>({
-    queryKey: ['user_roles', 'for-user', profile?.id, organization?.id],
+    queryKey: ['user_roles', 'for-user', { profileId: profile?.id, orgId: organization?.id }],
     enabled: open && !!profile?.id && !!organization?.id,
     queryFn: async () => {
       const { data, error } = await db

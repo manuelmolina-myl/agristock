@@ -67,7 +67,7 @@ export function useList<T>(table: TableName, options: UseListOptions = {}) {
   } = options
 
   return useQuery<T[]>({
-    queryKey: [table, orgId, filters],
+    queryKey: [table, { orgId, ...filters }],
     queryFn: async () => {
       let query = db
         .from(table)
