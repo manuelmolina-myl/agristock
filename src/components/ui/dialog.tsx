@@ -57,9 +57,14 @@ function DialogContent({
           // Mobile: anchored to bottom edge, full width, no horizontal margin.
           "inset-x-0 bottom-0 w-full",
           // sm:+ : centered card with the legacy max-width budget.
-          "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:w-[calc(100vw-2rem)] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2",
-          // Scroll long forms inside the dialog instead of past the viewport.
-          "max-h-[90vh] overflow-y-auto overscroll-contain",
+          // NOTE: max-w-md is the *default* — call sites that need wider (max-w-2xl, max-w-xl)
+          // override it via tailwind-merge.  Do NOT prefix this with `sm:` — a `sm:max-w-md`
+          // here would survive twMerge alongside a plain `max-w-2xl` from the caller and beat
+          // it via source-order at sm:+ widths, which is what caused the requisition dialog
+          // to render at 448px instead of 672px.
+          "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:w-[calc(100vw-2rem)] max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2",
+          // Scroll long forms inside the dialog instead of past the viewport — both axes.
+          "max-h-[90vh] overflow-y-auto overflow-x-hidden overscroll-contain",
           // Sheet on mobile, rounded card on sm:+.
           "gap-4 rounded-t-2xl sm:rounded-2xl bg-popover p-4 pt-6 sm:pt-4 text-sm text-popover-foreground",
           "ring-1 ring-foreground/10 duration-100 outline-none",
