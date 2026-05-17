@@ -20,6 +20,8 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
 import { useBasePath } from '@/hooks/use-base-path'
+import { useRecents } from '@/features/recents/store'
+import { Clock } from 'lucide-react'
 import {
   CommandDialog,
   CommandEmpty,
@@ -102,8 +104,9 @@ export function CommandSearch() {
   const [open, setOpen]       = useState(false)
   const navigate               = useNavigate()
   const basePath               = useBasePath()
-  const { organization, activeSeason } = useAuth()
+  const { organization, activeSeason, user } = useAuth()
   const navItems               = useNavItems(basePath)
+  const recents                = useRecents(user?.id).slice(0, 6)
 
   // Global keyboard shortcut: Cmd+K / Ctrl+K
   useEffect(() => {
@@ -216,6 +219,28 @@ export function CommandSearch() {
       <CommandInput placeholder="Buscar en AgriStock…" />
       <CommandList>
         <CommandEmpty>Sin resultados.</CommandEmpty>
+
+        {/* Recents — shown first when there is history */}
+        {recents.length > 0 && (
+          <>
+            <CommandGroup heading="Recientes">
+              {recents.map((r) => (
+                <CommandItem
+                  key={`${r.kind}-${r.id}`}
+                  value={`reciente ${r.label} ${r.sublabel ?? ''}`}
+                  onSelect={() => go(r.linkPath)}
+                >
+                  <Clock className="mr-2 size-4 text-muted-foreground" />
+                  <span className="truncate">{r.label}</span>
+                  {r.sublabel && (
+                    <span className="ml-2 truncate text-xs text-muted-foreground">{r.sublabel}</span>
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
 
         {/* Navigation */}
         <CommandGroup heading="Navegación">

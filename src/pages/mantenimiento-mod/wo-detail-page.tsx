@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { useAuth } from '@/hooks/use-auth'
+import { useRecordRecent } from '@/features/recents/store'
 import {
   ArrowLeft, CheckCircle2, AlertCircle, Loader2,
   Tractor, User as UserIcon, Calendar, Package, Plus, Trash2, CheckCheck,
@@ -68,6 +70,17 @@ export default function WoDetailPage() {
   const assignMutation = useAssignWO()
   const consumeMutation = useConsumePartInWO()
   const closeMutation = useCloseWO()
+  const { user } = useAuth()
+  useRecordRecent(
+    user?.id,
+    wo ? {
+      kind: 'work_order',
+      id: wo.id,
+      label: wo.folio,
+      sublabel: wo.failure_description,
+      linkPath: `/mantenimiento/ordenes/${wo.id}`,
+    } : null,
+  )
 
   // Children data: checklist, parts, labor
   const { data: checklist = [] } = useQuery({

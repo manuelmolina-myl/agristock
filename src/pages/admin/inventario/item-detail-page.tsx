@@ -14,6 +14,8 @@ import { useQuery } from '@tanstack/react-query'
 
 import { useItem, useItemStock, useSoftDelete } from '@/hooks/use-supabase-query'
 import { useRegisterPageTitle } from '@/contexts/page-title-context'
+import { useAuth } from '@/hooks/use-auth'
+import { useRecordRecent } from '@/features/recents/store'
 import { formatMoney, formatQuantity } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 
@@ -211,6 +213,17 @@ export function ItemDetailPage() {
   const { data: item, isLoading } = useItem(id)
   useRegisterPageTitle(item?.name)
   const softDelete = useSoftDelete('items')
+  const { user } = useAuth()
+  useRecordRecent(
+    user?.id,
+    item ? {
+      kind: 'item',
+      id: item.id,
+      label: item.name,
+      sublabel: item.sku,
+      linkPath: `${basePath}/inventario/${item.id}`,
+    } : null,
+  )
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 

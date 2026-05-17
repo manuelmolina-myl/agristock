@@ -443,7 +443,19 @@ export function ItemsPage() {
               onClick={() => navigate(`${basePath}/inventario/${item.id}`)}
               className="rounded-xl border border-border bg-card p-3 active:bg-muted cursor-pointer"
             >
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {item.image_url ? (
+                  <img
+                    src={item.image_url}
+                    alt=""
+                    className="size-10 shrink-0 rounded-md border border-border object-cover bg-muted"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                    <Package className="size-4" strokeWidth={1.5} />
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{item.name}</p>
                   <p className="text-xs text-muted-foreground">{item.category?.name ?? '—'} · {item.unit?.code ?? ''}</p>
@@ -500,6 +512,7 @@ export function ItemsPage() {
                   />
                 </TableHead>
               )}
+              <TableHead className="w-10" />
               <TableHead className="w-28">SKU</TableHead>
               <TableHead>Nombre</TableHead>
               <TableHead>Categoría</TableHead>
@@ -516,7 +529,7 @@ export function ItemsPage() {
               <TableSkeleton />
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canBulkEdit ? 10 : 9} className="p-0">
+                <TableCell colSpan={canBulkEdit ? 11 : 10} className="p-0">
                   <EmptyState
                     icon={<Package className="size-5" />}
                     title={search || categoryFilter !== 'all' || currencyFilter !== 'all' ? 'Sin resultados' : 'Sin ítems aún'}
@@ -549,6 +562,20 @@ export function ItemsPage() {
                       />
                     </TableCell>
                   )}
+                  <TableCell>
+                    {item.image_url ? (
+                      <img
+                        src={item.image_url}
+                        alt=""
+                        className="size-9 rounded-md border border-border object-cover bg-muted"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex size-9 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                        <Package className="size-4" strokeWidth={1.5} />
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <span className="font-mono text-xs text-muted-foreground">
                       {item.sku}

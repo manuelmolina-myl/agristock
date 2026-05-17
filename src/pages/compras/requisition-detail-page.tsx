@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { useAuth } from '@/hooks/use-auth'
+import { useRecordRecent } from '@/features/recents/store'
 import {
   ArrowLeft, CheckCircle2, XCircle, FileText, ShoppingCart, Loader2,
   Clock, AlertCircle, User as UserIcon, MapPin, Tractor,
@@ -105,6 +107,17 @@ export default function RequisitionDetailPage() {
   const reject  = useRejectRequisition()
   const { data: quoteRequests = [] } = useQuoteRequests(id)
   const createQuoteRequests = useCreateQuoteRequests()
+  const { user } = useAuth()
+  useRecordRecent(
+    user?.id,
+    req ? {
+      kind: 'requisition',
+      id: req.id,
+      label: req.folio,
+      sublabel: req.notes ?? null,
+      linkPath: `/compras/requisiciones/${req.id}`,
+    } : null,
+  )
 
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
