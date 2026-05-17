@@ -69,6 +69,13 @@ interface ModuleSection extends NavSection {
 
 const MODULES: ModuleSection[] = [
   {
+    heading: 'Dirección',
+    allowedRoles: ['admin'],
+    items: [
+      { label: 'Cockpit', to: '/cockpit', icon: LayoutDashboard },
+    ],
+  },
+  {
     heading: 'Almacén',
     allowedRoles: ['admin', 'almacenista', 'compras'],
     items: [

@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/hooks/use-auth'
 import { ThemeProvider } from '@/hooks/use-theme'
+import { ErrorBoundary } from '@/components/custom/error-boundary'
 import * as Sentry from '@sentry/react'
 import App from './App'
 import './index.css'
@@ -42,17 +43,19 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <AuthProvider>
-            <TooltipProvider>
-              <App />
-              <Toaster position="bottom-right" richColors closeButton />
-            </TooltipProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <BrowserRouter>
+          <ThemeProvider>
+            <AuthProvider>
+              <TooltipProvider>
+                <App />
+                <Toaster position="bottom-right" richColors closeButton />
+              </TooltipProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </BrowserRouter>
       </QueryClientProvider>
-    </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 )

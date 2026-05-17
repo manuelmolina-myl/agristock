@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { ROLE_ROUTES_NEW } from '@/lib/constants'
+import { ErrorBoundary } from '@/components/custom/error-boundary'
 import type { UserRoleEnum } from '@/lib/database.types'
 
 // Layout
@@ -70,6 +71,9 @@ const MantenimientoPlans     = lazy(() => import('@/pages/mantenimiento-mod/prev
 // Almacén module (top-level)
 const AlmacenDashboard = lazy(() => import('@/pages/almacen/almacen-dashboard'))
 
+// Cockpit del Director (cross-module executive view)
+const CockpitPage = lazy(() => import('@/pages/cockpit/cockpit-page'))
+
 // Almacenista
 const AlmacenistaDashboard = lazy(() => import('@/pages/almacenista/dashboard-page'))
 
@@ -95,6 +99,17 @@ function LoadingFallback() {
       </div>
     </div>
   )
+}
+
+/**
+ * Wraps the active route in an ErrorBoundary keyed by `location.pathname`.
+ * If a render error crashes one route (e.g. `/compras`), navigating to a
+ * different path (e.g. `/almacen`) automatically resets the boundary so the
+ * user is not stuck on the fallback screen for the rest of the session.
+ */
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation()
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>
 }
 
 function DashboardRedirect() {
@@ -125,6 +140,7 @@ function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRoleEnum
 export default function App() {
   return (
     <Suspense fallback={<LoadingFallback />}>
+      <RouteErrorBoundary>
       <Routes>
         {/* Public */}
         <Route path="/" element={<LandingPage />} />
@@ -135,6 +151,18 @@ export default function App() {
 
         {/* Onboarding (requires auth, but before org setup) */}
         <Route path="/onboarding" element={<OnboardingPage />} />
+
+        {/* ─── Cockpit del Director (cross-module executive view) ─── */}
+        <Route
+          path="/cockpit"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<CockpitPage />} />
+        </Route>
 
         {/* ─── Compras module (top-level) ────────────────────────────── */}
         <Route
@@ -345,6 +373,7 @@ export default function App() {
         {/* Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </RouteErrorBoundary>
     </Suspense>
   )
 }

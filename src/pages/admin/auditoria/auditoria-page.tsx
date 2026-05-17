@@ -1,6 +1,8 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, Shield } from 'lucide-react'
+import { useState, useMemo, useEffect, memo } from 'react'
+import { useInfiniteQuery, useQuery, type InfiniteData } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ChevronDown, ChevronRight, Download, Loader2, RotateCcw, Shield } from 'lucide-react'
 
 import { PageHeader } from '@/components/custom/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,40 +18,33 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
 import { formatFechaCorta, formatHora, formatRelativo, cn } from '@/lib/utils'
 import { auditOpColors, auditOpDotColors } from '@/lib/status-colors'
-import type { AuditLog } from '@/lib/database.types'
+import { formatSupabaseError } from '@/lib/errors'
+import { exportToCsv } from '@/lib/csv-export'
+import type { AuditLog, Profile } from '@/lib/database.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ENTITY_TYPES: Array<{ value: string; label: string }> = [
-  { value: 'all', label: 'Todas las entidades' },
-  { value: 'items', label: 'Artículos' },
-  { value: 'stock_movements', label: 'Movimientos de stock' },
-  { value: 'stock_movement_lines', label: 'Líneas de movimiento' },
-  { value: 'warehouses', label: 'Almacenes' },
-  { value: 'suppliers', label: 'Proveedores' },
-  { value: 'categories', label: 'Categorías' },
-  { value: 'seasons', label: 'Temporadas' },
-  { value: 'fx_rates', label: 'Tipos de cambio' },
-  { value: 'units', label: 'Unidades' },
-  { value: 'equipment', label: 'Equipos' },
-  { value: 'employees', label: 'Empleados' },
-  { value: 'crops_lots', label: 'Lotes de cultivo' },
-]
+const PAGE_SIZE = 50
+const CSV_MAX_ROWS = 10_000
 
 const ACTIONS: Array<{ value: string; label: string }> = [
-  { value: 'all', label: 'Todas las acciones' },
+  { value: 'all', label: 'Todas las operaciones' },
   { value: 'INSERT', label: 'INSERT — Creación' },
   { value: 'UPDATE', label: 'UPDATE — Actualización' },
   { value: 'DELETE', label: 'DELETE — Eliminación' },
 ]
+
+const ALL_USERS = '__all__'
+const NULL_USER = '__null__'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +91,29 @@ function dotColor(action: string) {
 function userInitial(email: string | null) {
   if (!email) return '?'
   return email[0].toUpperCase()
+}
+
+/** Build a short human-readable diff summary used in the CSV export. */
+function diffSummary(entry: AuditLog): string {
+  if (entry.action === 'DELETE') return 'eliminado'
+  if (entry.action === 'INSERT') return 'creado'
+  if (entry.diff) {
+    const keys = Object.keys(entry.diff)
+    if (keys.length === 0) return 'sin cambios'
+    if (keys.length <= 4) return `${keys.join(', ')} cambiado${keys.length > 1 ? 's' : ''}`
+    return `${keys.slice(0, 4).join(', ')} (+${keys.length - 4}) cambiados`
+  }
+  return 'actualizado'
+}
+
+/** Hook: debounce a string value by the given delay. */
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(id)
+  }, [value, delay])
+  return debounced
 }
 
 // ─── Diff viewer ─────────────────────────────────────────────────────────────
@@ -263,10 +281,17 @@ function DiffViewer({ entry }: { entry: AuditLog }) {
 
 // ─── Timeline entry ───────────────────────────────────────────────────────────
 
-function TimelineEntry({ entry }: { entry: AuditLog }) {
+interface TimelineEntryProps {
+  entry: AuditLog
+  userName: string | null
+}
+
+const TimelineEntry = memo(function TimelineEntry({ entry, userName }: TimelineEntryProps) {
   const [expanded, setExpanded] = useState(false)
   const hasDiff =
     !!entry.before_data || !!entry.after_data || !!entry.diff
+
+  const displayName = userName || entry.user_email || 'Sistema'
 
   return (
     <div className="flex gap-4">
@@ -323,7 +348,7 @@ function TimelineEntry({ entry }: { entry: AuditLog }) {
             {userInitial(entry.user_email)}
           </div>
           <span className="text-xs text-muted-foreground">
-            {entry.user_email ?? 'Sistema'}
+            {displayName}
           </span>
           <span className="text-xs text-muted-foreground">·</span>
           <span className="text-xs text-muted-foreground">
@@ -347,6 +372,7 @@ function TimelineEntry({ entry }: { entry: AuditLog }) {
               )}
               {expanded ? 'Ocultar cambios' : 'Ver cambios'}
             </Button>
+            {/* DiffViewer renders only when expanded — saves work on long lists. */}
             {expanded && (
               <div className="mt-2">
                 <DiffViewer entry={entry} />
@@ -357,58 +383,240 @@ function TimelineEntry({ entry }: { entry: AuditLog }) {
       </div>
     </div>
   )
-}
+})
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+interface Filters {
+  table: string
+  op: string
+  user: string
+  from: string
+  to: string
+}
+
+function readFilters(params: URLSearchParams): Filters {
+  return {
+    table: params.get('table') ?? '',
+    op: params.get('op') ?? 'all',
+    user: params.get('user') ?? ALL_USERS,
+    from: params.get('from') ?? '',
+    to: params.get('to') ?? '',
+  }
+}
+
+/** Apply current filters to a Supabase query builder. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyFilters(query: any, orgId: string, filters: Filters) {
+  let q = query.eq('organization_id', orgId)
+  if (filters.table.trim()) q = q.ilike('entity_type', `%${filters.table.trim()}%`)
+  if (filters.op !== 'all') q = q.eq('action', filters.op)
+  if (filters.user !== ALL_USERS) {
+    q = filters.user === NULL_USER ? q.is('user_id', null) : q.eq('user_id', filters.user)
+  }
+  if (filters.from) q = q.gte('occurred_at', `${filters.from}T00:00:00`)
+  if (filters.to) q = q.lte('occurred_at', `${filters.to}T23:59:59.999`)
+  return q
+}
 
 export function AuditoriaPage() {
   const { organization } = useAuth()
   const orgId = organization?.id
 
-  // Filters
-  const [entityType, setEntityType] = useState('all')
-  const [action, setAction] = useState('all')
-  const [userSearch, setUserSearch] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  // ── Filters in URL search params ──
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filters = useMemo(() => readFilters(searchParams), [searchParams])
 
-  const { data, isLoading, isError, refetch } = useQuery<AuditLog[]>({
-    queryKey: ['audit-log-full', orgId],
+  // Local state mirrors the URL only for the text input — so typing doesn't
+  // rewrite the URL on every keystroke. Debounced 300 ms then synced.
+  const [tableInput, setTableInput] = useState(filters.table)
+  useEffect(() => { setTableInput(filters.table) }, [filters.table])
+  const debouncedTable = useDebouncedValue(tableInput, 300)
+  useEffect(() => {
+    if (debouncedTable === filters.table) return
+    const next = new URLSearchParams(searchParams)
+    if (debouncedTable) next.set('table', debouncedTable)
+    else next.delete('table')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedTable])
+
+  function updateParam(key: keyof Filters, value: string, defaultValue: string) {
+    const next = new URLSearchParams(searchParams)
+    if (!value || value === defaultValue) next.delete(key)
+    else next.set(key, value)
+    setSearchParams(next, { replace: true })
+  }
+
+  function resetFilters() {
+    setTableInput('')
+    setSearchParams({}, { replace: true })
+  }
+
+  // ── Distinct users (for the user filter dropdown) ──
+  const { data: userOptions = [] } = useQuery<Array<{ id: string | null; label: string }>>({
+    queryKey: ['audit-log-users', orgId],
     queryFn: async () => {
-      const { data, error } = await db
+      // Pull distinct user_id + user_email from the org's audit_log, then join
+      // against profiles for the display name. We cap at 1000 to be defensive
+      // — the rendered Select would not be usable beyond that anyway.
+      const { data: rows, error } = await db
         .from('audit_log')
-        .select('*')
+        .select('user_id, user_email')
         .eq('organization_id', orgId)
-        .order('occurred_at', { ascending: false })
-        .limit(200)
+        .limit(1000)
       if (error) throw error
-      return data as AuditLog[]
+
+      const seen = new Map<string, { id: string | null; email: string | null }>()
+      for (const r of rows as Array<{ user_id: string | null; user_email: string | null }>) {
+        const key = r.user_id ?? '__null__'
+        if (!seen.has(key)) seen.set(key, { id: r.user_id, email: r.user_email })
+      }
+
+      // Fetch profile names in bulk.
+      const ids = Array.from(seen.values()).map((v) => v.id).filter(Boolean) as string[]
+      const profileMap = new Map<string, string>()
+      if (ids.length > 0) {
+        const { data: profiles } = await db
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', ids)
+        for (const p of (profiles as Profile[] | null) ?? []) {
+          if (p.full_name) profileMap.set(p.id, p.full_name)
+        }
+      }
+
+      const out: Array<{ id: string | null; label: string }> = []
+      for (const v of seen.values()) {
+        if (v.id === null) {
+          out.push({ id: null, label: 'Sistema (sin usuario)' })
+        } else {
+          out.push({
+            id: v.id,
+            label: profileMap.get(v.id) ?? v.email ?? v.id.slice(0, 8),
+          })
+        }
+      }
+      return out.sort((a, b) => a.label.localeCompare(b.label))
     },
     enabled: !!orgId,
+    staleTime: 5 * 60_000,
+  })
+
+  // Lookup map for rendering each row's user display name.
+  const userNameById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const u of userOptions) if (u.id) m.set(u.id, u.label)
+    return m
+  }, [userOptions])
+
+  // ── Total count (separate head-only query) ──
+  const { data: totalCount } = useQuery<number>({
+    queryKey: ['audit-log-count', orgId, filters],
+    queryFn: async () => {
+      const base = db.from('audit_log').select('id', { count: 'exact', head: true })
+      const { count, error } = await applyFilters(base, orgId!, filters)
+      if (error) throw error
+      return count ?? 0
+    },
+    enabled: !!orgId,
+  })
+
+  // ── Cursor-paginated rows ──
+  type Cursor = { occurred_at: string; id: number } | undefined
+
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<AuditLog[], Error, InfiniteData<AuditLog[], Cursor>, readonly unknown[], Cursor>({
+    queryKey: ['audit-log-page', orgId, filters],
+    enabled: !!orgId,
+    initialPageParam: undefined,
+    queryFn: async ({ pageParam }) => {
+      let q = db.from('audit_log').select('*')
+      q = applyFilters(q, orgId!, filters)
+      // Cursor: rows strictly older than the last seen (occurred_at, id).
+      // Newest-first ordering — for two rows with the same timestamp, fall
+      // back to id so we don't skip or duplicate.
+      if (pageParam) {
+        q = q.or(
+          `occurred_at.lt.${pageParam.occurred_at},and(occurred_at.eq.${pageParam.occurred_at},id.lt.${pageParam.id})`,
+        )
+      }
+      const { data, error } = await q
+        .order('occurred_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(PAGE_SIZE)
+      if (error) throw error
+      return (data as AuditLog[]) ?? []
+    },
+    getNextPageParam: (lastPage) => {
+      if (!lastPage || lastPage.length < PAGE_SIZE) return undefined
+      const tail = lastPage[lastPage.length - 1]
+      return { occurred_at: tail.occurred_at, id: tail.id }
+    },
     refetchInterval: 60_000,
   })
 
-  // Client-side filtering
-  const filtered = useMemo(() => {
-    if (!data) return []
-    return data.filter((entry) => {
-      if (entityType !== 'all' && entry.entity_type !== entityType) return false
-      if (action !== 'all' && entry.action !== action) return false
-      if (
-        userSearch &&
-        !(entry.user_email ?? '')
-          .toLowerCase()
-          .includes(userSearch.toLowerCase())
-      )
-        return false
-      if (dateFrom && entry.occurred_at < dateFrom) return false
-      if (dateTo) {
-        const to = dateTo + 'T23:59:59'
-        if (entry.occurred_at > to) return false
+  const rows = useMemo(() => data?.pages.flat() ?? [], [data])
+
+  // ── CSV export ──
+  const [isExporting, setIsExporting] = useState(false)
+  async function handleExportCsv() {
+    if (!orgId) return
+    setIsExporting(true)
+    try {
+      let q = db.from('audit_log').select('*')
+      q = applyFilters(q, orgId, filters)
+      const { data, error } = await q
+        .order('occurred_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(CSV_MAX_ROWS)
+      if (error) throw error
+      const exportRows = (data as AuditLog[]) ?? []
+      if (exportRows.length === 0) {
+        toast.info('Sin datos para exportar')
+        return
       }
-      return true
-    })
-  }, [data, entityType, action, userSearch, dateFrom, dateTo])
+      const today = new Date().toISOString().slice(0, 10)
+      exportToCsv({
+        filename: `auditoria-${today}.csv`,
+        headers: ['occurred_at', 'table_name', 'operation', 'user_name', 'record_id', 'diff_summary'],
+        rows: exportRows.map((r) => [
+          r.occurred_at,
+          r.entity_type,
+          r.action,
+          (r.user_id && userNameById.get(r.user_id)) || r.user_email || '',
+          r.entity_id ?? '',
+          diffSummary(r),
+        ]),
+      })
+      const capped = exportRows.length >= CSV_MAX_ROWS
+      toast.success(
+        capped
+          ? `Exportadas ${CSV_MAX_ROWS} filas (límite alcanzado)`
+          : `Exportadas ${exportRows.length} filas`,
+      )
+    } catch (e) {
+      const { title, description } = formatSupabaseError(e, 'No se pudo exportar el CSV')
+      toast.error(title, { description })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const hasActiveFilters =
+    !!filters.table ||
+    filters.op !== 'all' ||
+    filters.user !== ALL_USERS ||
+    !!filters.from ||
+    !!filters.to
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -425,86 +633,116 @@ export function AuditoriaPage() {
       {/* ── Filters ── */}
       <Card>
         <CardContent className="pt-4 pb-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-            {/* Entity type */}
-            <Select value={entityType} onValueChange={(v) => v && setEntityType(v)}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue placeholder="Entidad" />
-              </SelectTrigger>
-              <SelectContent>
-                {ENTITY_TYPES.map((e) => (
-                  <SelectItem key={e.value} value={e.value}>
-                    {e.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {/* Table name search */}
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Tabla</Label>
+              <Input
+                className="h-9 text-sm"
+                placeholder="Buscar tabla..."
+                value={tableInput}
+                onChange={(e) => setTableInput(e.target.value)}
+              />
+            </div>
 
-            {/* Action */}
-            <Select value={action} onValueChange={(v) => v && setAction(v)}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue placeholder="Acción" />
-              </SelectTrigger>
-              <SelectContent>
-                {ACTIONS.map((a) => (
-                  <SelectItem key={a.value} value={a.value}>
-                    {a.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Operation */}
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Operación</Label>
+              <Select
+                value={filters.op}
+                onValueChange={(v) => v && updateParam('op', v, 'all')}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Operación" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTIONS.map((a) => (
+                    <SelectItem key={a.value} value={a.value}>
+                      {a.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-            {/* User search */}
-            <Input
-              className="h-9 text-sm"
-              placeholder="Filtrar por usuario..."
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-            />
+            {/* User */}
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Usuario</Label>
+              <Select
+                value={filters.user}
+                onValueChange={(v) => v && updateParam('user', v, ALL_USERS)}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Usuario" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_USERS}>Todos los usuarios</SelectItem>
+                  {userOptions.map((u) => (
+                    <SelectItem key={u.id ?? NULL_USER} value={u.id ?? NULL_USER}>
+                      {u.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* Date from */}
-            <Input
-              type="date"
-              className="h-9 text-sm"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Desde</Label>
+              <Input
+                type="date"
+                className="h-9 text-sm"
+                value={filters.from}
+                onChange={(e) => updateParam('from', e.target.value, '')}
+              />
+            </div>
 
             {/* Date to */}
-            <Input
-              type="date"
-              className="h-9 text-sm"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Hasta</Label>
+              <Input
+                type="date"
+                className="h-9 text-sm"
+                value={filters.to}
+                onChange={(e) => updateParam('to', e.target.value, '')}
+              />
+            </div>
           </div>
 
-          {/* Active filters summary */}
-          {(entityType !== 'all' ||
-            action !== 'all' ||
-            userSearch ||
-            dateFrom ||
-            dateTo) && (
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
-              </span>
+          {/* Action bar */}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">
+              {typeof totalCount === 'number'
+                ? `Mostrando ${rows.length} de ${totalCount} eventos`
+                : 'Cargando…'}
+            </span>
+            <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-xs"
-                onClick={() => {
-                  setEntityType('all')
-                  setAction('all')
-                  setUserSearch('')
-                  setDateFrom('')
-                  setDateTo('')
-                }}
+                className="h-8 px-2 text-xs"
+                onClick={resetFilters}
+                disabled={!hasActiveFilters}
               >
-                Limpiar filtros
+                <RotateCcw className="mr-1 size-3.5" />
+                Reset
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={handleExportCsv}
+                disabled={isExporting || !orgId}
+              >
+                {isExporting ? (
+                  <Loader2 className="mr-1 size-3.5 animate-spin" />
+                ) : (
+                  <Download className="mr-1 size-3.5" />
+                )}
+                Exportar CSV
               </Button>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
@@ -514,9 +752,9 @@ export function AuditoriaPage() {
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Shield className="size-4" />
             Registro de actividad
-            {data && (
+            {typeof totalCount === 'number' && (
               <Badge variant="secondary" className="ml-1 text-xs font-normal">
-                {filtered.length} entradas
+                {totalCount} entradas
               </Badge>
             )}
           </CardTitle>
@@ -545,13 +783,13 @@ export function AuditoriaPage() {
             <div className="flex flex-col items-center gap-2 py-12 text-center">
               <Shield className="size-8 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">
-                Error al cargar el registro de auditoría.
+                {formatSupabaseError(error, 'Error al cargar el registro de auditoría').description}
               </p>
               <Button variant="outline" size="sm" onClick={() => refetch()}>
                 Reintentar
               </Button>
             </div>
-          ) : !filtered.length ? (
+          ) : !rows.length ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
               <Shield className="size-8 text-muted-foreground/50" />
               <p className="text-sm font-medium text-foreground">
@@ -562,11 +800,36 @@ export function AuditoriaPage() {
               </p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[calc(100vh-18rem)]">
+            <ScrollArea className="max-h-[calc(100vh-22rem)]">
               <div className="pr-4">
-                {filtered.map((entry) => (
-                  <TimelineEntry key={entry.id} entry={entry} />
+                {rows.map((entry) => (
+                  <TimelineEntry
+                    key={entry.id}
+                    entry={entry}
+                    userName={entry.user_id ? userNameById.get(entry.user_id) ?? null : null}
+                  />
                 ))}
+              </div>
+
+              {/* Cargar más */}
+              <div className="mt-2 flex items-center justify-center pr-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchNextPage()}
+                  disabled={!hasNextPage || isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? (
+                    <>
+                      <Loader2 className="mr-1 size-3.5 animate-spin" />
+                      Cargando…
+                    </>
+                  ) : hasNextPage ? (
+                    'Cargar más'
+                  ) : (
+                    'No hay más eventos'
+                  )}
+                </Button>
               </div>
             </ScrollArea>
           )}
