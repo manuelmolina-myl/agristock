@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, FileText, AlertCircle, CheckCircle2, XCircle, Clock, ArrowRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -10,6 +11,23 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useRequisitions } from '@/features/compras/hooks'
 import type { RequisitionStatus } from '@/lib/database.types'
+
+const VALID_STATUSES: ReadonlyArray<RequisitionStatus> = [
+  'draft',
+  'submitted',
+  'in_quotation',
+  'approved',
+  'rejected',
+  'po_generated',
+  'cancelled',
+]
+
+function parseStatusParam(raw: string | null): RequisitionStatus | 'all' {
+  if (!raw) return 'all'
+  return (VALID_STATUSES as ReadonlyArray<string>).includes(raw)
+    ? (raw as RequisitionStatus)
+    : 'all'
+}
 
 const STATUS_LABEL: Record<RequisitionStatus, string> = {
   draft: 'Borrador',
@@ -46,8 +64,34 @@ interface Props {
 }
 
 export function RequisicionesTab({ onOpenDetail }: Props) {
+  const [params, setParams] = useSearchParams()
+
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<RequisitionStatus | 'all'>('all')
+  // Seed initial status from the URL so deep-links from the dashboard KPI,
+  // the cockpit, and the notification bell open the list pre-filtered to
+  // the same set used to compute the count (avoids a count-vs-list mismatch).
+  const [status, setStatus] = useState<RequisitionStatus | 'all'>(() =>
+    parseStatusParam(params.get('status')),
+  )
+
+  // Keep state in sync with the URL — e.g. navigating from another KPI while
+  // the tab is already mounted should still re-filter the list.
+  useEffect(() => {
+    const next = parseStatusParam(params.get('status'))
+    if (next !== status) setStatus(next)
+    // We intentionally depend on the raw param so React Router updates
+    // re-trigger the effect; `status` is excluded to avoid feedback loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
+
+  const handleStatusChange = (value: string | null) => {
+    const next = parseStatusParam(value)
+    setStatus(next)
+    if (next === 'all') params.delete('status')
+    else params.set('status', next)
+    setParams(params, { replace: true })
+  }
+
   const { data: rows = [], isLoading } = useRequisitions({
     search: search.trim() || undefined,
     status: status,
@@ -75,7 +119,7 @@ export function RequisicionesTab({ onOpenDetail }: Props) {
             className="pl-9 h-9"
           />
         </div>
-        <Select value={status} onValueChange={(v) => setStatus(v as RequisitionStatus | 'all')}>
+        <Select value={status} onValueChange={handleStatusChange}>
           <SelectTrigger className="h-9 sm:w-52">
             <SelectValue placeholder="Estatus" />
           </SelectTrigger>

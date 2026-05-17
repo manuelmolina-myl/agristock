@@ -65,6 +65,9 @@ export function useRequisitions(filters: RequisitionFilters = {}) {
     enabled: !!organization?.id,
     staleTime: 30_000,
     queryFn: async () => {
+      // Explicit `organization_id` filter mirrors the dashboard KPI query —
+      // this keeps the list view and the "Solicitudes nuevas" count in lock
+      // step even if RLS or the cached session momentarily disagree.
       let q = db
         .from('purchase_requisitions')
         .select(`
@@ -73,6 +76,7 @@ export function useRequisitions(filters: RequisitionFilters = {}) {
           crop_lot:crops_lots(name),
           equipment:equipment(name)
         `)
+        .eq('organization_id', organization!.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(200)

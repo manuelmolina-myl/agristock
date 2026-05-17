@@ -41,10 +41,16 @@ export function useComprasKpis() {
       monthStart.setDate(1)
       const monthStartIso = monthStart.toISOString().slice(0, 10)
 
-      // 1) Requisitions by status
+      // 1) Requisitions by status — filter explicitly by organization_id so
+      // the KPI matches the list view in `RequisicionesTab` (which also
+      // applies the implicit RLS org scope).  Without the explicit `eq`,
+      // stale React Query caches from a previous org could leak across
+      // tenants when the same tab is reused after switching organizations,
+      // and the resulting count would diverge from the list.
       const { data: reqsRaw, error: reqsErr } = await db
         .from('purchase_requisitions')
         .select('status')
+        .eq('organization_id', organization!.id)
         .is('deleted_at', null)
       if (reqsErr) throw reqsErr
       const reqs = (reqsRaw ?? []) as Array<{ status: string }>
@@ -53,6 +59,7 @@ export function useComprasKpis() {
       const { data: posRaw, error: posErr } = await db
         .from('purchase_orders')
         .select('status, expected_delivery_date, total_mxn, issue_date')
+        .eq('organization_id', organization!.id)
         .is('deleted_at', null)
       if (posErr) throw posErr
       const pos = (posRaw ?? []) as Array<{
