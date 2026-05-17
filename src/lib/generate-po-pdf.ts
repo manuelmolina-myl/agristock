@@ -10,6 +10,7 @@
  */
 import type { PurchaseOrder, POLine, Organization, Item, Currency } from '@/lib/database.types'
 import { formatFechaCorta, formatMoney, formatQuantity } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 
 export interface POForPdf extends PurchaseOrder {
   supplier?: { name: string; rfc: string | null } | null
@@ -41,6 +42,32 @@ async function loadLogoDataUrl(url: string): Promise<{ data: string; mime: strin
       reader.readAsDataURL(blob)
     })
     return { data, mime }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Loads a signature PNG from the private 'cotizaciones' bucket as a data URL.
+ * The bucket is private so we use a short-lived signedUrl + fetch + FileReader.
+ * Returns null on any failure — the PDF still renders without the signature.
+ */
+async function loadSignatureDataUrl(storagePath: string): Promise<string | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.storage as any)
+      .from('cotizaciones')
+      .createSignedUrl(storagePath, 60)
+    if (error || !data?.signedUrl) return null
+    const res = await fetch(data.signedUrl)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
   } catch {
     return null
   }
@@ -344,18 +371,42 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
   doc.setTextColor(...MUTED)
   doc.text('Firma', sigX + sigBoxW / 2, bY + 4, { align: 'center' })
 
+  // Handwritten signature (PNG embedded above the line) — only if the OC
+  // está firmada y tenemos el path en storage.
+  if (po.signature_url) {
+    const sigImg = await loadSignatureDataUrl(po.signature_url)
+    if (sigImg) {
+      try {
+        const imgW = sigBoxW - 12
+        const imgH = 14
+        doc.addImage(sigImg, 'PNG', sigX + 6, bY + 5, imgW, imgH)
+      } catch {
+        /* image embed failed — preserve text fallback */
+      }
+    }
+  }
+
   // Title
   doc.setFontSize(7)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...PRIMARY_DARK)
   doc.text('AUTORIZADO POR', sigX + sigBoxW / 2, bY + 26, { align: 'center' })
 
-  // Name
+  // Name + fecha de firma (si está firmada)
   if (createdByName) {
     doc.setFontSize(8)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(...INK)
     doc.text(createdByName, sigX + sigBoxW / 2, bY + 31.5, { align: 'center' })
+  }
+  if (po.approved_at) {
+    doc.setFontSize(6)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...MUTED)
+    doc.text(
+      `Firmado: ${new Date(po.approved_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}`,
+      sigX + sigBoxW / 2, bY + 34.5, { align: 'center' },
+    )
   }
 
   // ── Footer with page numbers ──────────────────────────────────────────────

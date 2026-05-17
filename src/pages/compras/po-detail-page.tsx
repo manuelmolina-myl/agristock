@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -12,6 +12,10 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog'
+import { SignaturePad, type SignaturePadHandle } from '@/components/custom/signature-pad'
 import { supabase } from '@/lib/supabase'
 import { usePurchaseOrder } from '@/features/compras/hooks'
 import { usePermissions } from '@/hooks/use-permissions'
@@ -70,6 +74,9 @@ export default function PoDetailPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewing, setPreviewing] = useState(true)
+  const [signDialogOpen, setSignDialogOpen] = useState(false)
+  const [confirmRevertOpen, setConfirmRevertOpen] = useState(false)
+  const signaturePadRef = useRef<SignaturePadHandle>(null)
   const { organization, user } = useAuth()
 
   const creatorName = user?.user_metadata?.full_name ?? user?.email ?? undefined
@@ -97,16 +104,42 @@ export default function PoDetailPage() {
   })
 
   const signPo = useMutation({
-    mutationFn: async () => {
-      const { error } = await db.rpc('sign_po', { p_po_id: id })
+    mutationFn: async (signatureDataUrl: string) => {
+      if (!po || !organization) throw new Error('Sin contexto de OC')
+      // 1) Upload PNG to private bucket cotizaciones/<org>/signatures/<po_id>.png
+      const blob = await (await fetch(signatureDataUrl)).blob()
+      const path = `${organization.id}/signatures/${po.id}.png`
+      const { error: upErr } = await supabase.storage
+        .from('cotizaciones')
+        .upload(path, blob, { upsert: true, contentType: 'image/png' })
+      if (upErr) throw upErr
+      // 2) Stamp the PO with the signature path + admin metadata.
+      const { error } = await db.rpc('sign_po', { p_po_id: id, p_signature_url: path })
       if (error) throw error
     },
     onSuccess: () => {
-      toast.success('OC firmada', { description: 'Lista para enviar al proveedor y registrar recepción.' })
+      toast.success('OC firmada', { description: 'Tu firma quedó grabada en el PDF.' })
+      setSignDialogOpen(false)
       invalidatePo()
     },
     onError: (e: unknown) => {
       const { title, description } = formatSupabaseError(e, 'No se pudo firmar la OC')
+      toast.error(title, { description })
+    },
+  })
+
+  const revertSignature = useMutation({
+    mutationFn: async () => {
+      const { error } = await db.rpc('revert_po_signature', { p_po_id: id })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Firma revertida', { description: 'La OC volvió a borrador para corrección.' })
+      setConfirmRevertOpen(false)
+      invalidatePo()
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo revertir la firma')
       toast.error(title, { description })
     },
   })
@@ -327,15 +360,27 @@ export default function PoDetailPage() {
               <Button
                 size="sm"
                 className="gap-1.5"
-                onClick={() => signPo.mutate()}
+                onClick={() => setSignDialogOpen(true)}
                 disabled={signPo.isPending}
               >
-                {signPo.isPending
-                  ? <Loader2 className="size-4 animate-spin" />
-                  : <PenLine className="size-4" />}
+                <PenLine className="size-4" />
                 Firmar OC
               </Button>
             </>
+          )}
+
+          {/* Admin: reversar firma cuando está sent y aún no hay recepciones */}
+          {po.status === 'sent' && isAdmin && receptions.length === 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setConfirmRevertOpen(true)}
+              disabled={revertSignature.isPending}
+            >
+              <RotateCcw className="size-4" />
+              Reversar firma
+            </Button>
           )}
 
           {/* Banner informativo cuando pending_signature y NO eres admin */}
@@ -602,6 +647,84 @@ export default function PoDetailPage() {
           onClose={() => setWizardOpen(false)}
         />
       )}
+
+      {/* Signature dialog — admin only */}
+      <Dialog
+        open={signDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) signaturePadRef.current?.clear()
+          setSignDialogOpen(open)
+        }}
+      >
+        <DialogContent className="!max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Firmar OC {po.folio}</DialogTitle>
+            <DialogDescription>
+              Dibuja tu firma con mouse, lápiz o el dedo. Quedará incrustada en el PDF
+              y registrada como firma del admin que aprobó.
+            </DialogDescription>
+          </DialogHeader>
+
+          <SignaturePad ref={signaturePadRef} height={200} />
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setSignDialogOpen(false)}
+              disabled={signPo.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="gap-1.5"
+              onClick={() => {
+                const dataUrl = signaturePadRef.current?.toDataUrl()
+                if (!dataUrl) {
+                  toast.error('Dibuja tu firma antes de aprobar')
+                  return
+                }
+                signPo.mutate(dataUrl)
+              }}
+              disabled={signPo.isPending}
+            >
+              {signPo.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <PenLine className="size-4" />}
+              Confirmar firma
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revert signature confirm dialog */}
+      <Dialog open={confirmRevertOpen} onOpenChange={setConfirmRevertOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Reversar firma de {po.folio}?</DialogTitle>
+            <DialogDescription>
+              La OC volverá al estado <strong>Borrador</strong> y se borrará la firma actual,
+              la fecha de aprobación y los metadatos. Compras tendrá que pasarla a firma
+              de nuevo. Esta acción no es posible si la OC ya tiene recepciones registradas.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRevertOpen(false)} disabled={revertSignature.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              variant="outline"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => revertSignature.mutate()}
+              disabled={revertSignature.isPending}
+            >
+              {revertSignature.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <RotateCcw className="size-4" />}
+              Reversar firma
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )

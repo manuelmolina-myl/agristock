@@ -175,6 +175,7 @@ export interface PurchaseOrder {
   fx_rate: number | null
   status: POStatus
   pdf_url: string | null
+  signature_url: string | null
   sent_to_supplier_at: string | null
   created_by: string | null
   approved_by: string | null
