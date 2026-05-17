@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 import { EmptyState } from '@/components/custom/empty-state'
+import { RequisitionLifecycle } from '@/components/custom/requisition-lifecycle'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -171,6 +172,9 @@ export function RequisicionesTab({ onOpenDetail }: Props) {
                     {formatDistanceToNow(new Date(r.created_at), { addSuffix: true, locale: es })}
                     {r.crop_lot?.name && ` · ${r.crop_lot.name}`}
                     {r.equipment?.name && ` · ${r.equipment.name}`}
+                  </div>
+                  <div className="mt-2 hidden sm:block">
+                    <RequisitionLifecycle status={r.status} compact />
                   </div>
                 </div>
 

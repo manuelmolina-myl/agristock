@@ -30,6 +30,7 @@ import {
 } from '@/features/compras/hooks'
 import { usePermissions } from '@/hooks/use-permissions'
 import type { RequisitionStatus, QuoteRequestStatus } from '@/lib/database.types'
+import { RequisitionLifecycle } from '@/components/custom/requisition-lifecycle'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -280,6 +281,9 @@ export default function RequisitionDetailPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6 max-w-6xl mx-auto w-full">
+      {/* Lifecycle stepper — full process visible al inicio */}
+      <RequisitionLifecycle status={req.status} className="self-start" />
+
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2 min-w-0">
