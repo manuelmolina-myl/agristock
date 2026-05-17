@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowLeft, Plus, Trophy, Trash2, ShoppingCart, Loader2,
-  FileText, Building2, Paperclip, X as XIcon,
+  FileText, Building2, Paperclip, X as XIcon, Sparkles,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -551,6 +551,8 @@ function NewQuotationDialog({
   const [lines, setLines] = useState<NewQuotLine[]>([])
   const [attachment, setAttachment] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [extracting, setExtracting] = useState(false)
+  const [extractionNotes, setExtractionNotes] = useState<Record<number, string>>({})
 
   const supplier = suppliers.find((s) => s.id === supplierId)
   const defaultCurrency = supplier?.default_currency ?? 'MXN'
@@ -753,6 +755,12 @@ function NewQuotationDialog({
                           <div className="text-[10px] text-muted-foreground font-mono">
                             {rl.item?.sku ?? 'libre'} · qty {rl.quantity}
                           </div>
+                          {extractionNotes[idx] && (
+                            <div className="mt-1 inline-flex items-start gap-1 text-[10px] text-warning bg-warning/10 rounded px-1.5 py-0.5 max-w-[260px]">
+                              <Sparkles className="size-2.5 mt-px shrink-0" />
+                              <span className="leading-tight">{extractionNotes[idx]}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-2">
                           <Input
@@ -839,23 +847,125 @@ function NewQuotationDialog({
               }}
             />
             {attachment ? (
-              <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-                <Paperclip className="size-4 text-muted-foreground shrink-0" />
-                <span className="text-sm truncate flex-1">{attachment.name}</span>
-                <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                  {(attachment.size / 1024).toFixed(0)} KB
-                </span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+                  <Paperclip className="size-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm truncate flex-1">{attachment.name}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                    {(attachment.size / 1024).toFixed(0)} KB
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => {
+                      setAttachment(null)
+                      setExtractionNotes({})
+                      if (fileInputRef.current) fileInputRef.current.value = ''
+                    }}
+                    aria-label="Quitar archivo"
+                    disabled={extracting}
+                  >
+                    <XIcon className="size-3.5" />
+                  </Button>
+                </div>
+
+                {/* Auto-extract button — calls the extract-quotation-prices edge function */}
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => {
-                    setAttachment(null)
-                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  variant="outline"
+                  size="sm"
+                  className="self-start gap-1.5"
+                  disabled={extracting || requisitionLines.length === 0}
+                  onClick={async () => {
+                    if (!attachment) return
+                    setExtracting(true)
+                    try {
+                      const fd = new FormData()
+                      fd.append('file', attachment)
+                      fd.append('requisitionLines', JSON.stringify(
+                        requisitionLines.map((rl, idx) => ({
+                          index: idx,
+                          description: rl.item
+                            ? `${rl.item.sku ?? ''} ${rl.item.name ?? ''}`.trim()
+                            : (rl.free_description ?? ''),
+                          quantity: rl.quantity,
+                          unit: null,
+                        })),
+                      ))
+                      const { data, error } = await supabase.functions.invoke(
+                        'extract-quotation-prices',
+                        { body: fd },
+                      )
+                      if (error) throw error
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const extracted = (data as any)?.lines as Array<{
+                        index: number
+                        unit_price: number | null
+                        currency: 'MXN' | 'USD'
+                        matched: boolean
+                        supplier_description: string | null
+                        notes: string | null
+                      }>
+                      if (!Array.isArray(extracted)) throw new Error('Respuesta inválida')
+
+                      // Apply extracted prices into the form.
+                      setLines((prev) => {
+                        const base = prev.length === requisitionLines.length
+                          ? prev
+                          : requisitionLines.map((rl) => ({
+                              requisition_line_id: rl.id,
+                              unit_cost: '',
+                              currency: defaultCurrency,
+                              discount_pct: '0',
+                              tax_pct: '16',
+                            }))
+                        return base.map((l, i) => {
+                          const hit = extracted.find((e) => e.index === i)
+                          if (!hit?.matched || hit.unit_price == null) return l
+                          return {
+                            ...l,
+                            unit_cost: String(hit.unit_price),
+                            currency: hit.currency ?? l.currency,
+                          }
+                        })
+                      })
+
+                      // Per-line notes from the extractor (for UI hints).
+                      const notesMap: Record<number, string> = {}
+                      for (const e of extracted) {
+                        const bits = []
+                        if (e.supplier_description) bits.push(`"${e.supplier_description}"`)
+                        if (e.notes) bits.push(e.notes)
+                        if (!e.matched) bits.push('No encontrado en el archivo')
+                        if (bits.length) notesMap[e.index] = bits.join(' · ')
+                      }
+                      setExtractionNotes(notesMap)
+
+                      const matched = extracted.filter((e) => e.matched && e.unit_price != null).length
+                      toast.success(
+                        `${matched} de ${requisitionLines.length} ítems extraídos`,
+                        { description: matched < requisitionLines.length ? 'Revisa los renglones sin match.' : undefined },
+                      )
+                    } catch (err) {
+                      const { title, description } = formatSupabaseError(err, 'No se pudieron extraer los precios')
+                      toast.error(title, { description })
+                    } finally {
+                      setExtracting(false)
+                    }
                   }}
-                  aria-label="Quitar archivo"
                 >
-                  <XIcon className="size-3.5" />
+                  {extracting ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Extrayendo precios…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="size-3.5" />
+                      Extraer precios del archivo (AI)
+                    </>
+                  )}
                 </Button>
               </div>
             ) : (
@@ -870,7 +980,8 @@ function NewQuotationDialog({
               </Button>
             )}
             <p className="text-[11px] text-muted-foreground">
-              PDF / PNG / JPG · máximo 10 MB. Útil para guardar la cotización original del proveedor.
+              PDF / PNG / JPG · máximo 10 MB. Adjunta primero el archivo y luego usa
+              "Extraer precios" para llenar la tabla automáticamente; siempre puedes ajustar manual.
             </p>
           </div>
         </div>
