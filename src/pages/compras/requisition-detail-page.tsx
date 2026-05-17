@@ -150,6 +150,32 @@ export default function RequisitionDetailPage() {
     },
   })
 
+  // ── Memos MUST live above every early return ─────────────────────────────
+  // React requires the same hook call order on every render.  Returning early
+  // for `isLoading` / `!req` and then calling useMemo below caused error #310
+  // ("rendered more hooks than the previous render") whenever the query
+  // transitioned from loading to loaded.
+
+  // Suppliers already invited for this requisition (used to exclude / annotate).
+  const askedSupplierMap = useMemo(() => {
+    const m = new Map<string, { status: QuoteRequestStatus; requested_at: string }>()
+    for (const r of quoteRequests) {
+      m.set(r.supplier_id, { status: r.status, requested_at: r.requested_at })
+    }
+    return m
+  }, [quoteRequests])
+
+  const filteredSuppliers = useMemo(() => {
+    const needle = askSearch.trim().toLowerCase()
+    return suppliers.filter((s) => {
+      if (!needle) return true
+      return (
+        s.name.toLowerCase().includes(needle) ||
+        (s.rfc ?? '').toLowerCase().includes(needle)
+      )
+    })
+  }, [suppliers, askSearch])
+
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4 p-4 sm:p-6 max-w-5xl mx-auto w-full">
@@ -188,26 +214,6 @@ export default function RequisitionDetailPage() {
   const canAskQuotes =
     canAct &&
     (req.status === 'submitted' || req.status === 'in_quotation' || req.status === 'approved')
-
-  // Suppliers already invited for this requisition (used to exclude / annotate).
-  const askedSupplierMap = useMemo(() => {
-    const m = new Map<string, { status: QuoteRequestStatus; requested_at: string }>()
-    for (const r of quoteRequests) {
-      m.set(r.supplier_id, { status: r.status, requested_at: r.requested_at })
-    }
-    return m
-  }, [quoteRequests])
-
-  const filteredSuppliers = useMemo(() => {
-    const needle = askSearch.trim().toLowerCase()
-    return suppliers.filter((s) => {
-      if (!needle) return true
-      return (
-        s.name.toLowerCase().includes(needle) ||
-        (s.rfc ?? '').toLowerCase().includes(needle)
-      )
-    })
-  }, [suppliers, askSearch])
 
   const openAskDialog = () => {
     setAskSelectedIds(new Set())
