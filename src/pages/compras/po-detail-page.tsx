@@ -237,40 +237,6 @@ export default function PoDetailPage() {
         </div>
       </div>
 
-      {/* PDF preview — siempre visible mientras estás en la OC */}
-      <section className="rounded-xl border border-border bg-card overflow-hidden">
-        <header className="px-4 py-3 border-b flex items-center justify-between gap-2">
-          <h2 className="font-heading text-sm font-semibold tracking-[-0.01em]">
-            Vista previa del documento
-          </h2>
-          {previewing && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
-              Generando…
-            </span>
-          )}
-        </header>
-        <div className="relative bg-muted/30">
-          {previewError ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">
-              <p className="text-destructive font-medium mb-1">No se pudo generar la vista previa</p>
-              <p>{previewError}</p>
-            </div>
-          ) : previewUrl ? (
-            <iframe
-              src={previewUrl}
-              title={`Vista previa de OC ${po.folio}`}
-              className="w-full h-[70vh] min-h-[480px] bg-card"
-            />
-          ) : (
-            <div className="h-[70vh] min-h-[480px] flex items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin mr-2" />
-              Cargando vista previa…
-            </div>
-          )}
-        </div>
-      </section>
-
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
         {/* Left — lines + reception history */}
         <div className="flex flex-col gap-4">
@@ -335,6 +301,40 @@ export default function PoDetailPage() {
                 </tfoot>
               )}
             </table>
+          </section>
+
+          {/* PDF preview — debajo de Partidas, mismo ancho que la columna */}
+          <section className="rounded-xl border border-border bg-card overflow-hidden">
+            <header className="px-4 py-3 border-b flex items-center justify-between gap-2">
+              <h2 className="font-heading text-sm font-semibold tracking-[-0.01em]">
+                Vista previa del documento
+              </h2>
+              {previewing && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" />
+                  Generando…
+                </span>
+              )}
+            </header>
+            <div className="relative bg-muted/30">
+              {previewError ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">
+                  <p className="text-destructive font-medium mb-1">No se pudo generar la vista previa</p>
+                  <p>{previewError}</p>
+                </div>
+              ) : previewUrl ? (
+                <iframe
+                  src={previewUrl}
+                  title={`Vista previa de OC ${po.folio}`}
+                  className="w-full h-[70vh] min-h-[480px] bg-card"
+                />
+              ) : (
+                <div className="h-[70vh] min-h-[480px] flex items-center justify-center text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin mr-2" />
+                  Cargando vista previa…
+                </div>
+              )}
+            </div>
           </section>
 
           {/* Receptions timeline */}
