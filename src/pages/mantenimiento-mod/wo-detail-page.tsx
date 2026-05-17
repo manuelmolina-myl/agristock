@@ -189,6 +189,11 @@ export default function WoDetailPage() {
       toast.success('Cierre revertido', { description: 'La OT volvió a estado completada.' })
       setRevertSignOpen(false)
       invalidateWo()
+      // The signer name resolves from `wo.signed_off_by`. After revert that
+      // field clears, but the cached query key still holds the old uuid
+      // until WO refetches. Force-invalidate so the PDF preview iframe
+      // (whose previewKey depends on `signer`/`signature_url`) regenerates.
+      qc.invalidateQueries({ queryKey: ['wo-signer-name'] })
     },
     onError: (e: unknown) => {
       const { title, description } = formatSupabaseError(e, 'No se pudo revertir el cierre')
@@ -841,7 +846,7 @@ export default function WoDetailPage() {
           setSignOpen(open)
         }}
       >
-        <DialogContent className="!max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Firmar cierre de {wo.folio}</DialogTitle>
             <DialogDescription>
@@ -1593,7 +1598,7 @@ function ReorderPartsDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="!max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="size-4" /> Crear requisición de reposición

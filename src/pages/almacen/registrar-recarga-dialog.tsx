@@ -187,7 +187,7 @@ export function RegistrarRecargaDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
-      <DialogContent className="!max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Recargar tanque</DialogTitle>
           <DialogDescription>

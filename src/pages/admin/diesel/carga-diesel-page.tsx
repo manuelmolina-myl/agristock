@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBasePath } from '@/hooks/use-base-path'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Fuel, ChevronRight, Check, Info, Loader2 } from 'lucide-react'
+import { ArrowLeft, Fuel, ChevronRight, Check, Info, Loader2, Droplet } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -22,6 +22,23 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,10 +46,20 @@ interface FormState {
   equipmentId: string
   operatorId: string
   receiverId: string
+  tankId: string
   litros: string
   horometroActual: string
   kmActual: string
   notas: string
+}
+
+interface TankOption {
+  id: string
+  code: string
+  name: string
+  capacity_liters: number
+  current_level_liters: number
+  level_status: 'low' | 'medium' | 'ok'
 }
 
 // ─── Supabase alias ────────────────────────────────────────────────────────────
@@ -53,6 +80,19 @@ async function generateFolioDiesel(orgId: string): Promise<string> {
   const last = data?.[0]?.document_number as string | undefined
   const num = last ? parseInt(last.replace('DSL-', ''), 10) + 1 : 1
   return `DSL-${String(num).padStart(5, '0')}`
+}
+
+// ─── Fetch active tanks ───────────────────────────────────────────────────────
+
+async function fetchActiveTanks(orgId: string): Promise<TankOption[]> {
+  const { data, error } = await db
+    .from('diesel_tank_balance')
+    .select('id, code, name, capacity_liters, current_level_liters, level_status')
+    .eq('organization_id', orgId)
+    .eq('is_active', true)
+    .order('code', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as TankOption[]
 }
 
 // ─── Fetch diesel item ────────────────────────────────────────────────────────
@@ -221,6 +261,7 @@ export function CargaDieselPage() {
     equipmentId: '',
     operatorId: '',
     receiverId: '',
+    tankId: '',
     litros: '',
     horometroActual: '',
     kmActual: '',
@@ -229,6 +270,11 @@ export function CargaDieselPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submittedAt, setSubmittedAt] = useState<Date | null>(null)
+  const [confirmNegative, setConfirmNegative] = useState<{
+    tankName: string
+    available: number
+    requested: number
+  } | null>(null)
   const [summary, setSummary] = useState<{
     folio: string
     litros: number
@@ -263,6 +309,17 @@ export function CargaDieselPage() {
     enabled: !!orgId,
   })
 
+  const { data: tanks = [], isLoading: loadingTanks } = useQuery<TankOption[]>({
+    queryKey: ['diesel-tanks', orgId],
+    queryFn: () => fetchActiveTanks(orgId),
+    enabled: !!orgId,
+  })
+
+  const selectedTank = useMemo(
+    () => tanks.find((t) => t.id === form.tankId) ?? null,
+    [tanks, form.tankId]
+  )
+
   const { data: lastLine } = useQuery<StockMovementLine | null>({
     queryKey: ['diesel-last-line', form.equipmentId, orgId],
     queryFn: () => fetchLastLineForEquipment(form.equipmentId, orgId),
@@ -296,8 +353,6 @@ export function CargaDieselPage() {
     e.preventDefault()
 
     const litros = parseFloat(form.litros)
-    const horometroActual = form.horometroActual ? parseFloat(form.horometroActual) : null
-    const kmActual = form.kmActual ? parseFloat(form.kmActual) : null
 
     if (!form.equipmentId) {
       toast.error('Selecciona un tractor')
@@ -315,6 +370,12 @@ export function CargaDieselPage() {
       toast.error('Ingresa los litros cargados')
       return
     }
+    // Tank is required when at least one active tank exists. If no tanks
+    // are configured, allow submission so historical workflows still work.
+    if (tanks.length > 0 && !form.tankId) {
+      toast.error('Selecciona el tanque del que sale el combustible')
+      return
+    }
     if (!dieselItem) {
       toast.error('No se encontró el artículo de diésel. Configura un artículo con is_diesel=true.')
       return
@@ -323,6 +384,26 @@ export function CargaDieselPage() {
       toast.error('No hay temporada activa')
       return
     }
+
+    // Confirm negative-balance dispense before continuing.
+    if (selectedTank && selectedTank.current_level_liters < litros) {
+      setConfirmNegative({
+        tankName: selectedTank.name,
+        available: selectedTank.current_level_liters,
+        requested: litros,
+      })
+      return
+    }
+
+    await doSubmit()
+  }
+
+  async function doSubmit() {
+    const litros = parseFloat(form.litros)
+    const horometroActual = form.horometroActual ? parseFloat(form.horometroActual) : null
+    const kmActual = form.kmActual ? parseFloat(form.kmActual) : null
+
+    if (!dieselItem || !activeSeason) return
 
     setSubmitting(true)
 
@@ -361,6 +442,7 @@ export function CargaDieselPage() {
       if (movErr) throw movErr
 
       // 2. Create stock_movement_line (cost tracked via entries, not per load)
+      // tank_id triggers fn_diesel_tank_dispense which decrements the tank.
       const { error: lineErr } = await db.from('stock_movement_lines').insert({
         movement_id: movement.id,
         item_id: dieselItem.id,
@@ -373,6 +455,7 @@ export function CargaDieselPage() {
         destination_type: 'equipment',
         equipment_id: form.equipmentId,
         operator_employee_id: form.operatorId,
+        tank_id: form.tankId || null,
         diesel_liters: litros,
         equipment_hours_before: lastHorometro ?? null,
         equipment_hours_after: horometroActual,
@@ -426,6 +509,10 @@ export function CargaDieselPage() {
       queryClient.invalidateQueries({ queryKey: ['diesel-lines'] })
       queryClient.invalidateQueries({ queryKey: ['diesel-last-line'] })
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
+      queryClient.invalidateQueries({ queryKey: ['diesel-tanks'] })
+      if (form.tankId) {
+        queryClient.invalidateQueries({ queryKey: ['tank-balance', form.tankId] })
+      }
 
       toast.success(`Carga registrada: ${formatQuantity(litros, 1)}L para ${tractorName}`)
     } catch (err) {
@@ -437,7 +524,7 @@ export function CargaDieselPage() {
   }
 
   function handleNuevaCarga() {
-    setForm({ equipmentId: '', operatorId: '', receiverId: '', litros: '', horometroActual: '', kmActual: '', notas: '' })
+    setForm({ equipmentId: '', operatorId: '', receiverId: '', tankId: '', litros: '', horometroActual: '', kmActual: '', notas: '' })
     setSummary(null)
     setSubmitted(false)
     setSubmittedAt(null)
@@ -640,11 +727,95 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 4. Litros ────────────────────────────────────────────────────── */}
+        {/* ── 4. Tanque ────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
               4
+            </div>
+            <Label htmlFor="tank" className="text-base font-semibold">
+              Tanque de origen
+            </Label>
+          </div>
+
+          {loadingTanks ? (
+            <div className="h-12 rounded-md border bg-muted animate-pulse" />
+          ) : tanks.length === 0 ? (
+            <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-sm text-muted-foreground">
+              <Info className="size-4 shrink-0 mt-0.5 text-warning" />
+              <span>
+                No hay tanques activos configurados. La carga se registrará sin
+                descontar de ningún tanque. Configura los tanques en{' '}
+                <span className="font-medium text-foreground">Almacén → Tanques</span>{' '}
+                para llevar el control de nivel.
+              </span>
+            </div>
+          ) : (
+            <Select
+              value={form.tankId}
+              onValueChange={(v) => set('tankId', v ?? '')}
+              disabled={submitting}
+            >
+              <SelectTrigger id="tank" className="h-12 text-base">
+                <SelectValue placeholder="Selecciona el tanque…" />
+              </SelectTrigger>
+              <SelectContent>
+                {tanks.map((t) => {
+                  const fillPct = t.capacity_liters > 0
+                    ? Math.round((t.current_level_liters / t.capacity_liters) * 100)
+                    : 0
+                  const toneClass =
+                    t.level_status === 'low'
+                      ? 'bg-destructive/15 text-destructive'
+                      : t.level_status === 'medium'
+                        ? 'bg-warning/15 text-warning'
+                        : 'bg-success/15 text-success'
+                  const toneLabel =
+                    t.level_status === 'low'
+                      ? 'Bajo'
+                      : t.level_status === 'medium'
+                        ? 'Medio'
+                        : 'OK'
+                  return (
+                    <SelectItem key={t.id} value={t.id}>
+                      <div className="flex items-center gap-2">
+                        <Droplet className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium">{t.name}</span>
+                        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                          {formatQuantity(t.current_level_liters, 0)}/
+                          {formatQuantity(t.capacity_liters, 0)} L · {fillPct}%
+                        </span>
+                        <span className={cn('inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium', toneClass)}>
+                          {toneLabel}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
+          )}
+
+          {selectedTank && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 border px-3 py-2 text-sm text-muted-foreground">
+              <Info className="size-3.5 shrink-0" />
+              <span>
+                Disponible en {selectedTank.name}:{' '}
+                <span className="font-mono font-medium text-foreground">
+                  {formatQuantity(selectedTank.current_level_liters, 1)} L
+                </span>
+              </span>
+            </div>
+          )}
+        </section>
+
+        <Separator />
+
+        {/* ── 5. Litros ────────────────────────────────────────────────────── */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+              5
             </div>
             <Label className="text-base font-semibold">Litros cargados</Label>
           </div>
@@ -658,11 +829,11 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 5. Horómetro ─────────────────────────────────────────────────── */}
+        {/* ── 6. Horómetro ─────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-              5
+              6
             </div>
             <Label htmlFor="horometro" className="text-base font-semibold">
               Horómetro actual
@@ -760,11 +931,11 @@ export function CargaDieselPage() {
 
         <Separator />
 
-        {/* ── 6. Notas ─────────────────────────────────────────────────────── */}
+        {/* ── 7. Notas ─────────────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs font-bold">
-              6
+              7
             </div>
             <Label htmlFor="notas" className="text-base font-semibold text-muted-foreground">
               Notas / Folio de ticket{' '}
@@ -794,7 +965,14 @@ export function CargaDieselPage() {
         <Button
           type="submit"
           size="lg"
-          disabled={submitting || !form.equipmentId || !form.operatorId || !form.receiverId || !form.litros}
+          disabled={
+            submitting ||
+            !form.equipmentId ||
+            !form.operatorId ||
+            !form.receiverId ||
+            !form.litros ||
+            (tanks.length > 0 && !form.tankId)
+          }
           className="w-full h-14 text-base font-semibold mt-2"
         >
           {submitting ? (
@@ -810,6 +988,48 @@ export function CargaDieselPage() {
           )}
         </Button>
       </form>
+
+      {/* ── Confirm negative-balance dispense ──────────────────────────────── */}
+      <AlertDialog
+        open={confirmNegative !== null}
+        onOpenChange={(open) => { if (!open) setConfirmNegative(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Continuar con saldo negativo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmNegative && (
+                <>
+                  El tanque <span className="font-medium text-foreground">{confirmNegative.tankName}</span> sólo
+                  tiene{' '}
+                  <span className="font-mono font-medium text-foreground">
+                    {formatQuantity(confirmNegative.available, 1)} L
+                  </span>{' '}
+                  disponibles y estás registrando{' '}
+                  <span className="font-mono font-medium text-foreground">
+                    {formatQuantity(confirmNegative.requested, 1)} L
+                  </span>
+                  . El nivel quedará en 0 L y la diferencia indicará una inconsistencia de datos.
+                  ¿Continuar?
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={submitting}
+              onClick={async (e) => {
+                e.preventDefault()
+                setConfirmNegative(null)
+                await doSubmit()
+              }}
+            >
+              Continuar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

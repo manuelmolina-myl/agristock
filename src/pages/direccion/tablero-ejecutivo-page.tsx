@@ -209,8 +209,10 @@ function useTanks(orgId: string | undefined) {
 
 const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
-function monthAbbr(iso: string): string {
+function monthAbbr(iso: string | null | undefined): string {
+  if (!iso) return ''
   const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
   return MONTH_ABBR[d.getMonth()] ?? ''
 }
 

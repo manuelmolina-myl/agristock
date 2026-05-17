@@ -190,7 +190,7 @@ export default function MantenimientoPage() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           {COLUMNS.map((c) => (
             <div key={c.key} className="flex flex-col gap-2">
               <Skeleton className="h-7 w-full rounded-md" />
@@ -205,7 +205,7 @@ export default function MantenimientoPage() {
           description="Cuando se reporte una falla o se ejecute un mantenimiento preventivo, aparecerá aquí."
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 items-start">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 items-start">
           {COLUMNS.map((col) => {
             const items = grouped.get(col.key) ?? []
             return (
@@ -231,7 +231,7 @@ export default function MantenimientoPage() {
                           className="rounded-md bg-card border border-border/60 hover:border-border hover:shadow-sm transition-all text-left p-2.5 flex flex-col gap-1"
                         >
                           <div className="flex items-center justify-between gap-1">
-                            <span className="font-mono text-[11px] font-medium truncate">{wo.folio}</span>
+                            <span className="font-mono text-xs font-medium truncate">{wo.folio}</span>
                             <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${PRIORITY_TONE[wo.priority]}`}>
                               {PRIORITY_LABEL[wo.priority]}
                             </span>
@@ -242,7 +242,7 @@ export default function MantenimientoPage() {
                           </div>
 
                           {wo.failure_description && (
-                            <div className="text-[11px] text-muted-foreground line-clamp-2">
+                            <div className="text-xs text-muted-foreground line-clamp-2">
                               {wo.failure_description}
                             </div>
                           )}

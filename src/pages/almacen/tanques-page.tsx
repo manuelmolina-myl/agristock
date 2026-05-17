@@ -195,7 +195,7 @@ function NewTankDialog({ open, onClose }: NewTankDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
-      <DialogContent className="!max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Nuevo tanque</DialogTitle>
           <DialogDescription>

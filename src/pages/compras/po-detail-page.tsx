@@ -930,7 +930,7 @@ export default function PoDetailPage() {
           setSignDialogOpen(open)
         }}
       >
-        <DialogContent className="!max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Firmar OC {po.folio}</DialogTitle>
             <DialogDescription>

@@ -353,11 +353,11 @@ function KardexReport({ orgName }: { orgName: string }) {
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
 
@@ -752,11 +752,11 @@ function EntradasProveedorReport({ orgName }: { orgName: string }) {
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
 
@@ -970,11 +970,11 @@ function SalidasLoteReport({ orgName }: { orgName: string }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
 
@@ -1176,11 +1176,11 @@ function ConsumoDieselReport({ orgName }: { orgName: string }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
 
@@ -1343,11 +1343,11 @@ function SinMovimientoReport({ orgName }: { orgName: string }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
 
@@ -1522,11 +1522,11 @@ function VariacionPreciosReport({ orgName }: { orgName: string }) {
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
 
@@ -1720,11 +1720,11 @@ function SalidasEquipoReport({ orgName }: { orgName: string }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
 
@@ -2457,11 +2457,11 @@ function AuditoriaUsuarioReport({ orgName }: { orgName: string }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
       </div>
 
@@ -3044,11 +3044,11 @@ function CostoMantenimientoEquipoReport({ orgName }: { orgName: string }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs text-muted-foreground">Tipo equipo</Label>

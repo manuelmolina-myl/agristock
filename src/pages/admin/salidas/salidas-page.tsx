@@ -460,11 +460,11 @@ export function SalidasPage() {
           </div>
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Desde</Label>
-            <Input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="h-8 text-xs" />
+            <Input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="h-9 text-sm" />
           </div>
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Hasta</Label>
-            <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="h-8 text-xs" />
+            <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="h-9 text-sm" />
           </div>
         </div>
       </div>

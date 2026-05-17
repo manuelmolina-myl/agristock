@@ -502,7 +502,7 @@ function PlanFormDialog({ open, target, onSave, onClose, isPending }: FormProps)
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
-      <DialogContent className="!max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{target ? 'Editar plan preventivo' : 'Nuevo plan preventivo'}</DialogTitle>
         </DialogHeader>

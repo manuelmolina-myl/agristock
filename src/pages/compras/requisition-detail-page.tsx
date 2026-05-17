@@ -285,7 +285,7 @@ export default function RequisitionDetailPage() {
       <RequisitionLifecycle status={req.status} className="self-start" />
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-2 min-w-0">
           <Button
             variant="ghost"
@@ -312,7 +312,7 @@ export default function RequisitionDetailPage() {
         </div>
 
         {canAct && canActStatus && (
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <Button
               variant="outline"
               size="sm"
@@ -492,7 +492,7 @@ export default function RequisitionDetailPage() {
 
       {/* "Solicitar cotización" dialog */}
       <Dialog open={askOpen} onOpenChange={(o) => { if (!o) setAskOpen(false) }}>
-        <DialogContent className="!max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Solicitar cotización a proveedores</DialogTitle>
           </DialogHeader>

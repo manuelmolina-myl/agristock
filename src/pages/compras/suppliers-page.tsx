@@ -255,23 +255,26 @@ export default function SuppliersPage() {
 
                   {canWrite && (
                     <div
-                      className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Button
                         variant="ghost" size="icon-sm"
+                        className="h-9 w-9 sm:h-7 sm:w-7"
                         onClick={() => setEditTarget(s)}
                         title="Editar"
+                        aria-label="Editar proveedor"
                       >
-                        <Pencil className="size-3.5" />
+                        <Pencil className="size-4 sm:size-3.5" />
                       </Button>
                       <Button
                         variant="ghost" size="icon-sm"
-                        className="text-muted-foreground hover:text-destructive"
+                        className="h-9 w-9 sm:h-7 sm:w-7 text-muted-foreground hover:text-destructive"
                         onClick={() => setDeleteTarget(s)}
                         title="Eliminar"
+                        aria-label="Eliminar proveedor"
                       >
-                        <Trash2 className="size-3.5" />
+                        <Trash2 className="size-4 sm:size-3.5" />
                       </Button>
                     </div>
                   )}
@@ -401,7 +404,7 @@ function SupplierFormDialog({ open, target, onSave, onClose, isPending }: FormPr
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
-      <DialogContent className="!max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{target ? 'Editar proveedor' : 'Nuevo proveedor'}</DialogTitle>
         </DialogHeader>

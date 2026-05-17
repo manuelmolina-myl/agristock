@@ -544,7 +544,7 @@ export function CreateInvoiceDialog({ open, onClose, poContext }: CreateProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
-      <DialogContent className="!max-w-xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Cargar factura de proveedor</DialogTitle>
         </DialogHeader>

@@ -273,106 +273,194 @@ export default function PagosPage() {
         <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
         </div>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={<CreditCard className="size-8 text-muted-foreground" strokeWidth={1.5} />}
+          title="Sin facturas aún"
+          description="Las facturas que se carguen en /compras/facturas aparecerán aquí cuando estén pendientes de pago."
+          action={{
+            label: 'Ir a Facturas',
+            onClick: () => navigate('/compras/facturas'),
+          }}
+        />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<Receipt className="size-8 text-muted-foreground" strokeWidth={1.5} />}
-          title={search || bucketFilter !== 'all' || supplierFilter !== 'all' ? 'Sin resultados' : 'Sin facturas por pagar'}
-          description={
-            search || bucketFilter !== 'all' || supplierFilter !== 'all'
-              ? 'Ajusta los filtros para ver más facturas.'
-              : 'Todas las facturas conciliadas se han pagado. Cuando se concilie una nueva factura, aparecerá aquí.'
-          }
+          title="Sin resultados"
+          description="Ajusta los filtros para ver más facturas."
         />
       ) : (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-                <tr className="border-b border-border">
-                  <th className="text-left font-medium px-3 py-2">Folio</th>
-                  <th className="text-left font-medium px-3 py-2">Proveedor</th>
-                  <th className="text-left font-medium px-3 py-2">Vencimiento</th>
-                  <th className="text-right font-medium px-3 py-2">Monto</th>
-                  <th className="text-left font-medium px-3 py-2">Estado</th>
-                  <th className="text-right font-medium px-3 py-2">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => {
-                  const overdue = (r.days_overdue ?? 0) > 0
-                  return (
-                    <tr
-                      key={r.id}
-                      onClick={() => r.po_id && navigate(`/compras/facturas/${r.po_id}`, { state: { from: '/compras/pagos' } })}
-                      className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
-                    >
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          <Receipt className="size-3 text-muted-foreground" />
-                          <span className="font-mono text-xs font-medium">{r.invoice_folio}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Building2 className="size-3 text-muted-foreground shrink-0" />
-                          <span className="truncate">{r.supplier_name ?? '—'}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <CalendarClock className="size-3 text-muted-foreground shrink-0" />
-                          <span className="text-xs">
-                            {r.due_date
-                              ? format(new Date(r.due_date), 'd MMM yyyy', { locale: es })
-                              : <span className="text-muted-foreground italic">sin fecha</span>}
-                          </span>
-                          {overdue && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/15 text-destructive">
-                              Vencida {r.days_overdue} d
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        <div className="font-mono tabular-nums text-sm font-medium">
-                          {r.currency === 'USD' ? 'US$' : '$'}
-                          {(r.total ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">{r.currency}</div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${BUCKET_TONE[r.bucket]}`}>
-                          {BUCKET_LABEL[r.bucket]}
+        <>
+          {/* Mobile: card list (≤sm) — field-friendly tap targets */}
+          <div className="sm:hidden flex flex-col gap-2">
+            {filtered.map((r) => {
+              const overdue = (r.days_overdue ?? 0) > 0
+              return (
+                <div
+                  key={r.id}
+                  onClick={() => r.po_id && navigate(`/compras/facturas/${r.po_id}`, { state: { from: '/compras/pagos' } })}
+                  className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2 active:bg-muted/40 transition-colors"
+                >
+                  {/* Línea 1: folio + proveedor */}
+                  <div className="flex items-start justify-between gap-2 min-w-0">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Receipt className="size-3.5 text-muted-foreground shrink-0" />
+                        <span className="font-mono text-sm font-medium truncate">{r.invoice_folio}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                        <Building2 className="size-3 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground truncate">{r.supplier_name ?? '—'}</span>
+                      </div>
+                    </div>
+                    {r.po_id && (
+                      <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-1" aria-hidden />
+                    )}
+                  </div>
+
+                  {/* Línea 2: vencimiento + monto */}
+                  <div className="flex items-end justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <CalendarClock className="size-3 text-muted-foreground shrink-0" />
+                      <span className="text-xs">
+                        {r.due_date
+                          ? format(new Date(r.due_date), 'd MMM yyyy', { locale: es })
+                          : <span className="text-muted-foreground italic">sin fecha</span>}
+                      </span>
+                      {overdue && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/15 text-destructive">
+                          Vencida {r.days_overdue} d
                         </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="inline-flex items-center gap-1">
-                          {canWrite && r.status !== 'paid' && (
-                            <Button
-                              size="sm"
-                              className="h-7 px-2 text-xs gap-1"
-                              onClick={() => setPayTarget({
-                                id: r.id,
-                                folio: r.invoice_folio,
-                                total: r.total ?? 0,
-                                currency: r.currency,
-                              })}
-                            >
-                              <CreditCard className="size-3" /> Registrar pago
-                            </Button>
-                          )}
-                          {r.po_id && (
-                            <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-mono tabular-nums text-base font-semibold">
+                        {r.currency === 'USD' ? 'US$' : '$'}
+                        {(r.total ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">{r.currency}</div>
+                    </div>
+                  </div>
+
+                  {/* Línea 3: estado + acción */}
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium ${BUCKET_TONE[r.bucket]}`}>
+                      {BUCKET_LABEL[r.bucket]}
+                    </span>
+                    {canWrite && r.status !== 'paid' && (
+                      <Button
+                        size="sm"
+                        className="h-11 px-3 gap-1.5"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setPayTarget({
+                            id: r.id,
+                            folio: r.invoice_folio,
+                            total: r.total ?? 0,
+                            currency: r.currency,
+                          })
+                        }}
+                      >
+                        <CreditCard className="size-4" /> Registrar pago
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        </div>
+
+          {/* Desktop: existing table (≥sm) */}
+          <div className="hidden sm:block rounded-xl border border-border bg-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                  <tr className="border-b border-border">
+                    <th className="text-left font-medium px-3 py-2">Folio</th>
+                    <th className="text-left font-medium px-3 py-2">Proveedor</th>
+                    <th className="text-left font-medium px-3 py-2">Vencimiento</th>
+                    <th className="text-right font-medium px-3 py-2">Monto</th>
+                    <th className="text-left font-medium px-3 py-2">Estado</th>
+                    <th className="text-right font-medium px-3 py-2">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((r) => {
+                    const overdue = (r.days_overdue ?? 0) > 0
+                    return (
+                      <tr
+                        key={r.id}
+                        onClick={() => r.po_id && navigate(`/compras/facturas/${r.po_id}`, { state: { from: '/compras/pagos' } })}
+                        className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                      >
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <Receipt className="size-3 text-muted-foreground" />
+                            <span className="font-mono text-xs font-medium">{r.invoice_folio}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Building2 className="size-3 text-muted-foreground shrink-0" />
+                            <span className="truncate">{r.supplier_name ?? '—'}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <CalendarClock className="size-3 text-muted-foreground shrink-0" />
+                            <span className="text-xs">
+                              {r.due_date
+                                ? format(new Date(r.due_date), 'd MMM yyyy', { locale: es })
+                                : <span className="text-muted-foreground italic">sin fecha</span>}
+                            </span>
+                            {overdue && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-destructive/15 text-destructive">
+                                Vencida {r.days_overdue} d
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <div className="font-mono tabular-nums text-sm font-medium">
+                            {r.currency === 'USD' ? 'US$' : '$'}
+                            {(r.total ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">{r.currency}</div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${BUCKET_TONE[r.bucket]}`}>
+                            {BUCKET_LABEL[r.bucket]}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="inline-flex items-center gap-1">
+                            {canWrite && r.status !== 'paid' && (
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-xs gap-1"
+                                onClick={() => setPayTarget({
+                                  id: r.id,
+                                  folio: r.invoice_folio,
+                                  total: r.total ?? 0,
+                                  currency: r.currency,
+                                })}
+                              >
+                                <CreditCard className="size-3" /> Registrar pago
+                              </Button>
+                            )}
+                            {r.po_id && (
+                              <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {payTarget && (

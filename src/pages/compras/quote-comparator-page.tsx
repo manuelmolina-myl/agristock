@@ -467,7 +467,165 @@ export default function QuoteComparatorPage() {
           icon={<FileText className="size-8 text-muted-foreground" strokeWidth={1.5} />}
         />
       ) : (
-        <div className="overflow-x-auto">
+        <>
+          {/* Mobile / Tablet (<md): card per quotation with collapsible per-line pricing */}
+          <div className="md:hidden flex flex-col gap-3">
+            {quotations.map((q) => {
+              const t = totals.get(q.id) ?? { subtotal: 0, tax: 0, total: 0, currency: 'MXN' as const }
+              const isSelected = q.status === 'selected'
+              const isCheapest = q.id === cheapestId && !selected
+              const mxnEquiv = totalsMxn.get(q.id) ?? 0
+              return (
+                <details
+                  key={q.id}
+                  className={`group rounded-xl border bg-card overflow-hidden ${
+                    isSelected ? 'border-success/60 bg-success/5'
+                      : isCheapest ? 'border-warning/60 bg-warning/5'
+                      : 'border-border'
+                  }`}
+                >
+                  <summary className="list-none cursor-pointer p-3 flex flex-col gap-2">
+                    {/* Encabezado: proveedor + folio + badges */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="size-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
+                          <span className="text-sm font-semibold truncate">{q.supplier?.name ?? '—'}</span>
+                        </div>
+                        <div className="font-mono text-[11px] text-muted-foreground mt-0.5">{q.folio}</div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {isSelected && (
+                          <Badge className="text-[10px] gap-0.5 bg-success text-success-foreground">
+                            <Trophy className="size-2.5" /> Seleccionada
+                          </Badge>
+                        )}
+                        {isCheapest && !isSelected && (
+                          <Badge variant="outline" className="text-[10px] border-warning text-warning">
+                            Mejor precio
+                          </Badge>
+                        )}
+                        {q.status === 'discarded' && (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                            Descartada
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Meta: fecha, entrega, vigencia */}
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
+                      <span>{format(new Date(q.quotation_date), 'd MMM', { locale: es })}</span>
+                      {q.delivery_days != null && <span>· entrega {q.delivery_days}d</span>}
+                      {q.validity_days != null && <span>· vigencia {q.validity_days}d</span>}
+                    </div>
+
+                    {/* Totales */}
+                    <div className="flex items-end justify-between gap-2 pt-2 border-t border-border/60">
+                      <div className="text-[11px] text-muted-foreground">
+                        <div>Subtotal · <span className="font-mono tabular-nums">{fmt(t.subtotal, t.currency)}</span></div>
+                        <div>IVA · <span className="font-mono tabular-nums">{fmt(t.tax, t.currency)}</span></div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">Total</div>
+                        <div className="font-mono tabular-nums text-lg font-semibold">
+                          {fmt(t.total, t.currency)}
+                        </div>
+                        {t.currency === 'USD' && (
+                          <div className="text-[10px] text-muted-foreground">
+                            ≈ {fmt(mxnEquiv, 'MXN')} MXN
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {q.pdf_url && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); openQuotationAttachment(q.pdf_url!) }}
+                        className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline self-start"
+                      >
+                        <Paperclip className="size-3" />
+                        Ver archivo del proveedor
+                      </button>
+                    )}
+
+                    {/* Acciones */}
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      {q.status !== 'selected' && canSelect && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-10 gap-1.5"
+                          onClick={(e) => { e.preventDefault(); selectMutation.mutate(q.id) }}
+                          disabled={selectMutation.isPending}
+                        >
+                          <Trophy className="size-3.5" /> Elegir
+                        </Button>
+                      )}
+                      {q.status !== 'discarded' && q.status !== 'selected' && canSelect && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-10 px-3 gap-1.5 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => { e.preventDefault(); discardMutation.mutate(q.id) }}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Descartar
+                        </Button>
+                      )}
+                      <span className="ml-auto text-[11px] text-muted-foreground group-open:hidden">
+                        Ver precios por ítem
+                      </span>
+                      <span className="ml-auto text-[11px] text-muted-foreground hidden group-open:inline">
+                        Ocultar precios
+                      </span>
+                    </div>
+                  </summary>
+
+                  {/* Detalle: precios por línea */}
+                  <div className="border-t border-border bg-muted/20 px-3 py-2 flex flex-col gap-2">
+                    {(req?.lines ?? []).map((rl) => {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const itemRel = (rl as any).item as { name: string; sku: string } | null | undefined
+                      const ql = (q.lines ?? []).find((x) => x.requisition_line_id === rl.id)
+                      const subtotal = ql ? rl.quantity * ql.unit_cost * (1 - (ql.discount_pct ?? 0) / 100) : 0
+                      return (
+                        <div key={rl.id} className="flex items-start justify-between gap-3 text-xs">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium truncate">
+                              {itemRel?.name ?? rl.free_description ?? '—'}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground font-mono">
+                              {itemRel?.sku ?? 'libre'} · qty {rl.quantity.toLocaleString('es-MX')}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            {ql ? (
+                              <>
+                                <div className="font-mono tabular-nums">{fmt(ql.unit_cost, ql.currency)}</div>
+                                {(ql.discount_pct ?? 0) > 0 && (
+                                  <div className="text-[10px] text-warning">−{ql.discount_pct}% desc.</div>
+                                )}
+                                <div className="text-[10px] text-muted-foreground font-mono tabular-nums">
+                                  = {fmt(subtotal, ql.currency)}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground/60 italic">sin precio</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </details>
+              )
+            })}
+          </div>
+
+          {/* Desktop (md:+): existing comparison table */}
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             {/* Header row: req item description + one column per quotation */}
             <thead>
@@ -669,7 +827,8 @@ export default function QuoteComparatorPage() {
               </tr>
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       <NewQuotationDialog
@@ -866,7 +1025,7 @@ function NewQuotationDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="!max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nueva cotización</DialogTitle>
         </DialogHeader>
