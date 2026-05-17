@@ -23,6 +23,8 @@ import {
   type NotificationKind,
   type NotificationRow,
 } from '@/features/notifications/hooks'
+import { useNotificationReads } from '@/features/notifications/read-state'
+import { useAuth } from '@/hooks/use-auth'
 
 // ─── Icon mapping per notification kind ─────────────────────────────────────
 
@@ -77,11 +79,14 @@ export function NotificationsBell() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const { data, isLoading, isError } = useNotifications()
+  const { user } = useAuth()
+  const { reads, markRead } = useNotificationReads(user?.id)
 
   const rows = data ?? []
-  const count = rows.length
+  const count = rows.filter((r) => !reads.has(r.link_path)).length
 
   const handleSelect = (path: string) => {
+    markRead(path)
     setOpen(false)
     navigate(path)
   }

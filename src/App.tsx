@@ -74,6 +74,9 @@ const AlmacenDashboard = lazy(() => import('@/pages/almacen/almacen-dashboard'))
 // Cockpit del Director (cross-module executive view)
 const CockpitPage = lazy(() => import('@/pages/cockpit/cockpit-page'))
 
+// Notifications inbox (all roles)
+const NotificacionesPage = lazy(() => import('@/pages/notificaciones/notificaciones-page'))
+
 // Almacenista
 const AlmacenistaDashboard = lazy(() => import('@/pages/almacenista/dashboard-page'))
 
@@ -162,6 +165,18 @@ export default function App() {
           }
         >
           <Route index element={<CockpitPage />} />
+        </Route>
+
+        {/* ─── Notifications inbox (all roles) ────────────────────────── */}
+        <Route
+          path="/notificaciones"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'compras', 'mantenimiento', 'almacenista']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<NotificacionesPage />} />
         </Route>
 
         {/* ─── Compras module (top-level) ────────────────────────────── */}

@@ -12,6 +12,9 @@ import {
   FileText,
   LogIn,
   LogOut,
+  ClipboardList,
+  Truck,
+  HardHat,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -34,6 +37,30 @@ interface SearchItem {
   id: string
   name: string
   sku: string
+}
+
+interface SearchSupplier {
+  id: string
+  name: string
+  rfc: string | null
+}
+
+interface SearchEquipment {
+  id: string
+  internal_code: string | null
+  name: string
+}
+
+interface SearchRequisition {
+  id: string
+  folio: string
+  notes: string | null
+}
+
+interface SearchWorkOrder {
+  id: string
+  folio: string
+  description: string | null
 }
 
 // ─── Static navigation entries ────────────────────────────────────────────────
@@ -92,7 +119,7 @@ export function CommandSearch() {
 
   // Inventory items search
   const { data: items = [] } = useQuery<SearchItem[]>({
-    queryKey: ['search-items', organization?.id, activeSeason?.id],
+    queryKey: ['search-items', { orgId: organization?.id, seasonId: activeSeason?.id }],
     queryFn: async () => {
       const { data, error } = await db
         .from('items')
@@ -106,6 +133,77 @@ export function CommandSearch() {
     },
     enabled: !!organization?.id && open,
     staleTime: 60_000,
+  })
+
+  // Suppliers search
+  const { data: suppliers = [] } = useQuery<SearchSupplier[]>({
+    queryKey: ['search-suppliers', { orgId: organization?.id }],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('suppliers')
+        .select('id, name, rfc')
+        .eq('organization_id', organization?.id)
+        .eq('is_active', true)
+        .order('name')
+        .limit(60)
+      if (error) throw error
+      return data as SearchSupplier[]
+    },
+    enabled: !!organization?.id && open,
+    staleTime: 60_000,
+  })
+
+  // Equipment search
+  const { data: equipment = [] } = useQuery<SearchEquipment[]>({
+    queryKey: ['search-equipment', { orgId: organization?.id }],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('equipment')
+        .select('id, internal_code, name')
+        .eq('organization_id', organization?.id)
+        .order('name')
+        .limit(60)
+      if (error) throw error
+      return data as SearchEquipment[]
+    },
+    enabled: !!organization?.id && open,
+    staleTime: 60_000,
+  })
+
+  // Purchase requisitions search (active ones)
+  const { data: requisitions = [] } = useQuery<SearchRequisition[]>({
+    queryKey: ['search-requisitions', { orgId: organization?.id }],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('purchase_requisitions')
+        .select('id, folio, notes')
+        .eq('organization_id', organization?.id)
+        .in('status', ['draft', 'submitted', 'approved', 'in_quotation', 'ordered'])
+        .order('created_at', { ascending: false })
+        .limit(40)
+      if (error) throw error
+      return data as SearchRequisition[]
+    },
+    enabled: !!organization?.id && open,
+    staleTime: 30_000,
+  })
+
+  // Work orders search (open)
+  const { data: workOrders = [] } = useQuery<SearchWorkOrder[]>({
+    queryKey: ['search-work-orders', { orgId: organization?.id }],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('work_orders')
+        .select('id, folio, description')
+        .eq('organization_id', organization?.id)
+        .in('status', ['reported', 'scheduled', 'assigned', 'in_progress', 'waiting_parts'])
+        .order('created_at', { ascending: false })
+        .limit(40)
+      if (error) throw error
+      return data as SearchWorkOrder[]
+    },
+    enabled: !!organization?.id && open,
+    staleTime: 30_000,
   })
 
   const go = useCallback((path: string) => {
@@ -140,15 +238,15 @@ export function CommandSearch() {
         <CommandSeparator />
         <CommandGroup heading="Acciones rápidas">
           <CommandItem value="nueva entrada" onSelect={() => go(`${basePath}/entradas/nueva`)}>
-            <LogIn className="mr-2 size-4 text-emerald-600" />
+            <LogIn className="mr-2 size-4 text-success" />
             Nueva entrada
           </CommandItem>
           <CommandItem value="nueva salida" onSelect={() => go(`${basePath}/salidas/nueva`)}>
-            <LogOut className="mr-2 size-4 text-red-600" />
+            <LogOut className="mr-2 size-4 text-destructive" />
             Nueva salida
           </CommandItem>
           <CommandItem value="nuevo item articulo inventario" onSelect={() => go(`${basePath}/inventario/nuevo`)}>
-            <Package className="mr-2 size-4 text-blue-600" />
+            <Package className="mr-2 size-4 text-usd" />
             Nuevo artículo
           </CommandItem>
         </CommandGroup>
@@ -167,6 +265,86 @@ export function CommandSearch() {
                   <Package className="mr-2 size-4 text-muted-foreground" />
                   <span className="font-mono text-xs text-muted-foreground mr-2">{item.sku}</span>
                   {item.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+
+        {/* Suppliers */}
+        {suppliers.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Proveedores">
+              {suppliers.map((s) => (
+                <CommandItem
+                  key={s.id}
+                  value={`proveedor ${s.name} ${s.rfc ?? ''}`}
+                  onSelect={() => go(`/compras/proveedores/${s.id}`)}
+                >
+                  <Truck className="mr-2 size-4 text-muted-foreground" />
+                  {s.name}
+                  {s.rfc && <span className="ml-2 text-xs text-muted-foreground font-mono">{s.rfc}</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+
+        {/* Equipment */}
+        {equipment.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Equipos">
+              {equipment.map((e) => (
+                <CommandItem
+                  key={e.id}
+                  value={`equipo ${e.internal_code ?? ''} ${e.name}`}
+                  onSelect={() => go(`/mantenimiento/equipos/${e.id}`)}
+                >
+                  <HardHat className="mr-2 size-4 text-muted-foreground" />
+                  {e.internal_code && <span className="font-mono text-xs text-muted-foreground mr-2">{e.internal_code}</span>}
+                  {e.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+
+        {/* Active requisitions */}
+        {requisitions.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Requisiciones activas">
+              {requisitions.map((r) => (
+                <CommandItem
+                  key={r.id}
+                  value={`requisicion ${r.folio} ${r.notes ?? ''}`}
+                  onSelect={() => go(`/compras/requisiciones/${r.id}`)}
+                >
+                  <ClipboardList className="mr-2 size-4 text-warning" />
+                  <span className="font-mono text-xs text-muted-foreground mr-2">{r.folio}</span>
+                  {r.notes ?? 'Sin notas'}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
+
+        {/* Open work orders */}
+        {workOrders.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="OTs abiertas">
+              {workOrders.map((wo) => (
+                <CommandItem
+                  key={wo.id}
+                  value={`ot ${wo.folio} ${wo.description ?? ''}`}
+                  onSelect={() => go(`/mantenimiento/ordenes/${wo.id}`)}
+                >
+                  <Wrench className="mr-2 size-4 text-usd" />
+                  <span className="font-mono text-xs text-muted-foreground mr-2">{wo.folio}</span>
+                  {wo.description ?? 'Sin descripción'}
                 </CommandItem>
               ))}
             </CommandGroup>

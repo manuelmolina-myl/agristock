@@ -1,13 +1,17 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Upload, Search, MoreHorizontal, Eye, Pencil, Trash2, Package, AlertTriangle } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Upload, Search, MoreHorizontal, Eye, Pencil, Trash2, Package, AlertTriangle, Archive, Tag, Target, Download, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useItems, useCategories, useSoftDelete, useItemStock } from '@/hooks/use-supabase-query'
 import { useBasePath } from '@/hooks/use-base-path'
 import { usePermissions } from '@/hooks/use-permissions'
+import { supabase } from '@/lib/supabase'
 import type { Item } from '@/lib/database.types'
 import { formatQuantity } from '@/lib/utils'
+import { formatSupabaseError } from '@/lib/errors'
+import { exportToCsv } from '@/lib/csv-export'
 
 import { ItemsCsvImport } from './items-csv-import'
 import { PageHeader } from '@/components/custom/page-header'
@@ -15,7 +19,10 @@ import { CurrencyBadge } from '@/components/custom/currency-badge'
 import { EmptyState } from '@/components/custom/empty-state'
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -146,6 +153,14 @@ export function ItemsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null)
   const [csvOpen, setCsvOpen] = useState(false)
 
+  // ── Bulk selection ─────────────────────────────────────────────────────────
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkAction, setBulkAction] = useState<null | 'archive' | 'category' | 'reorder'>(null)
+  const [bulkCategoryId, setBulkCategoryId] = useState<string>('')
+  const [bulkReorder, setBulkReorder] = useState<string>('')
+  const canBulkEdit = !isAlmacenista // admins/compras can bulk-edit; almacenista is read-mostly
+  const qc = useQueryClient()
+
   // ── Alert counts ───────────────────────────────────────────────────────────
   const alertCounts = useMemo(() => {
     let sinStock = 0, critico = 0, bajo = 0
@@ -175,6 +190,116 @@ export function ItemsPage() {
     }
     return true
   })
+
+  // ── Reset selection on filter change ───────────────────────────────────────
+  useEffect(() => {
+    setSelected(new Set())
+  }, [search, categoryFilter, currencyFilter, activeFilter, alertFilter])
+
+  // ── Bulk selection helpers ─────────────────────────────────────────────────
+  const filteredIds = useMemo(() => filtered.map((i) => i.id), [filtered])
+  const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id))
+  const someSelected = !allSelected && filteredIds.some((id) => selected.has(id))
+
+  function toggleAll() {
+    setSelected((prev) => {
+      if (allSelected) {
+        const next = new Set(prev)
+        filteredIds.forEach((id) => next.delete(id))
+        return next
+      }
+      return new Set([...prev, ...filteredIds])
+    })
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // ── Bulk mutations ─────────────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any
+
+  const bulkArchive = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await db.from('items').update({ is_active: false }).in('id', ids)
+      if (error) throw error
+    },
+    onSuccess: (_data, ids) => {
+      toast.success(`${ids.length} ítems archivados`)
+      qc.invalidateQueries({ queryKey: ['items'] })
+      setSelected(new Set())
+      setBulkAction(null)
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudieron archivar los ítems')
+      toast.error(title, { description })
+    },
+  })
+
+  const bulkUpdateCategory = useMutation({
+    mutationFn: async ({ ids, categoryId }: { ids: string[]; categoryId: string }) => {
+      const { error } = await db.from('items').update({ category_id: categoryId }).in('id', ids)
+      if (error) throw error
+    },
+    onSuccess: (_data, { ids }) => {
+      toast.success(`${ids.length} ítems actualizados`)
+      qc.invalidateQueries({ queryKey: ['items'] })
+      setSelected(new Set())
+      setBulkAction(null)
+      setBulkCategoryId('')
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo cambiar la categoría')
+      toast.error(title, { description })
+    },
+  })
+
+  const bulkUpdateReorder = useMutation({
+    mutationFn: async ({ ids, reorderPoint }: { ids: string[]; reorderPoint: number }) => {
+      const { error } = await db.from('items').update({ reorder_point: reorderPoint }).in('id', ids)
+      if (error) throw error
+    },
+    onSuccess: (_data, { ids }) => {
+      toast.success(`${ids.length} ítems actualizados`)
+      qc.invalidateQueries({ queryKey: ['items'] })
+      setSelected(new Set())
+      setBulkAction(null)
+      setBulkReorder('')
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo cambiar el punto de reorden')
+      toast.error(title, { description })
+    },
+  })
+
+  function exportSelection() {
+    const picked = items.filter((i) => selected.has(i.id))
+    if (picked.length === 0) {
+      toast.error('No hay ítems seleccionados')
+      return
+    }
+    exportToCsv({
+      filename: `inventario-seleccion-${new Date().toISOString().slice(0, 10)}.csv`,
+      headers: ['sku', 'nombre', 'categoria', 'unidad', 'moneda', 'stock', 'punto_reorden', 'activo'],
+      rows: picked.map((i) => [
+        i.sku,
+        i.name,
+        i.category?.name ?? '',
+        i.unit?.code ?? '',
+        i.native_currency ?? '',
+        stockMap.get(i.id) ?? 0,
+        i.reorder_point ?? '',
+        i.is_active ? 'Sí' : 'No',
+      ]),
+    })
+    toast.success(`${picked.length} ítems exportados`)
+  }
 
   // ── Delete handler ─────────────────────────────────────────────────────────
   async function handleDelete() {
@@ -365,6 +490,16 @@ export function ItemsPage() {
         <Table>
           <TableHeader>
             <TableRow className="text-xs uppercase tracking-wide text-muted-foreground hover:bg-transparent">
+              {canBulkEdit && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onCheckedChange={toggleAll}
+                    aria-label="Seleccionar todos"
+                  />
+                </TableHead>
+              )}
               <TableHead className="w-28">SKU</TableHead>
               <TableHead>Nombre</TableHead>
               <TableHead>Categoría</TableHead>
@@ -381,7 +516,7 @@ export function ItemsPage() {
               <TableSkeleton />
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="p-0">
+                <TableCell colSpan={canBulkEdit ? 10 : 9} className="p-0">
                   <EmptyState
                     icon={<Package className="size-5" />}
                     title={search || categoryFilter !== 'all' || currencyFilter !== 'all' ? 'Sin resultados' : 'Sin ítems aún'}
@@ -402,9 +537,18 @@ export function ItemsPage() {
               filtered.map((item) => (
                 <TableRow
                   key={item.id}
-                  className="cursor-pointer"
+                  className={`cursor-pointer ${selected.has(item.id) ? 'bg-primary/5' : ''}`}
                   onClick={() => navigate(`${basePath}/inventario/${item.id}`)}
                 >
+                  {canBulkEdit && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selected.has(item.id)}
+                        onCheckedChange={() => toggleOne(item.id)}
+                        aria-label={`Seleccionar ${item.sku}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <span className="font-mono text-xs text-muted-foreground">
                       {item.sku}
@@ -513,6 +657,164 @@ export function ItemsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* ── Mobile selection checkbox overlay ────────────────────────────── */}
+      {canBulkEdit && selected.size > 0 && (
+        <div className="md:hidden text-xs text-muted-foreground px-1">
+          {selected.size} seleccionado{selected.size === 1 ? '' : 's'} en escritorio
+        </div>
+      )}
+
+      {/* ── Bulk action bar (floating) ───────────────────────────────────── */}
+      {canBulkEdit && selected.size > 0 && (
+        <div className="fixed bottom-20 md:bottom-4 left-1/2 -translate-x-1/2 z-30 w-[calc(100vw-2rem)] md:w-auto md:max-w-3xl">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 rounded-xl border border-border bg-card shadow-lg px-3 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">{selected.size}</span>
+              <span className="text-muted-foreground">seleccionado{selected.size === 1 ? '' : 's'}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-xs"
+                onClick={() => setSelected(new Set())}
+              >
+                <X className="size-3" />
+                Limpiar
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 md:ml-auto">
+              <Button variant="outline" size="sm" onClick={exportSelection}>
+                <Download className="mr-1.5 size-3.5" />
+                Exportar
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setBulkAction('category')}>
+                <Tag className="mr-1.5 size-3.5" />
+                Categoría
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setBulkAction('reorder')}>
+                <Target className="mr-1.5 size-3.5" />
+                Pto. reorden
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setBulkAction('archive')}
+              >
+                <Archive className="mr-1.5 size-3.5" />
+                Archivar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk archive confirmation ────────────────────────────────────── */}
+      <AlertDialog open={bulkAction === 'archive'} onOpenChange={(open) => !open && setBulkAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Archivar {selected.size} ítem{selected.size === 1 ? '' : 's'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Quedarán inactivos pero conservarán su historial. Podrás restaurarlos después.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => bulkArchive.mutate(Array.from(selected))}
+              disabled={bulkArchive.isPending}
+            >
+              {bulkArchive.isPending ? 'Archivando…' : 'Archivar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Bulk change category ─────────────────────────────────────────── */}
+      <Dialog open={bulkAction === 'category'} onOpenChange={(open) => !open && setBulkAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar categoría</DialogTitle>
+            <DialogDescription>
+              Se actualizará la categoría de {selected.size} ítem{selected.size === 1 ? '' : 's'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-2">
+            <Label>Nueva categoría</Label>
+            <Select value={bulkCategoryId} onValueChange={(v) => setBulkCategoryId(v ?? '')}>
+              <SelectTrigger className="h-9">
+                <SelectValue>
+                  {bulkCategoryId ? (categories.find((c) => c.id === bulkCategoryId)?.name ?? '—') : 'Selecciona una categoría'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    <span className="flex items-center gap-1.5">
+                      {cat.color && (
+                        <span className="inline-block size-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                      )}
+                      {cat.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkAction(null)}>Cancelar</Button>
+            <Button
+              onClick={() => bulkUpdateCategory.mutate({ ids: Array.from(selected), categoryId: bulkCategoryId })}
+              disabled={!bulkCategoryId || bulkUpdateCategory.isPending}
+            >
+              {bulkUpdateCategory.isPending ? 'Aplicando…' : 'Aplicar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Bulk change reorder point ────────────────────────────────────── */}
+      <Dialog open={bulkAction === 'reorder'} onOpenChange={(open) => !open && setBulkAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar punto de reorden</DialogTitle>
+            <DialogDescription>
+              Se aplicará el mismo punto de reorden a {selected.size} ítem{selected.size === 1 ? '' : 's'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-2">
+            <Label htmlFor="bulk-reorder">Punto de reorden</Label>
+            <Input
+              id="bulk-reorder"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={bulkReorder}
+              onChange={(e) => setBulkReorder(e.target.value)}
+              className="h-9"
+              placeholder="0"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkAction(null)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                const n = Number(bulkReorder)
+                if (!Number.isFinite(n) || n < 0) {
+                  toast.error('Ingresa un número válido')
+                  return
+                }
+                bulkUpdateReorder.mutate({ ids: Array.from(selected), reorderPoint: n })
+              }}
+              disabled={!bulkReorder || bulkUpdateReorder.isPending}
+            >
+              {bulkUpdateReorder.isPending ? 'Aplicando…' : 'Aplicar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── CSV import dialog ────────────────────────────────────────────── */}
       <ItemsCsvImport open={csvOpen} onOpenChange={setCsvOpen} />
