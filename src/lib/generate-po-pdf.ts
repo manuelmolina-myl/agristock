@@ -2,10 +2,11 @@
  * generate-po-pdf — Genera el PDF de una Orden de Compra (OC).
  *
  * Sigue el patrón de generate-vale-pdf.ts: jsPDF + autoTable lazy-loaded
- * para no inflar el bundle inicial, header verde "Tierra cultivada", logo
- * de la organización opcional, partidas con costo unitario y subtotal,
- * totales subtotal/IVA/total en MXN (más USD informativo si aplica),
- * bloques de firma proveedor + autorizado por.
+ * para no inflar el bundle inicial.  Palette: tokens del sistema
+ * "Tierra cultivada" (primary #2F5D3F, paper #F7F3EA, ink #1F1A13).
+ * Incluye logo de la organización, info del proveedor + condiciones,
+ * tabla de partidas, totales subtotal/IVA/total MXN (+ USD informativo
+ * si aplica) y una caja de firma "Autorizado por" centrada.
  */
 import type { PurchaseOrder, POLine, Organization, Item, Currency } from '@/lib/database.types'
 import { formatFechaCorta, formatMoney, formatQuantity } from '@/lib/utils'
@@ -71,18 +72,26 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
   const margin  = 14
   const contentW = pageW - margin * 2
 
-  // ── Palette (Tierra cultivada — agro green) ────────────────────────────────
-  const GREEN: [number, number, number]      = [22, 163, 74]    // #16A34A
-  const GREEN_DARK: [number, number, number] = [15, 118, 53]
-  const GRAY_DARK: [number, number, number]  = [25, 25, 25]
-  const GRAY_MID: [number, number, number]   = [100, 100, 100]
-  const GRAY_LIGHT: [number, number, number] = [225, 225, 225]
-  const GRAY_BG: [number, number, number]    = [248, 250, 248]
-  const WHITE: [number, number, number]      = [255, 255, 255]
+  // ── Palette: Tierra cultivada — los mismos tokens del sistema ──────────────
+  // Mapeados de src/index.css :root:
+  //   primary       #2F5D3F (verde forest)         → PRIMARY
+  //   primary alt   #244A33 (oscurecido para títulos contraste alto) → PRIMARY_DARK
+  //   background    #F7F3EA (lino-blanco)         → PAPER (color del header)
+  //   foreground    #1F1A13 (marrón muy oscuro)   → INK
+  //   muted-fg      ≈ #6B5E48 (marrón medio)      → MUTED
+  //   border        ≈ #E6DECB                      → BORDER
+  //   card          #FDFBF4 (crema más clara)     → CARD
+  const PRIMARY: [number, number, number]      = [47, 93, 63]    // #2F5D3F
+  const PRIMARY_DARK: [number, number, number] = [36, 74, 51]    // #244A33
+  const INK: [number, number, number]          = [31, 26, 19]    // #1F1A13
+  const MUTED: [number, number, number]        = [107, 94, 72]   // #6B5E48
+  const BORDER: [number, number, number]       = [230, 222, 203] // #E6DECB
+  const CARD: [number, number, number]         = [253, 251, 244] // #FDFBF4
+  const PAPER: [number, number, number]        = [247, 243, 234] // #F7F3EA
 
   // ── Header band ────────────────────────────────────────────────────────────
   const HEADER_H = 32
-  doc.setFillColor(...GREEN)
+  doc.setFillColor(...PRIMARY)
   doc.rect(0, 0, pageW, HEADER_H, 'F')
 
   // Logo (optional)
@@ -92,7 +101,7 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
     if (logo) {
       try {
         // Logo box: 22x22 mm, white background for contrast on the green band.
-        doc.setFillColor(...WHITE)
+        doc.setFillColor(...PAPER)
         doc.roundedRect(margin, 5, 22, 22, 2, 2, 'F')
         doc.addImage(logo.data, logo.mime.includes('png') ? 'PNG' : 'JPEG',
           margin + 1.5, 6.5, 19, 19)
@@ -106,7 +115,7 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
   // Org name + RFC + address (left of header)
   doc.setFontSize(13)
   doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...WHITE)
+  doc.setTextColor(...PAPER)
   doc.text(organization.name.toUpperCase(), textStartX, 11)
 
   if (organization.rfc) {
@@ -123,7 +132,7 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
   // Document title + folio + status (right)
   doc.setFontSize(17)
   doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...WHITE)
+  doc.setTextColor(...PAPER)
   doc.text('ORDEN DE COMPRA', pageW - margin, 11, { align: 'right' })
 
   doc.setFontSize(9)
@@ -140,8 +149,8 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
 
   // ── Info section — 2 columns (Proveedor / Destino — Fechas / Condiciones) ─
   const INFO_H = 38
-  doc.setFillColor(...GRAY_BG)
-  doc.setDrawColor(...GRAY_LIGHT)
+  doc.setFillColor(...CARD)
+  doc.setDrawColor(...BORDER)
   doc.roundedRect(margin, y, contentW, INFO_H, 2, 2, 'FD')
 
   const col1x = margin + 5
@@ -150,7 +159,7 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
   // Labels
   doc.setFontSize(6.5)
   doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...GRAY_MID)
+  doc.setTextColor(...MUTED)
   doc.text('PROVEEDOR', col1x, y + 6)
   doc.text('FECHA EMISIÓN', col2x, y + 6)
   doc.text('ALMACÉN DESTINO', col1x, y + 18)
@@ -161,20 +170,20 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
   // Values
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...GRAY_DARK)
+  doc.setTextColor(...INK)
 
   const supplierText = po.supplier?.name ?? '—'
   doc.text(doc.splitTextToSize(supplierText, contentW / 2 - 8)[0], col1x, y + 12)
   if (po.supplier?.rfc) {
     doc.setFontSize(7)
     doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...GRAY_MID)
+    doc.setTextColor(...MUTED)
     doc.text(`RFC: ${po.supplier.rfc}`, col1x, y + 15.5)
   }
 
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...GRAY_DARK)
+  doc.setTextColor(...INK)
   doc.text(formatFechaCorta(po.issue_date), col2x, y + 12)
 
   doc.setFontSize(8.5)
@@ -218,17 +227,17 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
     head: [head],
     body: tableRows,
     margin: { left: margin, right: margin },
-    styles: { fontSize: 8, cellPadding: 2.5, textColor: GRAY_DARK },
+    styles: { fontSize: 8, cellPadding: 2.5, textColor: INK },
     headStyles: {
-      fillColor: GREEN,
-      textColor: WHITE,
+      fillColor: PRIMARY,
+      textColor: PAPER,
       fontStyle: 'bold',
       fontSize: 7.5,
     },
-    alternateRowStyles: { fillColor: [245, 250, 245] },
+    alternateRowStyles: { fillColor: PAPER },
     columnStyles: {
-      0: { cellWidth: 8,   halign: 'center', textColor: GRAY_MID },
-      1: { cellWidth: 22,  fontStyle: 'bold', textColor: GRAY_MID },
+      0: { cellWidth: 8,   halign: 'center', textColor: MUTED },
+      1: { cellWidth: 22,  fontStyle: 'bold', textColor: MUTED },
       2: { cellWidth: 'auto' },
       3: { cellWidth: 18,  halign: 'right' },
       4: { cellWidth: 22,  halign: 'right', font: 'courier' },
@@ -237,9 +246,9 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
     },
     didDrawPage: (data) => {
       if (data.pageNumber > 1) {
-        doc.setFillColor(...GREEN)
+        doc.setFillColor(...PRIMARY)
         doc.rect(0, 0, pageW, 10, 'F')
-        doc.setTextColor(...WHITE)
+        doc.setTextColor(...PAPER)
         doc.setFontSize(7.5)
         doc.setFont('helvetica', 'bold')
         doc.text(organization.name, margin, 7)
@@ -262,92 +271,92 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
 
   doc.setFontSize(7.5)
   doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...GRAY_MID)
+  doc.setTextColor(...MUTED)
   doc.text('Subtotal:', totalsX, totY)
   doc.setFont('courier', 'normal')
-  doc.setTextColor(...GRAY_DARK)
+  doc.setTextColor(...INK)
   doc.text(formatMoney(subtotalMxn, 'MXN'), amountX, totY, { align: 'right' })
 
   totY += 5
   doc.setFont('helvetica', 'normal')
-  doc.setTextColor(...GRAY_MID)
+  doc.setTextColor(...MUTED)
   doc.text('IVA (16%):', totalsX, totY)
   doc.setFont('courier', 'normal')
-  doc.setTextColor(...GRAY_DARK)
+  doc.setTextColor(...INK)
   doc.text(formatMoney(taxMxn, 'MXN'), amountX, totY, { align: 'right' })
 
   if (po.total_usd && po.total_usd > 0) {
     totY += 5
     doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...GRAY_MID)
+    doc.setTextColor(...MUTED)
     doc.text('Total USD (info):', totalsX, totY)
     doc.setFont('courier', 'normal')
-    doc.setTextColor(...GRAY_DARK)
+    doc.setTextColor(...INK)
     doc.text(formatMoney(po.total_usd, 'USD'), amountX, totY, { align: 'right' })
   }
 
   totY += 3
-  doc.setDrawColor(...GRAY_LIGHT)
+  doc.setDrawColor(...BORDER)
   doc.line(totalsX, totY, pageW - margin, totY)
   totY += 5
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.setTextColor(...GREEN_DARK)
+  doc.setTextColor(...PRIMARY_DARK)
   doc.text('TOTAL MXN:', totalsX, totY)
   doc.setFont('courier', 'bold')
-  doc.setTextColor(...GRAY_DARK)
+  doc.setTextColor(...INK)
   doc.text(formatMoney(totalMxn, 'MXN'), amountX, totY, { align: 'right' })
 
   totY += 10
 
-  // ── Signature boxes — Proveedor + Autorizado por ──────────────────────────
+  // ── Signature box — sólo "Autorizado por", centrada ───────────────────────
+  // (Quitada la firma del proveedor por petición — la OC es un documento
+  // emitido por la organización, el proveedor no necesita firmarla aquí.)
   const sigH    = 36
   const sigY    = Math.max(totY + 6, finalY + 50)
-  const sigBoxW = (contentW - 16) / 2
-  const sig1x   = margin
-  const sig2x   = margin + sigBoxW + 16
+  const sigBoxW = 84  // centrada, no full-width
+  const sigX    = (pageW - sigBoxW) / 2
 
   if (sigY + sigH > pageH - 14) {
     doc.addPage()
-    doc.setFillColor(...GREEN)
+    doc.setFillColor(...PRIMARY)
     doc.rect(0, 0, pageW, 10, 'F')
-    doc.setTextColor(...WHITE)
+    doc.setTextColor(...PAPER)
     doc.setFontSize(7.5)
     doc.setFont('helvetica', 'bold')
     doc.text(organization.name, margin, 7)
     doc.text(`Orden de Compra — ${po.folio}`, pageW - margin, 7, { align: 'right' })
   }
 
-  function signatureBox(x: number, title: string, name?: string) {
-    const bY = Math.min(sigY, pageH - sigH - 12)
-    doc.setDrawColor(...GRAY_LIGHT)
-    doc.setFillColor(252, 253, 252)
-    doc.roundedRect(x, bY, sigBoxW, sigH, 2, 2, 'FD')
-    // signature line
-    doc.setDrawColor(170, 170, 170)
-    doc.line(x + 6, bY + 20, x + sigBoxW - 6, bY + 20)
-    // Firma label
-    doc.setFontSize(6)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...GRAY_MID)
-    doc.text('Firma', x + sigBoxW / 2, bY + 4, { align: 'center' })
-    // title
-    doc.setFontSize(7)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...GREEN_DARK)
-    doc.text(title.toUpperCase(), x + sigBoxW / 2, bY + 26, { align: 'center' })
-    // name
-    if (name) {
-      doc.setFontSize(8)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(...GRAY_DARK)
-      doc.text(name, x + sigBoxW / 2, bY + 31.5, { align: 'center' })
-    }
-  }
+  const bY = Math.min(sigY, pageH - sigH - 12)
+  doc.setDrawColor(...BORDER)
+  doc.setFillColor(...CARD)
+  doc.roundedRect(sigX, bY, sigBoxW, sigH, 2, 2, 'FD')
 
-  signatureBox(sig1x, 'Proveedor', po.supplier?.name)
-  signatureBox(sig2x, 'Autorizado por', createdByName)
+  // signature line
+  doc.setDrawColor(...MUTED)
+  doc.line(sigX + 6, bY + 20, sigX + sigBoxW - 6, bY + 20)
+
+  // "Firma" label
+  doc.setFontSize(6)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...MUTED)
+  doc.text('Firma', sigX + sigBoxW / 2, bY + 4, { align: 'center' })
+
+  // Title
+  doc.setFontSize(7)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...PRIMARY_DARK)
+  doc.text('AUTORIZADO POR', sigX + sigBoxW / 2, bY + 26, { align: 'center' })
+
+  // Name
+  if (createdByName) {
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...INK)
+    doc.text(createdByName, sigX + sigBoxW / 2, bY + 31.5, { align: 'center' })
+  }
 
   // ── Footer with page numbers ──────────────────────────────────────────────
   const totalPages = doc.getNumberOfPages()
@@ -356,7 +365,7 @@ async function buildPoPdfDoc(opts: GeneratePoPDFOptions) {
     const footY = pageH - 5
     doc.setFontSize(6)
     doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...GRAY_MID)
+    doc.setTextColor(...MUTED)
     doc.text(`Generado por AgriStock — ${new Date().toLocaleString('es-MX')}`, margin, footY)
     doc.text(`Página ${p} de ${totalPages}`, pageW - margin, footY, { align: 'right' })
   }
