@@ -24,6 +24,7 @@ import {
   Lock,
   LogOut,
   CreditCard,
+  MessageSquareWarning,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -51,6 +52,9 @@ interface NavItem {
   label: string
   to: string
   icon: React.ElementType
+  /** Restrict this item to a subset of the module's allowedRoles. If unset,
+   *  the item is visible to everyone who can see the module. */
+  allowedRoles?: UserRoleEnum[]
 }
 
 interface NavSection {
@@ -105,13 +109,18 @@ const MODULES: ModuleSection[] = [
   },
   {
     heading: 'Mantenimiento',
-    allowedRoles: ['admin', 'mantenimiento'],
+    // El módulo se muestra a roles operativos (almacenista/compras) porque
+    // todos pueden reportar problemas vía Solicitudes. Los items internos
+    // están filtrados por `allowedRoles` para no exponer las pantallas de
+    // mantto (órdenes, equipos, planes) a quien no tiene permiso.
+    allowedRoles: ['admin', 'mantenimiento', 'almacenista', 'compras'],
     items: [
-      { label: 'Dashboard',         to: '/mantenimiento',           icon: LayoutDashboard },
-      { label: 'Órdenes de trabajo', to: '/mantenimiento/ordenes',  icon: Wrench },
-      { label: 'Equipos',           to: '/mantenimiento/equipos',   icon: Tractor },
-      { label: 'Planes preventivos', to: '/mantenimiento/planes',   icon: CalendarClock },
-      { label: 'Historial',         to: '/mantenimiento/historial', icon: History },
+      { label: 'Dashboard',         to: '/mantenimiento',           icon: LayoutDashboard, allowedRoles: ['admin', 'mantenimiento'] },
+      { label: 'Solicitudes',       to: '/mantenimiento/solicitudes', icon: MessageSquareWarning },
+      { label: 'Órdenes de trabajo', to: '/mantenimiento/ordenes',  icon: Wrench, allowedRoles: ['admin', 'mantenimiento'] },
+      { label: 'Equipos',           to: '/mantenimiento/equipos',   icon: Tractor, allowedRoles: ['admin', 'mantenimiento'] },
+      { label: 'Planes preventivos', to: '/mantenimiento/planes',   icon: CalendarClock, allowedRoles: ['admin', 'mantenimiento'] },
+      { label: 'Historial',         to: '/mantenimiento/historial', icon: History, allowedRoles: ['admin', 'mantenimiento'] },
     ],
   },
   {
@@ -134,7 +143,15 @@ const MODULES: ModuleSection[] = [
 ]
 
 function visibleModulesForRoles(roles: UserRoleEnum[]): ModuleSection[] {
-  return MODULES.filter((m) => m.allowedRoles.some((r) => roles.includes(r)))
+  return MODULES
+    .filter((m) => m.allowedRoles.some((r) => roles.includes(r)))
+    .map((m) => ({
+      ...m,
+      items: m.items.filter((it) =>
+        !it.allowedRoles || it.allowedRoles.some((r) => roles.includes(r)),
+      ),
+    }))
+    .filter((m) => m.items.length > 0)
 }
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/use-auth'
@@ -7,6 +7,7 @@ import { useRecordRecent } from '@/features/recents/store'
 import {
   ArrowLeft, CheckCircle2, AlertCircle, Loader2,
   Tractor, User as UserIcon, Calendar, Package, Plus, Trash2, CheckCheck,
+  FileDown, MessageSquare, Send,
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -30,6 +31,7 @@ import { formatSupabaseError } from '@/lib/errors'
 import { useWorkOrder, useAssignWO, useConsumePartInWO, useCloseWO } from '@/features/mantenimiento/hooks'
 import { usePermissions } from '@/hooks/use-permissions'
 import type { WOStatus, WOPriority, WOType } from '@/lib/database.types'
+import { WoLifecycle } from '@/components/custom/wo-lifecycle'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any
@@ -63,14 +65,29 @@ const TYPE_LABEL: Record<WOType, string> = {
 export default function WoDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const qc = useQueryClient()
   const { can } = usePermissions()
+
+  // Smart back: si el usuario entra a esta OT desde otra ruta de mantenimiento
+  // (dashboard, equipo, planes), el back arrow lo regresa a ese contexto.
+  // Default: tablero de Órdenes.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cameFrom = (location.state as any)?.from as string | undefined
+  const backTo = cameFrom && cameFrom.startsWith('/mantenimiento/') ? cameFrom : '/mantenimiento/ordenes'
+  const backLabel = backTo === '/mantenimiento'
+    ? 'Volver al dashboard'
+    : backTo.startsWith('/mantenimiento/equipos')
+    ? 'Volver al equipo'
+    : backTo.startsWith('/mantenimiento/planes')
+    ? 'Volver a planes'
+    : 'Volver al tablero'
 
   const { data: wo, isLoading } = useWorkOrder(id)
   const assignMutation = useAssignWO()
   const consumeMutation = useConsumePartInWO()
   const closeMutation = useCloseWO()
-  const { user } = useAuth()
+  const { user, organization } = useAuth()
   useRecordRecent(
     user?.id,
     wo ? {
@@ -125,6 +142,183 @@ export default function WoDetailPage() {
   const [partOpen, setPartOpen] = useState(false)
   const [closeOpen, setCloseOpen] = useState(false)
 
+  // ── Comments thread ──────────────────────────────────────────────────────
+  // FK `wo_comments.user_id` apunta a auth.users — usamos un segundo
+  // query a `profiles` para hidratar `full_name`, igual que en po-detail.
+  const { data: comments = [] } = useQuery<
+    Array<{
+      id: string
+      wo_id: string
+      user_id: string
+      body: string
+      created_at: string
+      author_name: string | null
+    }>
+  >({
+    queryKey: ['wo-comments', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('wo_comments')
+        .select('id, wo_id, user_id, body, created_at')
+        .eq('wo_id', id)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      const rows = (data ?? []) as Array<{
+        id: string; wo_id: string; user_id: string; body: string; created_at: string
+      }>
+      const ids = Array.from(new Set(rows.map((r) => r.user_id))).filter(Boolean)
+      const nameMap = new Map<string, string | null>()
+      if (ids.length > 0) {
+        const { data: profs } = await db
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', ids)
+        for (const p of (profs ?? []) as Array<{ id: string; full_name: string | null }>) {
+          nameMap.set(p.id, p.full_name)
+        }
+      }
+      return rows.map((r) => ({ ...r, author_name: nameMap.get(r.user_id) ?? null }))
+    },
+  })
+
+  const [newComment, setNewComment] = useState('')
+
+  const addComment = useMutation({
+    mutationFn: async () => {
+      const trimmed = newComment.trim()
+      if (!trimmed) throw new Error('Escribe un comentario antes de enviar')
+      if (!organization?.id || !user?.id || !id) throw new Error('Sin contexto')
+      const { error } = await db.from('wo_comments').insert({
+        organization_id: organization.id,
+        wo_id: id,
+        user_id: user.id,
+        body: trimmed,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      setNewComment('')
+      qc.invalidateQueries({ queryKey: ['wo-comments', id] })
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo enviar el comentario')
+      toast.error(title, { description })
+    },
+  })
+
+  const deleteComment = useMutation({
+    mutationFn: async (commentId: string) => {
+      const { error } = await db.from('wo_comments').delete().eq('id', commentId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wo-comments', id] })
+    },
+    onError: (e: unknown) => {
+      const { title, description } = formatSupabaseError(e, 'No se pudo eliminar el comentario')
+      toast.error(title, { description })
+    },
+  })
+
+  // ── PDF download + preview ───────────────────────────────────────────────
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+
+  const showPdfPreview = !!wo && (wo.status === 'completed' || wo.status === 'closed')
+
+  async function handleDownloadPdf() {
+    if (!wo || !organization) return
+    setDownloadingPdf(true)
+    try {
+      const { generateWoPDF } = await import('@/lib/generate-wo-pdf')
+      await generateWoPDF({
+        wo: { ...wo, parts, labor },
+        organization,
+      })
+    } catch (err) {
+      const { title, description } = formatSupabaseError(err, 'No se pudo generar el PDF')
+      toast.error(title, { description })
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
+  // Auto-generate preview blob URL whenever the WO is completed/closed. The
+  // fingerprint key only changes when relevant data changes, so the iframe
+  // is rebuilt sparingly.
+  const previewKey = useMemo(() => {
+    if (!wo || !showPdfPreview) return ''
+    return JSON.stringify({
+      id: wo.id,
+      status: wo.status,
+      total_cost_mxn: wo.total_cost_mxn,
+      completed_at: wo.completed_at,
+      solution: wo.solution_applied,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      parts: (parts as any[]).map((p) => [p.id, p.delivered_quantity, p.total_cost_mxn]),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      labor: (labor as any[]).map((l) => [l.id, l.hours, l.total_mxn]),
+      logo: organization?.logo_url,
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wo, parts, labor, organization?.logo_url, showPdfPreview])
+
+  useEffect(() => {
+    if (!wo || !organization || !showPdfPreview) {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      return
+    }
+    let cancelled = false
+    let createdUrl: string | null = null
+    setPreviewing(true)
+    setPreviewError(null)
+
+    ;(async () => {
+      try {
+        const { previewWoPDF } = await import('@/lib/generate-wo-pdf')
+        const url = await previewWoPDF({
+          wo: { ...wo, parts, labor },
+          organization,
+        })
+        if (cancelled) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        createdUrl = url
+        setPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev)
+          return url
+        })
+      } catch (err) {
+        if (!cancelled) {
+          const { description } = formatSupabaseError(err, 'No se pudo generar la vista previa')
+          setPreviewError(description)
+        }
+      } finally {
+        if (!cancelled) setPreviewing(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey])
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4 p-4 sm:p-6 max-w-6xl mx-auto w-full">
@@ -138,8 +332,8 @@ export default function WoDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
         <h2 className="font-heading text-lg font-semibold">OT no encontrada</h2>
-        <Button onClick={() => navigate('/mantenimiento/ordenes')} variant="outline" className="mt-4">
-          Volver al tablero
+        <Button onClick={() => navigate(backTo)} variant="outline" className="mt-4">
+          {backLabel}
         </Button>
       </div>
     )
@@ -152,7 +346,14 @@ export default function WoDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-2 min-w-0">
-          <Button variant="ghost" size="icon-sm" onClick={() => navigate('/mantenimiento/ordenes')} aria-label="Volver" className="mt-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => navigate(backTo)}
+            aria-label={backLabel}
+            title={backLabel}
+            className="mt-0.5"
+          >
             <ArrowLeft className="size-4" />
           </Button>
           <div className="min-w-0">
@@ -174,26 +375,40 @@ export default function WoDetailPage() {
           </div>
         </div>
 
-        {canEdit && (
-          <div className="flex items-center gap-2 shrink-0">
-            {(wo.status === 'reported' || wo.status === 'scheduled') && (
-              <Button size="sm" className="gap-1.5" onClick={() => setAssignOpen(true)}>
-                <UserIcon className="size-4" /> Asignar técnico
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+          >
+            {downloadingPdf
+              ? <Loader2 className="size-4 animate-spin" />
+              : <FileDown className="size-4" />}
+            {downloadingPdf ? 'Generando…' : 'Descargar PDF'}
+          </Button>
+
+          {canEdit && (wo.status === 'reported' || wo.status === 'scheduled') && (
+            <Button size="sm" className="gap-1.5" onClick={() => setAssignOpen(true)}>
+              <UserIcon className="size-4" /> Asignar técnico
+            </Button>
+          )}
+          {canEdit && (wo.status === 'assigned' || wo.status === 'in_progress' || wo.status === 'waiting_parts') && (
+            <>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setPartOpen(true)}>
+                <Package className="size-4" /> Consumir refacción
               </Button>
-            )}
-            {(wo.status === 'assigned' || wo.status === 'in_progress' || wo.status === 'waiting_parts') && (
-              <>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setPartOpen(true)}>
-                  <Package className="size-4" /> Consumir refacción
-                </Button>
-                <Button size="sm" className="gap-1.5" onClick={() => setCloseOpen(true)}>
-                  <CheckCheck className="size-4" /> Cerrar OT
-                </Button>
-              </>
-            )}
-          </div>
-        )}
+              <Button size="sm" className="gap-1.5" onClick={() => setCloseOpen(true)}>
+                <CheckCheck className="size-4" /> Cerrar OT
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Lifecycle stepper */}
+      <WoLifecycle status={wo.status} className="mt-1" />
 
       {/* Layout: tabs on left, meta panel on right */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
@@ -314,6 +529,129 @@ export default function WoDetailPage() {
           )}
         </aside>
       </div>
+
+      {/* Comments thread */}
+      <section className="rounded-xl border border-border bg-card overflow-hidden">
+        <header className="px-4 py-3 border-b flex items-center justify-between gap-2">
+          <h2 className="font-heading text-sm font-semibold tracking-[-0.01em] flex items-center gap-2">
+            <MessageSquare className="size-4 text-muted-foreground" strokeWidth={1.75} />
+            Comentarios
+            <Badge variant="outline" className="text-[10px] font-mono tabular-nums">
+              {comments.length}
+            </Badge>
+          </h2>
+        </header>
+
+        {comments.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+            Sin comentarios todavía. Abre la conversación con tu equipo escribiendo abajo.
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {comments.map((c) => {
+              const isMine = user?.id === c.user_id
+              const displayName = c.author_name ?? (isMine ? 'Tú' : 'Usuario')
+              const initial = (displayName?.trim()?.[0] ?? 'U').toUpperCase()
+              return (
+                <li key={c.id} className="px-4 py-3 group">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="flex size-8 items-center justify-center rounded-full bg-primary/15 text-primary shrink-0 text-xs font-semibold"
+                      aria-hidden
+                    >
+                      {initial}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium truncate">{displayName}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: es })}
+                        </span>
+                        {isMine && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                            onClick={() => deleteComment.mutate(c.id)}
+                            disabled={deleteComment.isPending}
+                            aria-label="Eliminar comentario"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-sm mt-1 whitespace-pre-wrap break-words">
+                        {c.body}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        <div className="px-4 py-3 border-t bg-muted/20 flex flex-col gap-2">
+          <Textarea
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            placeholder="Escribe un comentario para el equipo…"
+            rows={2}
+            disabled={addComment.isPending}
+            className="bg-card"
+          />
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => addComment.mutate()}
+              disabled={addComment.isPending || newComment.trim().length === 0}
+            >
+              {addComment.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <Send className="size-4" />}
+              Enviar
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* PDF preview — sólo se muestra cuando la OT está completada o cerrada */}
+      {showPdfPreview && (
+        <section className="rounded-xl border border-border bg-card overflow-hidden">
+          <header className="px-4 py-3 border-b flex items-center justify-between gap-2">
+            <h2 className="font-heading text-sm font-semibold tracking-[-0.01em]">
+              Vista previa del reporte
+            </h2>
+            {previewing && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                Generando…
+              </span>
+            )}
+          </header>
+          <div className="relative bg-muted/30">
+            {previewError ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">
+                <p className="text-destructive font-medium mb-1">No se pudo generar la vista previa</p>
+                <p>{previewError}</p>
+              </div>
+            ) : previewUrl ? (
+              <iframe
+                src={previewUrl}
+                title={`Vista previa de OT ${wo.folio}`}
+                className="w-full h-[70vh] min-h-[480px] bg-card"
+              />
+            ) : (
+              <div className="h-[70vh] min-h-[480px] flex items-center justify-center text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin mr-2" />
+                Cargando vista previa…
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <AssignDialog
         open={assignOpen}

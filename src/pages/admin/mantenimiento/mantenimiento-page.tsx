@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Wrench, Search, AlertCircle, Clock, CheckCircle2, XCircle, Pause } from 'lucide-react'
+import { Plus, Wrench, Search, AlertCircle, Clock, CheckCircle2, XCircle, Pause, FileDown } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/custom/empty-state'
 import { useWorkOrders } from '@/features/mantenimiento/hooks'
 import { usePermissions } from '@/hooks/use-permissions'
 import type { WOStatus, WOPriority, WOType } from '@/lib/database.types'
+import { exportToCsv } from '@/lib/csv-export'
 
 import { NuevaOrdenDialog } from './nueva-orden-dialog'
 
@@ -91,18 +92,67 @@ export default function MantenimientoPage() {
 
   const canCreate = can('work_order.create')
 
+  function handleExportCsv() {
+    const today = new Date().toISOString().slice(0, 10)
+    exportToCsv({
+      filename: `ordenes-trabajo-${today}.csv`,
+      headers: [
+        'folio',
+        'equipo_codigo',
+        'equipo_nombre',
+        'tipo',
+        'prioridad',
+        'status',
+        'reportada',
+        'programada',
+        'completada',
+        'tecnico',
+        'downtime_min',
+        'total_mxn',
+        'descripcion_falla',
+      ],
+      rows: rows.map((wo) => [
+        wo.folio,
+        wo.equipment?.code ?? '',
+        wo.equipment?.name ?? '',
+        wo.wo_type,
+        wo.priority,
+        wo.status,
+        wo.reported_at,
+        wo.scheduled_date ?? '',
+        wo.completed_at ?? '',
+        wo.primary_technician?.full_name ?? '',
+        wo.downtime_minutes ?? '',
+        wo.total_cost_mxn ?? '',
+        wo.failure_description ?? '',
+      ]),
+    })
+  }
+
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6 max-w-[1600px] mx-auto w-full">
       <PageHeader
         title="Mantenimiento"
         description={`${totalOpen} ${totalOpen === 1 ? 'orden abierta' : 'órdenes abiertas'} · Reporta fallas, asigna técnicos y consume refacciones del almacén.`}
         actions={
-          canCreate && (
-            <Button size="sm" className="gap-1.5" onClick={() => setNewOpen(true)}>
-              <Plus className="size-4" />
-              Reportar falla
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleExportCsv}
+              disabled={rows.length === 0}
+            >
+              <FileDown className="size-4" />
+              Exportar CSV
             </Button>
-          )
+            {canCreate && (
+              <Button size="sm" className="gap-1.5" onClick={() => setNewOpen(true)}>
+                <Plus className="size-4" />
+                Reportar falla
+              </Button>
+            )}
+          </div>
         }
       />
 

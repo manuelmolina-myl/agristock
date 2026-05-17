@@ -70,6 +70,8 @@ const MantenimientoWoDetail  = lazy(() => import('@/pages/mantenimiento-mod/wo-d
 const MantenimientoEquipment = lazy(() => import('@/pages/mantenimiento-mod/equipment-page'))
 const MantenimientoEquipDet  = lazy(() => import('@/pages/mantenimiento-mod/equipment-detail-page'))
 const MantenimientoPlans     = lazy(() => import('@/pages/mantenimiento-mod/preventive-plans-page'))
+const MantenimientoSolicitudes    = lazy(() => import('@/pages/mantenimiento-mod/service-requests-page'))
+const MantenimientoSolicitudDet   = lazy(() => import('@/pages/mantenimiento-mod/service-request-detail-page'))
 
 // Almacén module (top-level)
 const AlmacenDashboard = lazy(() => import('@/pages/almacen/almacen-dashboard'))
@@ -207,6 +209,21 @@ export default function App() {
         </Route>
 
         {/* ─── Mantenimiento module (top-level) ──────────────────────── */}
+        {/* Solicitudes de servicio: visibles para todos los roles (cualquier
+            usuario puede reportar problemas). Ruta separada con allowedRoles
+            amplio para no exponer el resto del módulo a roles que no son
+            mantenimiento. */}
+        <Route
+          path="/mantenimiento/solicitudes"
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'mantenimiento', 'almacenista', 'compras']}>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<MantenimientoSolicitudes />} />
+          <Route path=":id" element={<MantenimientoSolicitudDet />} />
+        </Route>
         <Route
           path="/mantenimiento"
           element={
