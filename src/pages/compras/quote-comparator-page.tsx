@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowLeft, Plus, Trophy, Trash2, ShoppingCart, Loader2,
-  FileText, Building2,
+  FileText, Building2, Paperclip, X as XIcon,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -56,8 +56,24 @@ interface QuotationRow {
   validity_days: number | null
   payment_terms: string | null
   notes: string | null
+  pdf_url: string | null
   supplier?: { name: string; rfc: string | null } | null
   lines?: QuotationLineRow[]
+}
+
+/** Opens the attachment for a quotation in a new tab.
+ *  Bucket `cotizaciones` is private — we resolve a 60-second signedUrl on demand. */
+async function openQuotationAttachment(path: string) {
+  try {
+    const { data, error } = await supabase.storage
+      .from('cotizaciones')
+      .createSignedUrl(path, 60)
+    if (error) throw error
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  } catch (err) {
+    const { title, description } = formatSupabaseError(err, 'No se pudo abrir el archivo')
+    toast.error(title, { description })
+  }
 }
 
 function fmt(n: number, cur: 'MXN' | 'USD' = 'MXN') {
@@ -84,7 +100,7 @@ export default function QuoteComparatorPage() {
         .from('quotations')
         .select(`
           id, folio, supplier_id, quotation_date, status,
-          delivery_days, validity_days, payment_terms, notes,
+          delivery_days, validity_days, payment_terms, notes, pdf_url,
           supplier:suppliers(name, rfc),
           lines:quotation_lines(*)
         `)
@@ -352,6 +368,17 @@ export default function QuoteComparatorPage() {
                         {q.delivery_days != null && <span>· entrega {q.delivery_days}d</span>}
                         {q.validity_days != null && <span>· vigencia {q.validity_days}d</span>}
                       </div>
+
+                      {q.pdf_url && (
+                        <button
+                          type="button"
+                          onClick={() => openQuotationAttachment(q.pdf_url!)}
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary hover:underline normal-case tracking-normal"
+                        >
+                          <Paperclip className="size-2.5" />
+                          Ver archivo del proveedor
+                        </button>
+                      )}
                     </th>
                   )
                 })}
@@ -522,6 +549,8 @@ function NewQuotationDialog({
   const [validityDays, setValidityDays] = useState('15')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<NewQuotLine[]>([])
+  const [attachment, setAttachment] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const supplier = suppliers.find((s) => s.id === supplierId)
   const defaultCurrency = supplier?.default_currency ?? 'MXN'
@@ -605,6 +634,28 @@ function NewQuotationDialog({
       const { error: lErr } = await db.from('quotation_lines').insert(linesPayload)
       if (lErr) throw lErr
 
+      // Upload attachment (PDF or photo of the supplier's quote) if provided.
+      // Stored at cotizaciones/<orgId>/<quotationId>/<timestamp>.<ext>.
+      // The bucket is private (migración 038) so we store the storage path
+      // in pdf_url and resolve to a signedUrl on read.
+      if (attachment) {
+        const ext = attachment.name.split('.').pop() ?? 'pdf'
+        const storagePath = `${organization.id}/${quot.id}/${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('cotizaciones')
+          .upload(storagePath, attachment, { upsert: true, contentType: attachment.type })
+        if (upErr) {
+          // Surface the upload failure but keep the quotation row — the user
+          // can re-attach later.  We only warn, not throw, because losing the
+          // priced lines for a single missed upload would be worse UX.
+          toast.warning('Cotización guardada, pero falló subir el archivo', {
+            description: upErr.message,
+          })
+        } else {
+          await db.from('quotations').update({ pdf_url: storagePath }).eq('id', quot.id)
+        }
+      }
+
       return quot.id
     },
     onSuccess: () => {
@@ -612,6 +663,8 @@ function NewQuotationDialog({
       // Reset form
       setSupplierId(''); setFolio(''); setPaymentTerms('')
       setDeliveryDays(''); setValidityDays('15'); setNotes(''); setLines([])
+      setAttachment(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
       onSaved()
     },
     onError: (e) => {
@@ -749,6 +802,62 @@ function NewQuotationDialog({
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="qnotes">Notas</Label>
             <Textarea id="qnotes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+          </div>
+
+          {/* Attachment — supplier's PDF / photo of the quote */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="qfile">Archivo del proveedor (opcional)</Label>
+            <input
+              ref={fileInputRef}
+              id="qfile"
+              type="file"
+              accept="application/pdf,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                if (f.size > 10 * 1024 * 1024) {
+                  toast.error('El archivo no puede superar 10 MB')
+                  e.target.value = ''
+                  return
+                }
+                setAttachment(f)
+              }}
+            />
+            {attachment ? (
+              <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+                <Paperclip className="size-4 text-muted-foreground shrink-0" />
+                <span className="text-sm truncate flex-1">{attachment.name}</span>
+                <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                  {(attachment.size / 1024).toFixed(0)} KB
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => {
+                    setAttachment(null)
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  }}
+                  aria-label="Quitar archivo"
+                >
+                  <XIcon className="size-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                className="justify-start gap-2 h-9 text-muted-foreground"
+              >
+                <Paperclip className="size-4" />
+                Adjuntar PDF o foto de la cotización
+              </Button>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              PDF / PNG / JPG · máximo 10 MB. Útil para guardar la cotización original del proveedor.
+            </p>
           </div>
         </div>
 

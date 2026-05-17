@@ -208,19 +208,6 @@ export default function RequisitionDetailPage() {
 
   const canAct = can('purchase.approve')
   const canActStatus = req.status === 'submitted' || req.status === 'in_quotation'
-  // "Solicitar cotización" is allowed while the requisition is still actively
-  // being shopped, plus 'approved' (operator may want to compare more quotes
-  // before committing to an OC).
-  const canAskQuotes =
-    canAct &&
-    (req.status === 'submitted' || req.status === 'in_quotation' || req.status === 'approved')
-
-  const openAskDialog = () => {
-    setAskSelectedIds(new Set())
-    setAskSearch('')
-    setAskNotes('')
-    setAskOpen(true)
-  }
 
   const toggleAskSupplier = (sid: string) => {
     setAskSelectedIds((prev) => {
@@ -416,73 +403,22 @@ export default function RequisitionDetailPage() {
             <div className="border-t bg-muted/20 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
                 {req.status === 'approved'
-                  ? 'Aprobada — ya puedes generar la OC.'
-                  : 'Pide cotizaciones a proveedores para comparar precios.'}
+                  ? 'Aprobada — captura cotizaciones para comparar y generar la OC.'
+                  : 'Captura las cotizaciones recibidas de los proveedores para comparar precios.'}
               </div>
               <div className="flex items-center gap-2">
-                {canAskQuotes && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={openAskDialog}
-                  >
-                    <Send className="size-4" />
-                    Solicitar cotización
-                  </Button>
-                )}
                 <Button
-                  variant="outline"
                   size="sm"
                   className="gap-1.5"
                   onClick={() => navigate(`/compras/cotizaciones/comparar?req=${req.id}`)}
                 >
                   <FileText className="size-4" />
-                  Comparar cotizaciones
+                  Capturar / comparar cotizaciones
                 </Button>
               </div>
             </div>
           )}
         </section>
-
-        {/* Quote requests list — full width, sits between the lines table and meta column */}
-        {quoteRequests.length > 0 && (
-          <section className="rounded-xl border border-border bg-card overflow-hidden lg:col-span-1">
-            <header className="px-4 py-3 border-b flex items-center justify-between">
-              <h2 className="text-sm font-semibold">
-                Cotizaciones solicitadas ({quoteRequests.length})
-              </h2>
-            </header>
-            <ul className="divide-y">
-              {quoteRequests.map((qr) => {
-                const statusInfo = QUOTE_REQ_STATUS[qr.status]
-                return (
-                  <li key={qr.id} className="px-4 py-3 flex items-center gap-3 hover:bg-muted/30">
-                    <statusInfo.icon className={`size-4 shrink-0 ${statusInfo.iconClass}`} strokeWidth={1.75} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm truncate">
-                          {qr.supplier?.name ?? '—'}
-                        </span>
-                        <Badge variant={statusInfo.variant} className={statusInfo.badgeClass}>
-                          {statusInfo.label}
-                        </Badge>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Solicitada {formatDistanceToNow(new Date(qr.requested_at), { addSuffix: true, locale: es })}
-                        {qr.requester?.full_name && ` por ${qr.requester.full_name}`}
-                        {qr.responded_at && ` · respondió ${formatDistanceToNow(new Date(qr.responded_at), { addSuffix: true, locale: es })}`}
-                      </p>
-                      {qr.notes && (
-                        <p className="text-[11px] text-muted-foreground mt-1 italic line-clamp-2">{qr.notes}</p>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
-        )}
 
         {/* Right: meta */}
         <aside className="flex flex-col gap-3">
