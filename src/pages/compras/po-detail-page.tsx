@@ -254,7 +254,8 @@ export default function PoDetailPage() {
                   <th className="px-3 py-2 text-right font-medium">Cant.</th>
                   <th className="px-3 py-2 text-right font-medium">Recibido</th>
                   <th className="px-3 py-2 text-right font-medium">Costo</th>
-                  <th className="px-4 py-2 text-right font-medium">Subtotal</th>
+                  <th className="px-3 py-2 text-right font-medium">IVA</th>
+                  <th className="px-4 py-2 text-right font-medium">Total línea</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -262,6 +263,9 @@ export default function PoDetailPage() {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const itemRel = (l as any).item as { name: string; sku: string } | undefined
                   const subtotal = l.quantity * l.unit_cost
+                  const taxPct   = l.tax_pct ?? 16
+                  const taxAmt   = subtotal * (taxPct / 100)
+                  const total    = subtotal + taxAmt
                   const pending  = l.quantity - l.received_quantity
                   return (
                     <tr key={l.id} className="hover:bg-muted/30">
@@ -280,21 +284,44 @@ export default function PoDetailPage() {
                       <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted-foreground text-xs">
                         {l.currency} {l.unit_cost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                       </td>
+                      <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted-foreground text-xs">
+                        <div>{taxAmt.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        <div className="text-[10px] opacity-70">{taxPct}%</div>
+                      </td>
                       <td className="px-4 py-2.5 text-right font-mono tabular-nums font-medium">
-                        ${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        ${total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
               {po.total_mxn != null && (
-                <tfoot>
+                <tfoot className="bg-muted/20">
+                  {po.subtotal_mxn != null && (
+                    <tr className="border-t border-border">
+                      <td colSpan={4} className="px-4 py-1.5 text-right text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                        Subtotal
+                      </td>
+                      <td colSpan={2} className="px-4 py-1.5 text-right font-mono tabular-nums text-sm text-muted-foreground">
+                        ${po.subtotal_mxn.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  )}
+                  {po.tax_mxn != null && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-1.5 text-right text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                        IVA total
+                      </td>
+                      <td colSpan={2} className="px-4 py-1.5 text-right font-mono tabular-nums text-sm text-muted-foreground">
+                        ${po.tax_mxn.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  )}
                   <tr className="border-t-2 border-border">
-                    <td className="px-4 py-2.5 text-xs uppercase tracking-[0.06em] text-muted-foreground">
+                    <td colSpan={4} className="px-4 py-2.5 text-right text-xs uppercase tracking-[0.06em] font-semibold text-foreground">
                       Total MXN (con IVA)
                     </td>
-                    <td colSpan={3} />
-                    <td className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-base">
+                    <td colSpan={2} className="px-4 py-2.5 text-right font-mono tabular-nums font-semibold text-base">
                       ${po.total_mxn.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                     </td>
                   </tr>
