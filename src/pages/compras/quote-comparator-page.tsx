@@ -213,6 +213,37 @@ export default function QuoteComparatorPage() {
     )
   }
 
+  // Defensive: catch orphan requisitions (0 lines) — usually leftover from
+  // the pre-039 bug where parent + lines weren't atomic.  Migración 039
+  // auto-soft-deleta los huérfanos viejos pero seguimos avisando si por
+  // alguna razón el usuario llega a uno.
+  if (req && (req.lines ?? []).length === 0) {
+    return (
+      <div className="flex flex-col gap-4 p-4 sm:p-6 max-w-3xl mx-auto w-full">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate('/compras/requisiciones')}
+          className="self-start gap-1"
+        >
+          <ArrowLeft className="size-4" /> Volver a Solicitudes
+        </Button>
+        <EmptyState
+          icon={<FileText className="size-8 text-muted-foreground" strokeWidth={1.5} />}
+          title="Esta requisición no tiene líneas"
+          description={
+            'Fue creada antes de que la inserción fuera transaccional. ' +
+            'Bórrala desde la lista y captura una nueva — los nuevos creates ya no pueden quedar huérfanos.'
+          }
+          action={{
+            label: '+ Nueva requisición',
+            onClick: () => navigate('/compras/requisiciones?new=1'),
+          }}
+        />
+      </div>
+    )
+  }
+
   const selected = quotations.find((q) => q.status === 'selected')
   const canSelect = can('purchase.create')
 

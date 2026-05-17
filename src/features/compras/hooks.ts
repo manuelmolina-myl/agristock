@@ -120,54 +120,30 @@ export function useCreateRequisition() {
     mutationFn: async (input: RequisitionCreateInput) => {
       if (!organization?.id || !user?.id) throw new Error('No session')
 
-      // Reserve a folio first so the row has the proper code on insert.
-      const { data: folioData, error: folioErr } = await db.rpc('next_folio', {
-        p_org: organization.id, p_type: 'requisition',
-      })
-      if (folioErr) throw folioErr
-      const folio = folioData as string
-
-      // Estimate total in MXN for approval-threshold routing.
-      const estimated = input.lines.reduce((acc, l) => {
-        const cost = (l.estimated_unit_cost ?? 0) * l.quantity
-        // For estimation we leave USD as-is; threshold should account for
-        // approximate value at the time of submission.
-        return acc + cost
-      }, 0)
-
-      const { data: reqRow, error: reqErr } = await db
-        .from('purchase_requisitions')
-        .insert({
-          organization_id: organization.id,
-          folio,
-          requester_id: user.id,
+      // Atomic insert via RPC (migración 039).  Two separate REST calls
+      // (parent + lines) used to leave the parent orphaned if the line
+      // insert failed, breaking the comparator afterwards.  The RPC wraps
+      // both inserts in a transaction so any failure rolls back the parent.
+      const { data, error } = await db.rpc('create_requisition', {
+        p_input: {
           priority: input.priority,
           justification: input.justification,
           crop_lot_id: input.crop_lot_id ?? null,
           equipment_id: input.equipment_id ?? null,
           notes: input.notes ?? null,
-          estimated_total_mxn: estimated || null,
-          status: 'submitted',
-        })
-        .select()
-        .single()
-      if (reqErr) throw reqErr
-
-      const linesPayload = input.lines.map((l) => ({
-        requisition_id: reqRow.id,
-        item_id: l.item_id,
-        free_description: l.item_id ? null : l.free_description,
-        quantity: l.quantity,
-        unit_id: l.unit_id,
-        estimated_unit_cost: l.estimated_unit_cost,
-        currency: l.currency,
-        notes: l.notes ?? null,
-      }))
-
-      const { error: linesErr } = await db.from('requisition_lines').insert(linesPayload)
-      if (linesErr) throw linesErr
-
-      return reqRow as PurchaseRequisition
+          lines: input.lines.map((l) => ({
+            item_id: l.item_id,
+            free_description: l.item_id ? null : l.free_description,
+            quantity: l.quantity,
+            unit_id: l.unit_id,
+            estimated_unit_cost: l.estimated_unit_cost,
+            currency: l.currency,
+            notes: l.notes ?? null,
+          })),
+        },
+      })
+      if (error) throw error
+      return data as PurchaseRequisition
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: comprasKeys.all })
