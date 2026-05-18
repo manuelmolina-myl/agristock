@@ -18,6 +18,7 @@ import {
   Check,
   CheckCheck,
   Inbox,
+  Fuel,
 } from 'lucide-react'
 
 import { useAuth } from '@/hooks/use-auth'
@@ -39,6 +40,7 @@ const KIND_CONFIG: Record<NotificationKind, { icon: React.ElementType; tone: str
   quotes_ready:        { icon: DollarSign,    tone: 'text-success',    bg: 'bg-success/10',    label: 'Cotizaciones' },
   wo_open:             { icon: Wrench,        tone: 'text-usd',        bg: 'bg-usd/10',        label: 'OTs abiertas' },
   low_stock:           { icon: AlertTriangle, tone: 'text-destructive', bg: 'bg-destructive/10', label: 'Bajo reorden' },
+  tank_low_level:      { icon: Fuel,          tone: 'text-destructive', bg: 'bg-destructive/10', label: 'Tanques bajos' },
 }
 
 export default function NotificacionesPage() {

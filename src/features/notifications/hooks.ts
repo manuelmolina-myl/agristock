@@ -16,6 +16,7 @@ export type NotificationKind =
   | 'quotes_ready'
   | 'wo_open'
   | 'low_stock'
+  | 'tank_low_level'
 
 export interface NotificationRow {
   kind: NotificationKind

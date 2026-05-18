@@ -13,6 +13,7 @@ import {
   DollarSign,
   Wrench,
   AlertTriangle,
+  Fuel,
 } from 'lucide-react'
 
 import { cn, formatRelativo } from '@/lib/utils'
@@ -33,6 +34,7 @@ const KIND_META: Record<NotificationKind, { Icon: typeof Bell; color: string }> 
   quotes_ready:        { Icon: DollarSign,     color: 'text-success' },
   wo_open:             { Icon: Wrench,         color: 'text-usd' },
   low_stock:           { Icon: AlertTriangle,  color: 'text-destructive' },
+  tank_low_level:      { Icon: Fuel,           color: 'text-destructive' },
 }
 
 // ─── Row ────────────────────────────────────────────────────────────────────
