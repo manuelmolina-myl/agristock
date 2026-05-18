@@ -1,8 +1,9 @@
 import { Fragment } from 'react'
 import { useLocation, NavLink, useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/contexts/page-title-context'
-import { Sun, Moon, Search, LogOut, ChevronRight } from 'lucide-react'
+import { Sun, Moon, Search, LogOut, ChevronRight, Network } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
+import { usePlatformAdmin } from '@/hooks/use-platform-admin'
 import { useTheme } from '@/hooks/use-theme'
 import { ROLE_LABELS_NEW, ROLE_ROUTES_NEW } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -165,6 +166,7 @@ function ThemeToggle() {
 function UserMenu() {
   const { profile, primaryRole, signOut } = useAuth()
   const navigate = useNavigate()
+  const { data: isPlatformAdmin } = usePlatformAdmin()
 
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
@@ -201,6 +203,19 @@ function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {isPlatformAdmin && (
+          <>
+            <button
+              type="button"
+              onClick={() => navigate('/plataforma')}
+              className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-foreground outline-none hover:bg-muted focus:bg-muted"
+            >
+              <Network className="size-4" />
+              Cockpit plataforma
+            </button>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <button
           type="button"
           onClick={handleSignOut}

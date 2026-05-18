@@ -1,12 +1,17 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
+import { usePlatformAdmin } from '@/hooks/use-platform-admin'
 import { ROLE_ROUTES_NEW } from '@/lib/constants'
 import { ErrorBoundary } from '@/components/custom/error-boundary'
 import type { UserRoleEnum } from '@/lib/database.types'
 
 // Layout
 const AppLayout = lazy(() => import('@/components/layout/app-layout'))
+const PlatformLayout = lazy(() => import('@/components/layout/platform-layout'))
+
+// Platform (cross-tenant cockpit)
+const CockpitPage = lazy(() => import('@/pages/plataforma/cockpit-page'))
 
 // Public
 const LandingPage = lazy(() => import('@/pages/landing-page'))
@@ -138,6 +143,15 @@ function DashboardRedirect() {
   return <Navigate to={route} replace />
 }
 
+function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading: authLoading } = useAuth()
+  const { data: isPlatformAdmin, isLoading: checking } = usePlatformAdmin()
+  if (authLoading || checking) return <LoadingFallback />
+  if (!user) return <Navigate to="/login" replace />
+  if (!isPlatformAdmin) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}
+
 function ProtectedRoute({ allowedRoles, children }: { allowedRoles: UserRoleEnum[]; children: React.ReactNode }) {
   const { user, profile, organization, roles, primaryRole, isLoading } = useAuth()
   if (isLoading) return <LoadingFallback />
@@ -169,6 +183,18 @@ export default function App() {
 
         {/* Onboarding (requires auth, but before org setup) */}
         <Route path="/onboarding" element={<OnboardingPage />} />
+
+        {/* ─── /plataforma · Cockpit cross-tenant (super_admin) ─────── */}
+        <Route
+          path="/plataforma"
+          element={
+            <PlatformAdminRoute>
+              <PlatformLayout />
+            </PlatformAdminRoute>
+          }
+        >
+          <Route index element={<CockpitPage />} />
+        </Route>
 
         {/* ─── Dirección · Tablero Ejecutivo + Reportes ─── */}
         <Route
