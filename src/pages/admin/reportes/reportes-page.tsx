@@ -68,6 +68,12 @@ const REPORTS: ReportCard[] = [
     icon: Fuel,
   },
   {
+    slug: 'diesel-por-equipo',
+    title: 'Diésel por Equipo',
+    description: 'Agregado de litros y costo por tractor o maquinaria, con ranking.',
+    icon: Fuel,
+  },
+  {
     slug: 'rotacion',
     title: 'Rotación de Inventario',
     description: 'Índice de rotación y días de inventario por ítem.',

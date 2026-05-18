@@ -118,6 +118,7 @@ const REPORT_META: Record<string, ReportMeta> = {
   'salidas-lote':       { slug: 'salidas-lote',          title: 'Salidas por Lote',        description: 'Consumo por lote agrícola' },
   'salidas-equipo':     { slug: 'salidas-equipo',        title: 'Salidas por Equipo',      description: 'Consumo por equipo o maquinaria' },
   'consumo-diesel':     { slug: 'consumo-diesel',        title: 'Consumo Diésel',          description: 'Registro de cargas de diésel' },
+  'diesel-por-equipo':  { slug: 'diesel-por-equipo',     title: 'Diésel por Equipo',       description: 'Litros y costo de diésel agregado por tractor o maquinaria' },
   rotacion:             { slug: 'rotacion',              title: 'Rotación de Inventario',  description: 'Índice de rotación por ítem' },
   'sin-movimiento':     { slug: 'sin-movimiento',        title: 'Ítems sin Movimiento',    description: 'Ítems sin movimiento en el período' },
   'variacion-precios':  { slug: 'variacion-precios',     title: 'Variación de Precios',    description: 'Comparativa de precios en el tiempo' },
@@ -1807,6 +1808,238 @@ function SalidasEquipoReport({ orgName }: { orgName: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Report 8b: Diésel por Equipo
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DieselEquipoLineRaw {
+  id: string
+  diesel_liters: number | null
+  quantity: number
+  unit_cost_native: number
+  currency: string
+  equipment_id: string | null
+  equipment?: { id: string; name: string; code: string } | null
+  movement?: {
+    id: string
+    movement_type: string
+    status: string
+    season_id: string
+    created_at: string
+  } | null
+}
+
+interface DieselEquipoRow {
+  equipment_id: string
+  code: string
+  name: string
+  loads: number
+  liters: number
+  cost_mxn: number
+}
+
+function DieselPorEquipoReport({ orgName }: { orgName: string }) {
+  const { activeSeason, organization } = useAuth()
+  const today = new Date().toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo]     = useState<string>(today)
+
+  const { data: lines = [], isLoading, error } = useQuery<DieselEquipoLineRaw[]>({
+    queryKey: ['diesel-por-equipo-report', { orgId: organization?.id, seasonId: activeSeason?.id, dateFrom, dateTo }],
+    queryFn: async () => {
+      const { data: dieselItems } = await db
+        .from('items')
+        .select('id')
+        .eq('organization_id', organization?.id)
+        .eq('is_diesel', true)
+      if (!dieselItems?.length) return []
+
+      const dieselIds = dieselItems.map((d: { id: string }) => d.id)
+
+      let q = db
+        .from('stock_movement_lines')
+        .select(`
+          id, quantity, diesel_liters, unit_cost_native, currency, equipment_id,
+          equipment:equipment(id, name, code),
+          movement:stock_movements!inner(id, movement_type, status, season_id, created_at)
+        `)
+        .in('item_id', dieselIds)
+        .not('equipment_id', 'is', null)
+        .like('movement.movement_type', 'exit_%')
+        .eq('movement.status', 'posted')
+
+      if (activeSeason?.id) q = q.eq('movement.season_id', activeSeason.id)
+      if (dateFrom) q = q.gte('movement.created_at', `${dateFrom}T00:00:00`)
+      if (dateTo)   q = q.lte('movement.created_at', `${dateTo}T23:59:59`)
+
+      const { data, error } = await q
+      if (error) throw error
+      return (data as DieselEquipoLineRaw[]).filter((l) => l.movement && l.equipment_id)
+    },
+    enabled: !!activeSeason?.id && !!organization?.id,
+  })
+
+  const grouped = useMemo<DieselEquipoRow[]>(() => {
+    const map = new Map<string, DieselEquipoRow>()
+    const movementSet = new Map<string, Set<string>>()
+    for (const l of lines) {
+      const eid = l.equipment_id
+      if (!eid) continue
+      if (!map.has(eid)) {
+        map.set(eid, {
+          equipment_id: eid,
+          code: l.equipment?.code ?? '—',
+          name: l.equipment?.name ?? '—',
+          loads: 0,
+          liters: 0,
+          cost_mxn: 0,
+        })
+        movementSet.set(eid, new Set<string>())
+      }
+      const row = map.get(eid)!
+      const liters = l.diesel_liters ?? l.quantity
+      row.liters += liters
+      // unit_cost_native está en la moneda del movimiento; lo asumimos MXN
+      // para la agregación (los flujos de carga de diésel registran MXN —
+      // si llegara USD, el reporte lo sumaría como si fuera MXN. Documentado.)
+      row.cost_mxn += liters * (l.unit_cost_native ?? 0)
+      if (l.movement?.id) movementSet.get(eid)!.add(l.movement.id)
+    }
+    for (const [eid, set] of movementSet) {
+      const row = map.get(eid)
+      if (row) row.loads = set.size
+    }
+    return Array.from(map.values()).sort((a, b) => b.liters - a.liters)
+  }, [lines])
+
+  const totals = useMemo(() => ({
+    loads: grouped.reduce((s, r) => s + r.loads, 0),
+    liters: grouped.reduce((s, r) => s + r.liters, 0),
+    cost: grouped.reduce((s, r) => s + r.cost_mxn, 0),
+  }), [grouped])
+
+  const topEquipos = useMemo(
+    () => grouped.slice(0, 8).map((r) => ({ label: r.code, amount: r.liters })),
+    [grouped],
+  )
+
+  const kpis: KpiTile[] = useMemo(() => {
+    if (grouped.length === 0) return []
+    const avgPerEquipo = grouped.length > 0 ? totals.liters / grouped.length : 0
+    return [
+      { label: 'Equipos atendidos', value: grouped.length,                          tone: 'info',    icon: Wrench,    hint: 'Con consumo de diésel' },
+      { label: 'Total litros',      value: `${formatQuantity(totals.liters, 0)} L`, tone: 'default', icon: Fuel,      hint: 'Consumido' },
+      { label: 'Costo total',       value: formatMoney(totals.cost, 'MXN'),         tone: 'success', icon: DollarSign, hint: 'A precio de carga' },
+      { label: 'Promedio / equipo', value: `${formatQuantity(avgPerEquipo, 0)} L`,  tone: 'default', icon: Gauge,     hint: 'Litros medios' },
+    ]
+  }, [grouped, totals])
+
+  const HEAD = ['Código', 'Equipo', '# Cargas', 'Litros', 'Costo MXN']
+
+  function buildRows() {
+    return grouped.map((r) => [
+      r.code,
+      r.name,
+      r.loads,
+      formatQuantity(r.liters, 1),
+      formatMoney(r.cost_mxn, 'MXN'),
+    ])
+  }
+
+  const footRow = ['TOTAL', '', totals.loads, formatQuantity(totals.liters, 1), formatMoney(totals.cost, 'MXN')]
+  const filtersLabel = `${dateFrom || 'inicio'} – ${dateTo}`
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Desde</Label>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Hasta</Label>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm" />
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-destructive">{formatSupabaseError(error).description}</p>
+      )}
+
+      {grouped.length > 0 && (
+        <ReportMiniDashboard
+          kpis={kpis}
+          chartTitle="Top equipos por litros consumidos"
+          chart={
+            <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <ReportHorizontalAmountBarChart data={topEquipos} yAxisWidth={120} />
+            </Suspense>
+          }
+          isLoading={isLoading}
+        />
+      )}
+
+      <Separator />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : grouped.length === 0 ? (
+        <EmptyState title="Sin consumo de diésel" description="No se encontraron cargas de diésel a equipos en el período seleccionado." />
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {HEAD.map((h) => <TableHead key={h} className="text-xs whitespace-nowrap">{h}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {grouped.map((r) => (
+                <TableRow key={r.equipment_id}>
+                  <TableCell className="font-mono text-xs">{r.code}</TableCell>
+                  <TableCell className="text-xs font-medium">{r.name}</TableCell>
+                  <TableCell className="text-center text-xs">{r.loads}</TableCell>
+                  <TableCell className="text-right text-xs">{formatQuantity(r.liters, 1)} L</TableCell>
+                  <TableCell className="text-right text-xs">
+                    <MoneyDisplay amount={r.cost_mxn} currency="MXN" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={2} className="text-xs font-semibold">TOTAL</TableCell>
+                <TableCell className="text-center text-xs font-semibold">{totals.loads}</TableCell>
+                <TableCell className="text-right text-xs font-semibold">{formatQuantity(totals.liters, 1)} L</TableCell>
+                <TableCell className="text-right text-xs font-semibold">
+                  <MoneyDisplay amount={totals.cost} currency="MXN" />
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </div>
+      )}
+
+      {grouped.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => downloadReportCsv('Diesel por Equipo', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
+            <FileDown className="mr-1.5 size-3.5" />
+            Descargar CSV
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generateExcel('Diesel por Equipo', HEAD, buildRows() as (string | number)[][], footRow as (string | number)[])}>
+            <FileSpreadsheet className="mr-1.5 size-3.5" />
+            Exportar Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => generatePdf(orgName, 'Diesel por Equipo', filtersLabel, HEAD, buildRows() as unknown as (string | number)[][][], footRow as (string | number)[])}>
+            <Download className="mr-1.5 size-3.5" />
+            Descargar PDF
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Report 9: Rotación de Inventario
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -3211,6 +3444,7 @@ export default function ReportViewerPage() {
           {slug === 'entradas-proveedor' && <EntradasProveedorReport orgName={orgName} />}
           {slug === 'salidas-lote' && <SalidasLoteReport orgName={orgName} />}
           {slug === 'consumo-diesel' && <ConsumoDieselReport orgName={orgName} />}
+          {slug === 'diesel-por-equipo' && <DieselPorEquipoReport orgName={orgName} />}
           {slug === 'sin-movimiento' && <SinMovimientoReport orgName={orgName} />}
           {slug === 'variacion-precios' && <VariacionPreciosReport orgName={orgName} />}
           {slug === 'salidas-equipo' && <SalidasEquipoReport orgName={orgName} />}
@@ -3223,8 +3457,8 @@ export default function ReportViewerPage() {
 
           {![
             'kardex', 'existencias', 'entradas-proveedor', 'salidas-lote', 'consumo-diesel',
-            'sin-movimiento', 'variacion-precios', 'salidas-equipo', 'rotacion',
-            'cierre-temporada', 'auditoria-usuario', 'conversiones-moneda',
+            'diesel-por-equipo', 'sin-movimiento', 'variacion-precios', 'salidas-equipo',
+            'rotacion', 'cierre-temporada', 'auditoria-usuario', 'conversiones-moneda',
             'cuentas-por-pagar', 'costo-mantenimiento-equipo',
           ].includes(slug) && (
             <ComingSoon title={meta.title} />
