@@ -7,6 +7,7 @@
  * archivar (soft-delete) y restaurar tanques.
  */
 import { useMemo, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -476,12 +477,13 @@ function ArchiveDialog({ open, onClose, tank, mode }: ArchiveDialogProps) {
 interface TankCardProps {
   tank: TankBalance
   isAdmin: boolean
+  onOpen: () => void
   onEdit: () => void
   onArchive: () => void
   onRestore: () => void
 }
 
-function TankCard({ tank, isAdmin, onEdit, onArchive, onRestore }: TankCardProps) {
+function TankCard({ tank, isAdmin, onOpen, onEdit, onArchive, onRestore }: TankCardProps) {
   const Icon = tank.type === 'mobile' ? Truck : Fuel
   const fillPct = Math.max(0, Math.min(100, tank.fill_pct ?? 0))
   const archived = !tank.is_active
@@ -507,9 +509,21 @@ function TankCard({ tank, isAdmin, onEdit, onArchive, onRestore }: TankCardProps
 
   return (
     <div
+      role="button"
+      tabIndex={archived ? -1 : 0}
+      onClick={archived ? undefined : onOpen}
+      onKeyDown={(e) => {
+        if (archived) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
       className={cn(
         'group relative w-full overflow-hidden rounded-xl border border-border bg-card',
         'flex flex-col text-left transition-all duration-150',
+        !archived && 'cursor-pointer hover:border-foreground/20 hover:shadow-sm',
+        !archived && 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         archived && 'opacity-70',
       )}
     >
@@ -536,33 +550,35 @@ function TankCard({ tank, isAdmin, onEdit, onArchive, onRestore }: TankCardProps
             {tank.type === 'mobile' ? 'Móvil' : 'Estacionario'}
           </Badge>
           {isAdmin && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label="Acciones del tanque"
-                className="-mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <MoreVertical className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[12rem]">
-                {!archived && (
-                  <DropdownMenuItem onClick={onEdit} className="gap-2">
-                    <Pencil className="size-3.5" /> Editar
-                  </DropdownMenuItem>
-                )}
-                {archived ? (
-                  <DropdownMenuItem onClick={onRestore} className="gap-2">
-                    <ArchiveRestore className="size-3.5" /> Restaurar
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem
-                    onClick={onArchive}
-                    className="gap-2 text-destructive focus:text-destructive"
-                  >
-                    <Archive className="size-3.5" /> Archivar
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Acciones del tanque"
+                  className="-mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <MoreVertical className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[12rem]">
+                  {!archived && (
+                    <DropdownMenuItem onClick={onEdit} className="gap-2">
+                      <Pencil className="size-3.5" /> Editar
+                    </DropdownMenuItem>
+                  )}
+                  {archived ? (
+                    <DropdownMenuItem onClick={onRestore} className="gap-2">
+                      <ArchiveRestore className="size-3.5" /> Restaurar
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={onArchive}
+                      className="gap-2 text-destructive focus:text-destructive"
+                    >
+                      <Archive className="size-3.5" /> Archivar
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
       </div>
@@ -624,6 +640,8 @@ function TankCard({ tank, isAdmin, onEdit, onArchive, onRestore }: TankCardProps
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function TanquesPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const { organization } = useAuth()
   const { hasRole } = usePermissions()
   const orgId = organization?.id ?? ''
@@ -856,6 +874,11 @@ export default function TanquesPage() {
               key={t.id}
               tank={t}
               isAdmin={isAdmin}
+              onOpen={() =>
+                navigate(`/almacen/tanques/${t.id}`, {
+                  state: { from: location.pathname },
+                })
+              }
               onEdit={() => openEdit(t)}
               onArchive={() => openArchive(t)}
               onRestore={() => openRestore(t)}
